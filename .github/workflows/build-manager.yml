@@ -370,6 +370,9 @@ jobs:
       # Build APK
       # --------------------------------------------------------
 
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest
+
       - name: Build with Gradle
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
