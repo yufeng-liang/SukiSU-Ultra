@@ -387,7 +387,8 @@ jobs:
         if: ${{ github.event_name == 'pull_request' ||
           (github.event_name != 'pull_request' &&
           (github.ref == 'refs/heads/main' ||
-           github.ref == 'refs/heads/dev')) ||
+           github.ref == 'refs/heads/dev' ||
+           github.ref == 'refs/heads/ci')) ||
           github.ref_type == 'tag' }}
 
         uses: actions/upload-artifact@v7
@@ -550,7 +551,8 @@ jobs:
         if: ${{ github.event_name == 'pull_request' ||
           (github.event_name != 'pull_request' &&
           (github.ref == 'refs/heads/main' ||
-           github.ref == 'refs/heads/dev')) ||
+           github.ref == 'refs/heads/dev' ||
+           github.ref == 'refs/heads/ci')) ||
           github.ref_type == 'tag' }}
 
         env:
@@ -595,7 +597,8 @@ jobs:
         if: ${{ github.event_name == 'pull_request' ||
           (github.event_name != 'pull_request' &&
           (github.ref == 'refs/heads/main' ||
-           github.ref == 'refs/heads/dev')) ||
+           github.ref == 'refs/heads/dev' ||
+           github.ref == 'refs/heads/ci')) ||
           github.ref_type == 'tag' }}
 
         run: |
@@ -628,7 +631,8 @@ jobs:
         if: ${{ github.event_name == 'pull_request' ||
           (github.event_name != 'pull_request' &&
           (github.ref == 'refs/heads/main' ||
-           github.ref == 'refs/heads/dev')) ||
+           github.ref == 'refs/heads/dev' ||
+           github.ref == 'refs/heads/ci')) ||
           github.ref_type == 'tag' }}
 
         uses: actions/upload-artifact@v7
