@@ -39,9 +39,12 @@ jobs:
   generate-key:
     runs-on: ubuntu-latest
 
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE != '' }}
+
     outputs:
-      expected_size: ${{ steps.extract.outputs.expected_size }}
-      expected_hash: ${{ steps.extract.outputs.expected_hash }}
+      expected_size: ${{ steps.extract.outputs.expected_size || steps.extract-secret.outputs.expected_size }}
+      expected_hash: ${{ steps.extract.outputs.expected_hash || steps.extract-secret.outputs.expected_hash }}
       keystore: ${{ steps.gen.outputs.keystore }}
       keystore_password: ${{ steps.gen.outputs.keystore_password }}
       key_password: ${{ steps.gen.outputs.key_password }}
@@ -87,6 +90,28 @@ jobs:
           echo "expected_size=$SIZE_HEX" >> $GITHUB_OUTPUT
 
           HASH=$(sha256sum pr-cert.der | awk '{print $1}')
+          echo "expected_hash=$HASH" >> $GITHUB_OUTPUT
+
+          echo "Certificate size: $SIZE_HEX ($SIZE_DEC bytes)"
+          echo "Certificate hash: $HASH"
+
+      - name: Extract certificate hash from secret keystore
+        if: github.event_name != 'pull_request' && env.HAS_KEYSTORE == 'true'
+        id: extract-secret
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE }}
+          STORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS_NAME: ${{ secrets.KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > key.jks
+
+          keytool -exportcert             -alias "$KEY_ALIAS_NAME"             -keystore key.jks             -storepass "$STORE_PASS"             -file cert.der
+
+          SIZE_DEC=$(stat -c%s cert.der)
+          SIZE_HEX=$(printf '0x%04x' "$SIZE_DEC")
+          echo "expected_size=$SIZE_HEX" >> $GITHUB_OUTPUT
+
+          HASH=$(sha256sum cert.der | awk '{print $1}')
           echo "expected_hash=$HASH" >> $GITHUB_OUTPUT
 
           echo "Certificate size: $SIZE_HEX ($SIZE_DEC bytes)"
