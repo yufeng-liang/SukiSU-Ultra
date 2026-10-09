@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
-import top.yukonga.miuix.kmp.icon.extended.ExpandMore
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.Icons
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
@@ -125,10 +126,6 @@ fun BackupMiuix(
                     //
                     // 这里不用 ArrowPreference：它自带的是朝右的箭头，而这一行是"展开/收起"，
                     // 箭头必须朝下、展开后翻过来。
-                    val rotation by animateFloatAsState(
-                        targetValue = if (state.cloudExpanded) 180f else 0f,
-                        label = "cloudArrow",
-                    )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -141,11 +138,7 @@ fun BackupMiuix(
                             fontSize = 16.sp,
                             modifier = Modifier.weight(1f),
                         )
-                        Icon(
-                            imageVector = MiuixIcons.ExpandMore,
-                            contentDescription = null,
-                            modifier = Modifier.graphicsLayer { rotationZ = rotation },
-                        )
+                        ExpandChevron(expanded = state.cloudExpanded)
                     }
                     // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
                     Text(
@@ -418,6 +411,25 @@ fun BackupMiuix(
 }
 
 /**
+ * 展开/收起用的箭头：朝下，展开后翻过来。
+ *
+ * 用 Material 的图标而不是 Miuix 的 `ExpandMore`——后者在这套图标里画的是一对直角括号加一个点，
+ * 看不出"展开"的意思。
+ */
+@Composable
+private fun ExpandChevron(expanded: Boolean) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "chevron",
+    )
+    Icon(
+        imageVector = Icons.Filled.ExpandMore,
+        contentDescription = null,
+        modifier = Modifier.graphicsLayer { rotationZ = rotation },
+    )
+}
+
+/**
  * 「备份存在哪」那一行。
  *
  * 完整路径/地址照原样给出来，不省略：用户是照着它去文件管理器或 NAS 上找文件的，
@@ -462,15 +474,29 @@ private fun GroupTitle(text: String) {
  */
 @Composable
 private fun ModulePickerMiuix(state: BackupUiState, actions: BackupActions) {
-    ArrowPreference(
-        title = stringResource(R.string.backup_module_select),
-        summary = stringResource(
-            R.string.backup_module_selected,
-            state.selectedModuleIds.size,
-            state.modules.size,
-        ),
-        onClick = actions.onToggleModules,
-    )
+    // 和云端那一行一样自己画箭头：ArrowPreference 自带的是朝右的箭头，而这两行都是展开/收起。
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = actions.onToggleModules)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(text = stringResource(R.string.backup_module_select), fontSize = 16.sp)
+            Text(
+                text = stringResource(
+                    R.string.backup_module_selected,
+                    state.selectedModuleIds.size,
+                    state.modules.size,
+                ),
+                fontSize = 13.sp,
+                color = colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        ExpandChevron(expanded = state.modulesExpanded)
+    }
     if (!state.modulesExpanded) return
     val disabledLabel = stringResource(R.string.backup_row_disabled)
     CheckboxPreference(
