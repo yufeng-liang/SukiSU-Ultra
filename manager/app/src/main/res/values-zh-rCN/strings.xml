@@ -750,7 +750,6 @@
     <string name="backup_auto_never">还没跑过</string>
     <string name="backup_auto_off">已关闭</string>
     <string name="backup_auto_dest_none">本机和云端都没勾，自动备份不会执行。</string>
-    <string name="backup_auto_cloud_unset">还没配置云端地址，保存后才会生效。</string>
     <string name="backup_auto_result_ok">成功，已写入 %1$d 项</string>
     <string name="backup_auto_result_partial">部分失败</string>
     <string name="backup_auto_result_failed">失败</string>

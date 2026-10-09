@@ -767,7 +767,6 @@
     <string name="backup_auto_never">never run</string>
     <string name="backup_auto_off">off</string>
     <string name="backup_auto_dest_none">Neither destination is checked, so automatic backup will not run.</string>
-    <string name="backup_auto_cloud_unset">No cloud address saved yet; this takes effect once you save one.</string>
     <string name="backup_auto_result_ok">succeeded, %1$d written</string>
     <string name="backup_auto_result_partial">partly failed</string>
     <string name="backup_auto_result_failed">failed</string>

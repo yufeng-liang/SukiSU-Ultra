@@ -530,14 +530,14 @@ private fun LazyListScope.backupTabItems(
             )
             CheckboxPreference(
                 title = stringResource(R.string.backup_origin_cloud),
-                // 这里**不**像「备份位置」那样锁死：勾的是"以后配好了就传"，与是否配置做与运算，
-                // 勾了也不会写出去。先备好设置、以后再填地址是很正常的顺序。
-                summary = if (state.cloudConfigured) null else stringResource(R.string.backup_auto_cloud_unset),
-                checked = state.autoBackupCloud,
-                enabled = state.autoBackupEnabled,
+                // 和「备份位置」同一个规矩：没配好地址就锁住，并说明为什么。勾了也写不出去，
+                // 让它停在"看着生效其实不生效"的样子只会让人以为云端备份在跑。
+                summary = if (state.cloudConfigured) null else stringResource(R.string.backup_cloud_chip_locked),
+                checked = state.autoBackupTargets.cloud,
+                enabled = state.autoBackupEnabled && state.cloudConfigured,
                 onCheckedChange = actions.onSetAutoBackupCloud,
             )
-            if (state.autoBackupEnabled && !state.autoBackupLocal && !state.autoBackupCloud) {
+            if (state.autoBackupWritesNothing) {
                 Text(
                     text = stringResource(R.string.backup_auto_dest_none),
                     fontSize = 12.sp,

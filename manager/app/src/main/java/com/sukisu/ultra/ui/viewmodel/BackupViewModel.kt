@@ -157,8 +157,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * 自动备份写到云端。
      *
-     * 云端没配好也允许勾：勾的是"以后配好了就传"，读的时候由
-     * `AutoBackupPolicy.targets` 与是否配置做与运算，勾了也不会写出去。
+     * 云端没配好时界面把这一项锁住（见 [BackupUiState.autoBackupTargets]），所以这里基本不会
+     * 被调到；真调到了也只改偏好，写不写由 `AutoBackupPolicy.targets` 再与配置做一次与运算。
      */
     fun setAutoBackupCloud(enabled: Boolean) {
         settings.backupAutoCloud = enabled

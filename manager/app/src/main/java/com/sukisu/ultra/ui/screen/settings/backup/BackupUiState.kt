@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.screen.settings.backup
 
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
+import com.sukisu.ultra.data.backup.AutoBackupPolicy
 import com.sukisu.ultra.data.backup.AutoBackupRecord
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
@@ -133,8 +134,9 @@ data class BackupUiState(
     /**
      * 自动备份是否写云端。
      *
-     * 没配云端时这一项勾着也没用（写不了），界面上会缀一句说明，但**不**强制改回未勾选：
-     * 用户先在设置里备好、以后再填地址是很正常的顺序，悄悄把他的选择抹掉更糟。
+     * 云端没配好时界面上这一项是锁住且显示为未勾的（见 [autoBackupTargets]）：勾了也写不出去，
+     * 让一个勾选框停在"看着生效其实不生效"的状态比锁住更让人猜。偏好值本身留着，
+     * 等地址配好就照它显示。
      */
     val autoBackupCloud: Boolean = true,
     /**
@@ -161,6 +163,19 @@ data class BackupUiState(
 
     /** 稳定的展示顺序（本机在前），集合本身没有顺序。 */
     val orderedOrigins: List<BackupOrigin> get() = origins.sortedBy { it.ordinal }
+
+    /**
+     * 自动备份实际会写到哪几处。
+     *
+     * 界面显示的和数据层执行的是同一套判定（都走 [AutoBackupPolicy.targets]）：云端没配好时
+     * 勾着也不算数，所以这里不能只看那两个偏好项——否则会出现"界面说会写云端、实际没写"。
+     */
+    val autoBackupTargets: AutoBackupPolicy.AutoBackupTargets
+        get() = AutoBackupPolicy.targets(autoBackupLocal, autoBackupCloud, cloudConfigured)
+
+    /** 自动备份开着但一个目的地都没勾。界面据此挂一句说明，不然开关开着却什么都没发生。 */
+    val autoBackupWritesNothing: Boolean
+        get() = autoBackupEnabled && !autoBackupTargets.any
 
     /** 正打开着的那一组；刷新后这一组没了（被保留策略淘汰）就退回列表。 */
     val openGroup: BackupGroup? get() = groups.firstOrNull { it.id == openGroupId }
