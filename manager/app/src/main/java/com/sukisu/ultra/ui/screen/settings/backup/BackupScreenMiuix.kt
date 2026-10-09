@@ -7,6 +7,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,14 +35,16 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -78,7 +81,6 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -351,6 +353,25 @@ private fun ExpandChevron(expanded: Boolean) {
 }
 
 /**
+ * 「本地」/「云端」的小标签。
+ *
+ * 恢复之前最该确认的就是"这一份在哪一侧"，所以它得比旁边那行元信息显眼一点：主色底 + 主色字。
+ * 两侧同一个样式——它们是对等的两个位置，不该有主次。
+ */
+@Composable
+private fun OriginTagMiuix(origin: BackupOrigin) {
+    Text(
+        text = stringResource(BackupLabels.origin(origin)),
+        fontSize = 11.sp,
+        color = colorScheme.primary,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(colorScheme.primary.copy(alpha = 0.12f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+/**
  * 「备份存在哪」那一行。
  *
  * 完整路径/地址照原样给出来，不省略：用户是照着它去文件管理器或 NAS 上找文件的，
@@ -600,26 +621,37 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
     }
     // 一次备份一行：11 个模块铺成 11 行会把"我最近备了什么"这个问题埋掉。点进去才看
     // 具体条目（BackupDetailMiuix），恢复也只在那里按按钮才会发生。
-    itemsIndexed(state.groups, key = { _, group -> group.id }) { index, group ->
-        // 两侧都勾上时按来源分段：同一次备份在本地和云端各有一条，混着排会让人以为
-        // 那是同一条被列了两遍。只勾一侧时不加标题——每段前面挂一个"本机"没有信息量。
-        val startsSection = state.showsOriginBadge &&
-            (index == 0 || state.groups[index - 1].origin != group.origin)
-        Column {
-            if (startsSection) {
-                Text(
-                    text = stringResource(BackupLabels.origin(group.origin)),
-                    fontSize = 13.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(top = 20.dp, start = 4.dp),
-                )
-            }
-            Card(modifier = Modifier.padding(top = if (startsSection) 8.dp else 12.dp).fillMaxWidth()) {
-                ArrowPreference(
-                    title = group.label,
-                    summary = groupSummary(group, showsOrigin = false),
-                    enabled = !state.loading,
-                    onClick = { actions.onOpenGroup(group) },
+    //
+    // 每行自带「本地」/「云端」标签：以前靠分段标题（只在两侧都勾时才出现），于是只勾一侧时
+    // 根本看不出这份备份在哪——而"这份在云端、那份在本机"正是恢复前最该确认的事。
+    // 有了行内标签，分段标题就成了重复信息，去掉。
+    items(state.groups, key = { it.id }) { group ->
+        Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = !state.loading) { actions.onOpenGroup(group) }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(text = group.label, fontSize = 16.sp)
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        OriginTagMiuix(group.origin)
+                        Text(
+                            text = groupSummary(group, showsOrigin = false),
+                            fontSize = 13.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
                 )
             }
         }

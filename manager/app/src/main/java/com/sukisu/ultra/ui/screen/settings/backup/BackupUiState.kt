@@ -205,6 +205,9 @@ data class BackupRunState(
     val sentBytes: Long = 0,
     /** 这次目标的归档总字节数；0 表示还不知道（没有可传的东西）。 */
     val totalBytes: Long = 0,
+    /** 这个目标里的第几个归档（1 起）、一共几个；0 表示还没开始报。 */
+    val fileIndex: Int = 0,
+    val fileCount: Int = 0,
     val speedBytesPerSecond: Long = 0,
     /**
      * 跑完之后这次目标的平均速度（总字节 ÷ 耗时）。

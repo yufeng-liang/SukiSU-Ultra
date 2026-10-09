@@ -13,11 +13,18 @@ import java.io.InputStream
  * 一次传输的进度：这次目标已经推出去多少字节、总共多少。
  *
  * 云端上传 boot 时要几十秒到几分钟，没有进度用户只能盯着一个不动的按钮猜是不是卡住了。
+ *
+ * [fileIndex] / [fileCount] 是"这个目标里的第几个归档、一共几个"：11 个模块的一次备份里，
+ * 只报字节数看不出还剩几个文件，而用户看到的列表就是 11 项——进度上不写这一层，
+ * 他会以为"1/1"是模块数（见 `backup_progress_target` 的措辞）。
  */
 data class TransferProgress(
     val fileName: String,
     val sentBytes: Long,
     val totalBytes: Long,
+    /** 第几个归档（1 起）；0 表示还不知道。 */
+    val fileIndex: Int = 0,
+    val fileCount: Int = 0,
 )
 
 /**

@@ -691,6 +691,7 @@
     <string name="backup_cloud_password">App password</string>
     <string name="backup_cloud_test">Test connection</string>
     <string name="backup_cloud_save">Save</string>
+    <string name="backup_cloud_saved">Cloud settings saved</string>
     <string name="backup_cloud_hint">Always the app password, never your login password.</string>
     <string name="backup_origin_group">Location</string>
     <string name="backup_kind_group">What to back up</string>
@@ -794,7 +795,8 @@
     <string name="backup_delete_confirm_body">Removes these %2$d items from %1$s. It cannot be undone.</string>
     <string name="backup_share_chooser">Share backup</string>
     <string name="backup_progress_title">Backing up</string>
-    <string name="backup_progress_target">%1$d of %2$d · %3$s %4$s</string>
+    <string name="backup_progress_target">Target %1$d of %2$d · %3$s %4$s</string>
+    <string name="backup_progress_files">file %1$d of %2$d</string>
     <string name="backup_result_title">Backup finished</string>
     <string name="backup_result_average_speed">Average %1$s/s</string>
     <string name="backup_done">Done</string>

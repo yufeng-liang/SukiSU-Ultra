@@ -246,6 +246,23 @@ class BackupEngineTest {
     }
 
     @Test
+    fun `progress says which archive of how many is going out`() {
+        runBlocking {
+            // 一次 11 个模块的备份只报字节数，用户看不出还剩几个文件，会把目标数（1/1）当成模块数。
+            val a = artifact("a", "sha-a")
+            val b = artifact("b", "sha-b")
+            val seen = mutableListOf<TransferProgress>()
+
+            engine(listOf(FakeStorage("local")), moduleSource(a, b)).backup(BackupKind.MODULE, onProgress = { seen += it })
+
+            assertEquals(2, seen.last().fileCount)
+            // 第一个归档的上报都是 1/2，第二个都是 2/2——不会出现 0 或超过总数。
+            assertTrue(seen.filter { it.sentBytes <= a.sizeBytes }.all { it.fileIndex == 1 })
+            assertTrue(seen.filter { it.sentBytes > a.sizeBytes }.all { it.fileIndex == 2 })
+        }
+    }
+
+    @Test
     fun `no selection means every entry the source has`() {
         runBlocking {
             val source = FakeSource(BackupKind.MODULE, listOf(artifact("a", "sha-a")))

@@ -7,15 +7,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -40,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -258,6 +260,25 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
             }
         }
     }
+}
+
+/**
+ * 「本地」/「云端」的小标签。
+ *
+ * 恢复之前最该确认的就是"这一份在哪一侧"，所以它得比旁边那行元信息显眼一点：主色底 + 主色字。
+ * 两侧同一个样式——它们是对等的两个位置，不该有主次。
+ */
+@Composable
+private fun OriginTagMaterial(origin: BackupOrigin) {
+    Text(
+        text = stringResource(BackupLabels.origin(origin)),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }
 
 /**
@@ -517,35 +538,33 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
     }
     // 一次备份一行：11 个模块铺成 11 行会把"我最近备了什么"这个问题埋掉。点进去才看
     // 具体条目（BackupDetailMaterial），恢复也只在那里按按钮才会发生。
-    itemsIndexed(state.groups, key = { _, group -> group.id }) { index, group ->
-        // 两侧都勾上时按来源分段：同一次备份在本地和云端各有一条，混着排会让人以为
-        // 那是同一条被列了两遍。只勾一侧时不加标题——每段前面挂一个"本机"没有信息量。
-        val startsSection = state.showsOriginBadge &&
-            (index == 0 || state.groups[index - 1].origin != group.origin)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (startsSection) {
-                Text(
-                    text = stringResource(BackupLabels.origin(group.origin)),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 4.dp),
+    //
+    // 每行自带「本地」/「云端」标签：以前靠分段标题（只在两侧都勾时才出现），于是只勾一侧时
+    // 根本看不出这份备份在哪——而"这份在云端、那份在本机"正是恢复前最该确认的事。
+    // 有了行内标签，分段标题就成了重复信息，去掉。
+    items(state.groups, key = { it.id }) { group ->
+        SegmentedColumn {
+            item {
+                SegmentedListItem(
+                    onClick = { actions.onOpenGroup(group) },
+                    enabled = !state.loading,
+                    headlineContent = { Text(group.label) },
+                    supportingContent = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            OriginTagMaterial(group.origin)
+                            Text(groupSummary(group, showsOrigin = false))
+                        }
+                    },
+                    trailingContent = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                        )
+                    },
                 )
-            }
-            SegmentedColumn {
-                item {
-                    SegmentedListItem(
-                        onClick = { actions.onOpenGroup(group) },
-                        enabled = !state.loading,
-                        headlineContent = { Text(group.label) },
-                        supportingContent = { Text(groupSummary(group, showsOrigin = false)) },
-                        trailingContent = {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                            )
-                        },
-                    )
-                }
             }
         }
     }

@@ -676,6 +676,7 @@
     <string name="backup_cloud_password">应用密码</string>
     <string name="backup_cloud_test">测试连接</string>
     <string name="backup_cloud_save">保存</string>
+    <string name="backup_cloud_saved">云端配置已保存</string>
     <string name="backup_cloud_hint">密码栏一律填「应用密码」，不是登录密码。</string>
     <string name="backup_origin_group">备份位置</string>
     <string name="backup_kind_group">备份内容</string>
@@ -776,7 +777,8 @@
     <string name="backup_delete_confirm_body">会从%1$s删掉这 %2$d 项，删掉之后找不回来。</string>
     <string name="backup_share_chooser">分享备份</string>
     <string name="backup_progress_title">正在备份</string>
-    <string name="backup_progress_target">第 %1$d/%2$d 个 · %3$s %4$s</string>
+    <string name="backup_progress_target">第 %1$d/%2$d 个目标 · %3$s %4$s</string>
+    <string name="backup_progress_files">第 %1$d/%2$d 个文件</string>
     <string name="backup_result_title">备份完成</string>
     <string name="backup_result_average_speed">平均 %1$s/s</string>
     <string name="backup_done">完成</string>

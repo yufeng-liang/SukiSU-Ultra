@@ -83,11 +83,25 @@ fun BackupProgressDialogMaterial(state: BackupUiState, onDismiss: () -> Unit) {
     )
 }
 
-/** 「已传 / 总共 · 速度」。速度还没采到样时不写那一段——"0 B/s"看着像卡住了。 */
+/**
+ * 「第几个文件 · 已传 / 总共 · 速度」。
+ *
+ * 文件数那一段回答的是"还有几个模块没传"：一次备份 11 个模块，进度里只写"第 1/1 个目标"会让人
+ * 以为那 1/1 说的是模块（就是被问到的那个）。还不知道文件数、或还没采到速度采样时，
+ * 对应那段直接不写——"0 B/s"看着像卡住了。
+ */
+@Composable
 internal fun transferLine(run: BackupRunState): String {
-    val transferred = BackupListFormatter.humanSize(run.sentBytes) + " / " + BackupListFormatter.humanSize(run.totalBytes)
-    if (run.speedBytesPerSecond <= 0L) return transferred
-    return transferred + BackupListFormatter.SEPARATOR + BackupListFormatter.humanSize(run.speedBytesPerSecond) + "/s"
+    val parts = buildList {
+        if (run.fileCount > 0 && run.fileIndex > 0) {
+            add(stringResource(R.string.backup_progress_files, run.fileIndex, run.fileCount))
+        }
+        add(BackupListFormatter.humanSize(run.sentBytes) + " / " + BackupListFormatter.humanSize(run.totalBytes))
+        if (run.speedBytesPerSecond > 0L) {
+            add(BackupListFormatter.humanSize(run.speedBytesPerSecond) + "/s")
+        }
+    }
+    return parts.joinToString(BackupListFormatter.SEPARATOR)
 }
 
 /**

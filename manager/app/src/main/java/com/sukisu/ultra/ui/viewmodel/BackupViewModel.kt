@@ -470,6 +470,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                         backupRun = current.backupRun?.copy(
                             sentBytes = progress.sentBytes,
                             totalBytes = progress.totalBytes,
+                            fileIndex = progress.fileIndex,
+                            fileCount = progress.fileCount,
                             speedBytesPerSecond = speed,
                         ),
                     )
@@ -560,11 +562,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 // 再让他自己勾一次、再等一次刷新是多余的两步。地址被清空时反过来摘掉勾选，
                 // 否则列表会一直报"请先配置"。
                 origins = if (configured) it.origins + BackupOrigin.CLOUD else it.origins - BackupOrigin.CLOUD,
-                // 换了服务器，之前那次操作的结果已经不对应当前配置了。
-                message = null,
+                // 表单收起来：填完就没有再看那三个输入框的理由，而铺开的表单会把下面刚列出来的
+                // 云端清单顶到屏幕外——用户按保存正是为了看那份清单。
+                cloudExpanded = false,
+                // 说一声"存下了"。原来这里清空 message，保存成功时界面上什么都不动（表单还铺着、
+                // 列表还在下面），看起来像没反应，只能靠地址栏那行字自己猜。
+                message = string(R.string.backup_cloud_saved),
             )
         }
         // 连不上或凭据不对时，这次刷新会把原因说出来——那正是填完地址最需要的反馈。
+        // （成功时它不动 message，所以上面那句"已保存"留得住。）
         refresh()
     }
 

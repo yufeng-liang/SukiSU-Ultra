@@ -65,19 +65,28 @@ class BackupEngine(
                     val pending = mutableListOf<BackupEntry>()
                     val usedNames = index.mapTo(mutableSetOf()) { it.fileName }
 
-                    outcome.artifacts.forEach { artifact ->
+                    outcome.artifacts.forEachIndexed { artifactIndex, artifact ->
                         // 回滚点不参与去重：内容只以回滚点形式存在时，正常备份仍应立成业务条目，
                         // 否则那份回滚点被保留策略淘汰后，内容就再没有索引指向它了。
                         val business = (index + pending).filterNot { RollbackPolicy.isRollback(it) }
                         if (DuplicatePolicy.findDuplicate(business, kind, artifact.sha256) != null) {
                             skipped += artifact.fileName
-                            return@forEach
+                            return@forEachIndexed
                         }
                         val fileName = ArchiveNaming.uniqueName(artifact.fileName, usedNames)
                         usedNames += fileName
                         val bytesBefore = sentBefore
                         val report: (Long) -> Unit = { inFile ->
-                            onProgress(TransferProgress(fileName, bytesBefore + inFile, totalBytes))
+                            onProgress(
+                                TransferProgress(
+                                    fileName = fileName,
+                                    sentBytes = bytesBefore + inFile,
+                                    totalBytes = totalBytes,
+                                    // 第几个归档：11 个模块的备份只报字节数，看不出还剩几个文件。
+                                    fileIndex = artifactIndex + 1,
+                                    fileCount = outcome.artifacts.size,
+                                ),
+                            )
                         }
                         // 后端自己会报（WebDAV）时不要在源流上再包一层：它先把源流落到 staging、
                         // 再上传 staging 文件，包在源流上数到的是那段本地拷贝，而真上传时后端又
