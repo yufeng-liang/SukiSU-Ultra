@@ -650,6 +650,9 @@
     <string name="home_zygisk_disabled">已禁用</string>
     <string name="home_zygisk_reboot_required">需要重启</string>
     <string name="backup_title">备份与恢复</string>
+    <string name="backup_tab_backup">备份</string>
+    <string name="backup_tab_restore">恢复</string>
+    <string name="backup_tab_restore_count">恢复（%1$d）</string>
     <string name="backup_entry_summary">备份模块与原厂 boot 镜像，可存本机或云端。</string>
     <string name="backup_kind_module">模块</string>
     <string name="backup_kind_boot">原厂 boot 镜像</string>
@@ -771,4 +774,8 @@
     <string name="backup_delete_confirm_title">删除这次备份？</string>
     <string name="backup_delete_confirm_body">会从%1$s删掉这 %2$d 项，删掉之后找不回来。</string>
     <string name="backup_share_chooser">分享备份</string>
+    <string name="backup_progress_title">正在备份</string>
+    <string name="backup_progress_target">第 %1$d/%2$d 个 · %3$s %4$s</string>
+    <string name="backup_result_title">备份完成</string>
+    <string name="backup_done">完成</string>
 </resources>

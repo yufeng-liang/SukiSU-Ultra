@@ -665,6 +665,9 @@
     <string name="home_zygisk_disabled">Disabled</string>
     <string name="home_zygisk_reboot_required">Reboot required</string>
     <string name="backup_title">Backup &amp; restore</string>
+    <string name="backup_tab_backup">Back up</string>
+    <string name="backup_tab_restore">Restore</string>
+    <string name="backup_tab_restore_count">Restore (%1$d)</string>
     <string name="backup_entry_summary">Back up modules and the stock boot image, on this device or in the cloud.</string>
     <string name="backup_kind_module">Modules</string>
     <string name="backup_kind_boot">Stock boot image</string>
@@ -789,4 +792,8 @@
     <string name="backup_delete_confirm_title">Delete this backup?</string>
     <string name="backup_delete_confirm_body">Removes these %2$d items from %1$s. It cannot be undone.</string>
     <string name="backup_share_chooser">Share backup</string>
+    <string name="backup_progress_title">Backing up</string>
+    <string name="backup_progress_target">%1$d of %2$d · %3$s %4$s</string>
+    <string name="backup_result_title">Backup finished</string>
+    <string name="backup_done">Done</string>
 </resources>

@@ -40,6 +40,42 @@ class BackupPoliciesTest {
     }
 
     @Test
+    fun `retention counts backups, not files`() {
+        // 真机上踩到的坑：一次备份 11 个模块写出 11 个归档，按"文件数"算额度会当场把刚写好的
+        // 6 个删掉（额度 5）——用户看到"已写入 11 项"，列表里只剩 5 项。额度说的是"留几次备份"。
+        val session = "20261008_120000"
+        val oneRun = (1..11).map { i ->
+            BackupEntry(
+                BackupKind.MODULE,
+                "m$i",
+                "module_m${i}_1_$session.zip",
+                null,
+                1L,
+                "sha$i",
+                "2026-10-08T12:00:00Z",
+            )
+        }
+
+        assertEquals(emptyList<String>(), RetentionPolicy.expired(oneRun, BackupKind.MODULE, keep = 5).map { it.entryId })
+    }
+
+    @Test
+    fun `retention drops the oldest whole sessions`() {
+        val existing = listOf(
+            entry("a1", "1", "20261001_010101"),
+            entry("a2", "2", "20261001_010101"),
+            entry("b1", "3", "20261002_020202"),
+            entry("c1", "4", "20261003_030303"),
+        )
+
+        // keep = 2 → 留最近两次（10-02、10-03）；10-01 那两个一起走，不能只删其中一个。
+        assertEquals(
+            listOf("a1", "a2"),
+            RetentionPolicy.expired(existing, BackupKind.MODULE, keep = 2).map { it.entryId },
+        )
+    }
+
+    @Test
     fun `retention ignores other kinds`() {
         val existing = listOf(
             entry("m1", "1", "2026-10-01T00:00:00Z"),

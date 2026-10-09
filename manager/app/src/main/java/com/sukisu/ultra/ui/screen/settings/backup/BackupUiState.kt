@@ -11,9 +11,20 @@ import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.model.Module
 import java.io.File
 
+/**
+ * 「备份与恢复」页的两个分页。
+ *
+ * 分成两页是因为这两件事的落点不同：「备份」页要把选项配好再按下去，「恢复」页要的是一份
+ * 能翻的清单。挤在一页里，选项（云端表单 + 位置 + 内容 + 模块列表）一铺开，列表就得往下让位，
+ * 想恢复还得先划过一整屏设置。
+ */
+enum class BackupTab { BACKUP, RESTORE }
+
 @Immutable
 data class BackupUiState(
     val loading: Boolean = false,
+    /** 当前分页。默认停在「备份」：进这一页多半是要备一份。 */
+    val tab: BackupTab = BackupTab.BACKUP,
     /**
      * 勾选的来源（本机 / 云端）。
      *
@@ -53,6 +64,13 @@ data class BackupUiState(
      * 界面交出去之后调 [BackupActions.onShareConsumed] 清掉。
      */
     val pendingShare: File? = null,
+    /**
+     * 正在跑（或刚跑完）的那次备份。
+     *
+     * 云端上传 boot 要几十秒到几分钟，只有一个不动的按钮用户没法判断是不是卡住了；跑完之后
+     * 结果也留在这个弹窗里，而不是几秒就消失的 snackbar——一次备份的结果值得看清。
+     */
+    val backupRun: BackupRunState? = null,
     val message: String? = null,
     /** 输入框里的地址（可能是还没保存的编辑）。 */
     val cloudUrl: String = "",
@@ -150,6 +168,29 @@ data class BackupUiState(
         }
 }
 
+/**
+ * 备份弹窗的状态：正在跑哪个目标、推了多少字节、多快，跑完则是结果。
+ */
+@Immutable
+data class BackupRunState(
+    /** 第几个目标（1 起），和 [total] 一起显示"2/4"。 */
+    val current: Int,
+    val total: Int,
+    val origin: BackupOrigin,
+    val kind: BackupKind,
+    val sentBytes: Long = 0,
+    /** 这次目标的归档总字节数；0 表示还不知道（没有可传的东西）。 */
+    val totalBytes: Long = 0,
+    val speedBytesPerSecond: Long = 0,
+    /** 已经跑完，[result] 里是结果。 */
+    val done: Boolean = false,
+    val result: String? = null,
+) {
+    /** 进度条要的值；总字节还不知道时给 0，界面按不确定进度画。 */
+    val fraction: Float
+        get() = if (totalBytes <= 0L) 0f else (sentBytes.toFloat() / totalBytes).coerceIn(0f, 1f)
+}
+
 @Immutable
 data class BackupTargetResult(
     val origin: BackupOrigin,
@@ -160,6 +201,8 @@ data class BackupTargetResult(
 @Immutable
 data class BackupActions(
     val onBack: () -> Unit,
+    /** 切到「备份」或「恢复」分页。 */
+    val onSelectTab: (BackupTab) -> Unit,
     val onToggleOrigin: (BackupOrigin) -> Unit,
     val onToggleKind: (BackupKind) -> Unit,
     val onBackup: () -> Unit,
@@ -177,6 +220,8 @@ data class BackupActions(
     val onDeleteGroup: () -> Unit,
     /** 分享文件已经交给系统了。 */
     val onShareConsumed: () -> Unit,
+    /** 关掉备份进度/结果弹窗。 */
+    val onDismissBackupRun: () -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
     val onToggleCloud: () -> Unit,

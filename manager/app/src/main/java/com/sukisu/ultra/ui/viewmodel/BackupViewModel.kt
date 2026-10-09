@@ -22,7 +22,9 @@ import com.sukisu.ultra.ui.screen.settings.backup.BackupGrouping
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
 import com.sukisu.ultra.ui.screen.settings.backup.BackupLocation
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRow
+import com.sukisu.ultra.ui.screen.settings.backup.BackupTab
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRowLabels
+import com.sukisu.ultra.ui.screen.settings.backup.BackupRunState
 import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
 import com.sukisu.ultra.ui.screen.settings.backup.OriginEntry
@@ -59,6 +61,10 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         )
     )
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
+
+    /** 速度采样的上一次取值；每个目标重新起算。 */
+    private var lastSampleAt = 0L
+    private var lastSampleBytes = 0L
 
     /** 当前列表里的条目（带各自的来源）：恢复/导出靠它回到正确的那一侧。 */
     private var entries: List<OriginEntry> = emptyList()
@@ -99,6 +105,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleModules() = _uiState.update { it.copy(modulesExpanded = !it.modulesExpanded) }
+
+    /**
+     * 切分页。
+     *
+     * 顺手把云端表单和模块列表收起来：这两块都是"点开才看"的，换页再回来时留着一堆展开的
+     * 表单，刚配好的选项又被顶出屏幕了。
+     */
+    fun selectTab(tab: BackupTab) = _uiState.update {
+        it.copy(tab = tab, cloudExpanded = false, modulesExpanded = false)
+    }
 
     fun toggleModule(id: String) = _uiState.update { state ->
         state.copy(
@@ -403,19 +419,73 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             state.modulesUnavailable -> null
             else -> state.selectedModuleIds
         }
-        val results = mutableListOf<BackupTargetResult>()
-        for (kind in state.kinds.sortedBy { it.ordinal }) {
-            for (origin in state.origins.sortedBy { it.ordinal }) {
-                val result = repository.backup(
-                    origin = origin,
-                    kind = kind,
-                    selected = if (kind == BackupKind.MODULE) selectedModules else null,
-                )
-                results += BackupTargetResult(origin, kind, result)
-            }
+        val targets = state.kinds.sortedBy { it.ordinal }.flatMap { kind ->
+            state.origins.sortedBy { it.ordinal }.map { origin -> origin to kind }
         }
-        _uiState.update { it.copy(loading = false, message = backupMessage(results)) }
+        val results = mutableListOf<BackupTargetResult>()
+        targets.forEachIndexed { index, (origin, kind) ->
+            // 每个目标重新起算进度与速度：上一个目标的速度跟这一个没关系。
+            lastSampleAt = 0L
+            lastSampleBytes = 0L
+            _uiState.update {
+                it.copy(
+                    backupRun = BackupRunState(
+                        current = index + 1,
+                        total = targets.size,
+                        origin = origin,
+                        kind = kind,
+                    ),
+                )
+            }
+            val result = repository.backup(
+                origin = origin,
+                kind = kind,
+                selected = if (kind == BackupKind.MODULE) selectedModules else null,
+            ) { progress ->
+                val speed = sampleSpeed(progress.sentBytes)
+                _uiState.update { current ->
+                    current.copy(
+                        backupRun = current.backupRun?.copy(
+                            sentBytes = progress.sentBytes,
+                            totalBytes = progress.totalBytes,
+                            speedBytesPerSecond = speed,
+                        ),
+                    )
+                }
+            }
+            results += BackupTargetResult(origin, kind, result)
+        }
+        // 结果留在弹窗里（snackbar 几秒就没了，而"哪一份失败、为什么"值得看清），
+        // 所以这里不写 message。
+        _uiState.update { current ->
+            current.copy(
+                loading = false,
+                backupRun = current.backupRun?.copy(done = true, result = backupMessage(results)),
+            )
+        }
         refresh()
+    }
+
+    /** 关掉备份弹窗。 */
+    fun dismissBackupRun() = _uiState.update { it.copy(backupRun = null) }
+
+    /**
+     * 采样算速度。
+     *
+     * 用相邻两次采样的差值，而不是累计平均：上传中途掉速或卡住时，累计平均会一直显示一个好看的
+     * 数字，而那正是用户想知道"到底卡没卡"的时刻。间隔太近的采样不更新——除以很小的 dt 会得到
+     * 假的峰值。
+     */
+    private fun sampleSpeed(sentBytes: Long): Long {
+        val now = System.currentTimeMillis()
+        val previousAt = lastSampleAt
+        val previousBytes = lastSampleBytes
+        if (previousAt == 0L || now - previousAt < SPEED_SAMPLE_MS) {
+            return _uiState.value.backupRun?.speedBytesPerSecond ?: 0L
+        }
+        lastSampleAt = now
+        lastSampleBytes = sentBytes
+        return ((sentBytes - previousBytes).coerceAtLeast(0L) * 1000L) / (now - previousAt)
     }
 
     /**
@@ -424,16 +494,17 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 失败也一样：操作本身是本地操作，提示该出现在它真正动过的那个列表上。
      */
     fun importFrom(uri: Uri) = viewModelScope.launch {
-        // 导入需要一种类型。两种都勾着时按模块处理：boot 归档要靠内容里的 sha1 认身份、
-        // 模块 zip 走 module.prop，两者不通用，而模块是绝大多数人要导入的东西。
-        val kind = _uiState.value.kinds.minByOrNull { it.ordinal } ?: BackupKind.MODULE
+        // 先按勾选猜一个类型交给仓库：它认得归档名（boot_ 前缀是原厂镜像），会以自己认出的为准，
+        // 认不出才用这个。猜错了不至于出事，但导入完得按**实际**类型去列，否则刚导进来的那份
+        // 不在列表里——"已导入"却找不到东西，和没导一样。
+        val guess = _uiState.value.kinds.minByOrNull { it.ordinal } ?: BackupKind.MODULE
         _uiState.update { it.copy(loading = true, message = null) }
-        val result = repository.importFromSaf(uri, kind)
+        val result = repository.importFromSaf(uri, guess)
         _uiState.update {
             it.copy(
                 loading = false,
                 origins = it.origins + BackupOrigin.LOCAL,
-                kinds = it.kinds + kind,
+                kinds = it.kinds + (result.getOrNull() ?: guess),
                 message = result.fold(
                     onSuccess = { string(R.string.backup_imported) },
                     onFailure = { error -> describe(error) },
@@ -622,6 +693,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
          * "本地写了 11 项"和"云端写了 11 项"连起来会读成一条，而这是两件事。
          */
         const val MULTI_TARGET_SEPARATOR = "\n"
+
+        /** 速度采样的最小间隔：比这更密的采样除以很小的 dt 会得到假的峰值。 */
+        const val SPEED_SAMPLE_MS = 400L
     }
 
     /**

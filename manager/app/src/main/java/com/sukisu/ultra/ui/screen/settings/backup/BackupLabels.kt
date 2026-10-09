@@ -14,6 +14,10 @@ import com.sukisu.ultra.data.backup.BackupOrigin
 object BackupLabels {
 
     @StringRes
+    fun tab(tab: BackupTab): Int =
+        if (tab == BackupTab.RESTORE) R.string.backup_tab_restore else R.string.backup_tab_backup
+
+    @StringRes
     fun origin(origin: BackupOrigin): Int =
         if (origin == BackupOrigin.CLOUD) R.string.backup_origin_cloud else R.string.backup_origin_local
 

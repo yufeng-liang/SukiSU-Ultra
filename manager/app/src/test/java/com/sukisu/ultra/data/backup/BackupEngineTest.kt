@@ -185,6 +185,26 @@ class BackupEngineTest {
     }
 
     @Test
+    fun `backup reports how many bytes have gone out and how many are left`() {
+        runBlocking {
+            val a = artifact("a", "sha-a")
+            val b = artifact("b", "sha-b")
+            val seen = mutableListOf<TransferProgress>()
+
+            engine(listOf(FakeStorage("local")), moduleSource(a, b)).backup(BackupKind.MODULE, onProgress = { seen += it })
+
+            // 每个归档各自从头数，累计值挂在引擎上——所以推给界面的字节数必须单调不减，
+            // 否则进度条会往回跳。
+            assertTrue(seen.isNotEmpty())
+            assertEquals(seen.map { it.sentBytes }.sorted(), seen.map { it.sentBytes })
+            // 最后一次上报必须是"全都推完了"，进度条才会走到底（而不是停在 99%）。
+            val total = a.sizeBytes + b.sizeBytes
+            assertEquals(total, seen.last().sentBytes)
+            assertEquals(total, seen.last().totalBytes)
+        }
+    }
+
+    @Test
     fun `no selection means every entry the source has`() {
         runBlocking {
             val source = FakeSource(BackupKind.MODULE, listOf(artifact("a", "sha-a")))

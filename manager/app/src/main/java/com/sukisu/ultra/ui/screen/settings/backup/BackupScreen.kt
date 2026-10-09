@@ -4,6 +4,14 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +42,11 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     val uiMode = LocalUiMode.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // 列表的滚动位置挂在这一层：点进详情页时列表会被换掉，位置若跟着它一起销毁，退回来就
+    // 回到最顶上了——用户是"点开看一眼再回来"，不该为此丢掉刚才翻到的地方。两个分页各一份，
+    // 表单和清单的长度差得远。
+    val backupListState = rememberLazyListState()
+    val restoreListState = rememberLazyListState()
 
     // 两个主题各有一个宿主，消息通道只有 state.message 一条：在这里消费并清掉，
     // 否则主题各写一份（Material 弹完清、Miuix 只挂在行摘要上不清）就会漂成两种行为。
@@ -79,6 +92,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
 
     val actions = BackupActions(
         onBack = { navigator.pop() },
+        onSelectTab = viewModel::selectTab,
         onToggleOrigin = viewModel::toggleOrigin,
         onToggleKind = viewModel::toggleKind,
         onBackup = viewModel::backupNow,
@@ -103,12 +117,10 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         },
         onShareSelected = viewModel::shareSelected,
         onShareConsumed = viewModel::consumeShare,
+        onDismissBackupRun = viewModel::dismissBackupRun,
         onDeleteGroup = {
             // 删的是文件，删完找不回来；而且云端那份也一起删，所以要说清动的是哪一侧。
-            val group = state.openGroup
-            if (group == null) {
-                Unit
-            } else {
+            state.openGroup?.let { group ->
                 confirmScope.launch {
                     val originLabel = context.getString(BackupLabels.origin(group.origin))
                     val confirmed = confirmDialog.awaitConfirm(
@@ -142,20 +154,43 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     val openGroup = state.openGroup
     BackHandler(enabled = openGroup != null) { viewModel.closeGroup() }
 
-    when (uiMode) {
-        UiMode.Miuix -> if (openGroup != null) {
-            BackupDetailMiuix(openGroup, state, actions, miuixSnackbarHostState)
-        } else {
-            BackupMiuix(state, actions, miuixSnackbarHostState)
-        }
+    // 进/出详情走一次横向推入推出：硬切会让人以为刚才那下点空了。返回时列表滑回来的方向
+    // 反过来，和系统返回手势的方向一致。
+    //
+    // contentKey 只看"是不是详情页"：刷新列表（恢复/删除之后）会让分组对象换一份新的，
+    // 按对象比较会把它当成一次页面切换，白白重放一遍动画。
+    AnimatedContent(
+        targetState = openGroup,
+        transitionSpec = {
+            if (targetState != null) {
+                (slideInHorizontally { it } + fadeIn(tween(PAGE_MS))) togetherWith
+                    (slideOutHorizontally { -it / 4 } + fadeOut(tween(PAGE_MS)))
+            } else {
+                (slideInHorizontally { -it / 4 } + fadeIn(tween(PAGE_MS))) togetherWith
+                    (slideOutHorizontally { it } + fadeOut(tween(PAGE_MS)))
+            }
+        },
+        contentKey = { it != null },
+        label = "backupDetail",
+    ) { group ->
+        when (uiMode) {
+            UiMode.Miuix -> if (group != null) {
+                BackupDetailMiuix(group, state, actions, miuixSnackbarHostState)
+            } else {
+                BackupMiuix(state, actions, miuixSnackbarHostState, backupListState, restoreListState)
+            }
 
-        UiMode.Material -> if (openGroup != null) {
-            BackupDetailMaterial(openGroup, state, actions, snackbarHostState)
-        } else {
-            BackupMaterial(state, actions, snackbarHostState)
+            UiMode.Material -> if (group != null) {
+                BackupDetailMaterial(group, state, actions, snackbarHostState)
+            } else {
+                BackupMaterial(state, actions, snackbarHostState, backupListState, restoreListState)
+            }
         }
     }
 }
+
+/** 进/出备份详情的动画时长。 */
+private const val PAGE_MS = 260
 
 /**
  * 分组卡片的一行说明：来源（两侧都勾上时才写）· 内容 · 项数。
@@ -168,3 +203,15 @@ fun groupSummary(group: BackupGroup, showsOrigin: Boolean): String = BackupLabel
     kindLabel = stringResource(BackupLabels.groupKind(group)),
     countText = pluralStringResource(R.plurals.backup_group_items, group.rows.size, group.rows.size),
 )
+
+/**
+ * 分页标签。恢复页带上"列表里有几份"：切过去之前就知道那边有没有东西，省一次来回。
+ *
+ * 一份都没有时不写 `(0)`——括号里挂个零看着像出错，而且那时候列表里本来就有空状态那句话。
+ */
+@Composable
+fun tabLabel(tab: BackupTab, count: Int): String = if (tab == BackupTab.RESTORE && count > 0) {
+    stringResource(R.string.backup_tab_restore_count, count)
+} else {
+    stringResource(BackupLabels.tab(tab))
+}

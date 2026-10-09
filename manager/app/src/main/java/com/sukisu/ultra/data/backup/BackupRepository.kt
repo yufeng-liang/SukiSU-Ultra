@@ -140,6 +140,7 @@ class BackupRepository(private val context: Context = ksuApp) {
         origin: BackupOrigin,
         kind: BackupKind,
         selected: Set<String>? = null,
+        onProgress: (TransferProgress) -> Unit = {},
     ): BackupRunResult = withContext(Dispatchers.IO) {
         if (origin == BackupOrigin.CLOUD && !cloudConfigured()) {
             return@withContext BackupRunResult(
@@ -153,7 +154,7 @@ class BackupRepository(private val context: Context = ksuApp) {
                 ),
             )
         }
-        engineFor(origin).backup(kind, selected)
+        engineFor(origin).backup(kind, selected, onProgress)
     }
 
     suspend fun list(origin: BackupOrigin, kind: BackupKind): Result<List<BackupEntry>> =
@@ -246,11 +247,18 @@ class BackupRepository(private val context: Context = ksuApp) {
             ?.let { runCatching { BackupManifest.parseModuleMeta(it) }.getOrNull() }
     }
 
-    /** SAF 选中的归档文件收编进本地备份列表，之后即可恢复。 */
-    suspend fun importFromSaf(uri: Uri, kind: BackupKind): Result<Unit> = withContext(Dispatchers.IO) {
+    /**
+     * SAF 选中的归档文件收编进本地备份列表，之后即可恢复。
+     *
+     * 返回收编后**实际**记进去的类型：归档名里带着身份（`boot_` 前缀是原厂镜像），而界面上的
+     * "备份内容"勾选在另一个分页上，隔着这么远按勾选猜类型，会把 boot 归档登记成模块——
+     * 之后点"恢复"就会拿它去装模块。名字认不出来时才退回调用方给的那个。
+     */
+    suspend fun importFromSaf(uri: Uri, kind: BackupKind): Result<BackupKind> = withContext(Dispatchers.IO) {
         // document provider 的 lastPathSegment 是内部段（primary:Download/x.zip），不是文件名。
         val name = uri.getFileName(context)
             ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileNameUnresolved))
+        val actualKind = ArchiveNaming.kindOf(name) ?: kind
         workStaging.cleanupStale()
         val staged = workStaging.newFile("import-", ".bin")
         try {
@@ -259,13 +267,13 @@ class BackupRepository(private val context: Context = ksuApp) {
             } ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileUnreadable))
             engine.importFrom(
                 storage = localStorage,
-                kind = kind,
+                kind = actualKind,
                 fileName = name,
                 metaFileName = null,
                 size = staged.length(),
                 open = { staged.inputStream() },
                 metaJson = null,
-            )
+            ).map { actualKind }
         } finally {
             staged.delete()
         }

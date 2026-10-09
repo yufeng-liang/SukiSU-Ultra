@@ -8,16 +8,24 @@ object DuplicatePolicy {
 
 object RetentionPolicy {
     /**
-     * 返回应删除的条目：同 kind 内按 createdAt 升序，超出最近 [keep] 份的部分。
-     * 回滚点不参与业务额度计算（它有自己的 [RollbackPolicy.expiredRollbacks]），
-     * 否则拍一次回滚点就会挤掉一份业务备份。
+     * 返回应删除的条目：同 kind 内按"哪一次备份"分堆，超出最近 [keep] 次的部分整堆删掉。
+     *
+     * 额度按**次**算，不按文件算。一次备份 11 个模块会写出 11 个归档，按文件数裁剪会当场删掉
+     * 6 个：用户看到"已写入 11 项"，列表里却只剩 5 项，而那 6 个是他刚备份的。回滚点不参与
+     * 业务额度计算（它有自己的 [RollbackPolicy.expiredRollbacks]），否则拍一次回滚点就会挤掉
+     * 一次业务备份。
      */
     fun expired(existing: List<BackupEntry>, kind: BackupKind, keep: Int): List<BackupEntry> {
-        val sameKind = existing
-            .filter { it.kind == kind && !RollbackPolicy.isRollback(it) }
-            .sortedBy { it.createdAt }
+        val sameKind = existing.filter { it.kind == kind && !RollbackPolicy.isRollback(it) }
         if (keep <= 0) return sameKind
-        return sameKind.dropLast(keep)
+        // 会话号就是备份那一刻的时间戳（yyyyMMdd_HHmmss），字典序即时间序；解析不出来的
+        // 条目退化成用 createdAt 当会话号，至少不会和别的条目并成一次。
+        return sameKind
+            .groupBy { ArchiveNaming.sessionOf(it.fileName) ?: it.createdAt }
+            .entries
+            .sortedBy { it.key }
+            .dropLast(keep)
+            .flatMap { it.value }
     }
 
     /** 按 kind 取额度：模块默认 5 份，boot 默认 2 份（单张原厂镜像 32–96MB）。 */

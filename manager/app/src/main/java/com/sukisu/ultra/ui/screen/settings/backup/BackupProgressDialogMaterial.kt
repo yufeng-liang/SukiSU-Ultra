@@ -1,0 +1,82 @@
+package com.sukisu.ultra.ui.screen.settings.backup
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.unit.dp
+import com.sukisu.ultra.R
+
+/**
+ * 备份进度与结果。
+ *
+ * 云端上传 boot 是几十秒到几分钟的事：只有一个不动的按钮，用户没法判断是在传还是卡住了。
+ * 跑完之后结果也留在这里，而不是几秒就消失的 snackbar——哪一份失败、为什么，值得看清。
+ */
+@Composable
+fun BackupProgressDialogMaterial(state: BackupUiState, onDismiss: () -> Unit) {
+    val run = state.backupRun ?: return
+    AlertDialog(
+        // 还在跑的时候点外面/返回键不该把它关掉：关掉就再也看不到这次备份的进度和结果了。
+        onDismissRequest = { if (run.done) onDismiss() },
+        properties = DialogProperties(
+            dismissOnBackPress = run.done,
+            dismissOnClickOutside = run.done,
+        ),
+        title = {
+            Text(
+                stringResource(
+                    if (run.done) R.string.backup_result_title else R.string.backup_progress_title,
+                ),
+            )
+        },
+        text = {
+            Column {
+                if (run.done) {
+                    Text(run.result.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_progress_target,
+                            run.current,
+                            run.total,
+                            stringResource(BackupLabels.origin(run.origin)),
+                            stringResource(BackupLabels.kind(run.kind)),
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    LinearProgressIndicator(
+                        progress = { run.fraction },
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    )
+                    Text(
+                        text = transferLine(run),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = run.done) {
+                Text(stringResource(R.string.backup_done))
+            }
+        },
+    )
+}
+
+/** 「已传 / 总共 · 速度」。速度还没采到样时不写那一段——"0 B/s"看着像卡住了。 */
+internal fun transferLine(run: BackupRunState): String {
+    val transferred = BackupListFormatter.humanSize(run.sentBytes) + " / " + BackupListFormatter.humanSize(run.totalBytes)
+    if (run.speedBytesPerSecond <= 0L) return transferred
+    return transferred + BackupListFormatter.SEPARATOR + BackupListFormatter.humanSize(run.speedBytesPerSecond) + "/s"
+}

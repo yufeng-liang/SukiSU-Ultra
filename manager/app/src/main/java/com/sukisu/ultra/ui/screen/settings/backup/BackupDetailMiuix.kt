@@ -108,8 +108,8 @@ fun BackupDetailMiuix(
         ) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(text = group.label, fontSize = 16.sp)
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        Text(text = group.label, fontSize = 17.sp)
                         Text(
                             text = groupSummary(group, state.showsOriginBadge),
                             fontSize = 13.sp,
@@ -134,29 +134,40 @@ fun BackupDetailMiuix(
                                     modifier = Modifier.padding(top = 4.dp),
                                 )
                             }
+                        // 两个按钮等宽：宽度跟着文字走的话，一行里一长一短看着像没对齐的标签，
+                        // 而这两个动作是一对——"导出"和"恢复"都是对勾选项整体生效的。
                         Row(
-                            modifier = Modifier.padding(top = 12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             // 恢复和导出都作用在勾选上，没勾任何一项时它们按不动；删除动的是
                             // 整组，跟勾选无关。
                             TextButton(
+                                modifier = Modifier.weight(1f),
                                 text = stringResource(R.string.backup_detail_share),
                                 enabled = !busy && selected > 0,
                                 onClick = actions.onShareSelected,
                             )
                             TextButton(
+                                modifier = Modifier.weight(1f),
                                 text = stringResource(R.string.backup_detail_restore),
                                 enabled = !busy && selected > 0,
                                 colors = ButtonDefaults.textButtonColorsPrimary(),
                                 onClick = actions.onRestoreSelected,
                             )
                         }
-                        HorizontalDivider(modifier = Modifier.padding(top = 4.dp))
+                        HorizontalDivider(modifier = Modifier.padding(top = 14.dp))
+                        // 删除是这一页最重的一件事，但它不是主按钮：淡红底配正红字，实心大红块
+                        // 会把上面那两个真正要按的按钮压下去，看着像整页的主操作。字用 error
+                        // 而不是 onErrorContainer：后者的红偏暗，整块看着像禁用。
                         TextButton(
+                            modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
                             text = stringResource(R.string.backup_detail_delete),
                             enabled = !busy,
-                            colors = ButtonDefaults.textButtonColors(color = colorScheme.error),
+                            colors = ButtonDefaults.textButtonColors(
+                                color = colorScheme.errorContainer,
+                                textColor = colorScheme.error,
+                            ),
                             onClick = actions.onDeleteGroup,
                         )
                     }

@@ -29,6 +29,16 @@ object ArchiveNaming {
 
     fun timestamp(at: Instant): String = TIMESTAMP.format(at)
 
+    private val SESSION = Regex("_(\\d{8}_\\d{6})")
+
+    /**
+     * 归档名里的会话号：一次备份写出的所有归档共用同一个时间戳。
+     *
+     * 列表分组（界面）和保留额度（数据层）都要按"哪一次备份"来算，判定必须是同一套，
+     * 所以它定义在这里，而不是两边各写一份正则。
+     */
+    fun sessionOf(fileName: String): String? = SESSION.find(fileName)?.groupValues?.get(1)
+
     /** 文件名里只允许 [A-Za-z0-9._-]，其余字符（含路径分隔符）替换为下划线。 */
     fun safeId(raw: String): String =
         raw.map { if (it.isLetterOrDigit() || it == '.' || it == '-' || it == '_') it else '_' }

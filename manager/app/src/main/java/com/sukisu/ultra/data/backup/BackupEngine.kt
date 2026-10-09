@@ -26,8 +26,18 @@ class BackupEngine(
     private val clock: () -> Instant = { Instant.now() },
 ) {
 
-    /** [selected] 透传给源：模块用它支持用户勾选，null = 全部；boot 忽略。 */
-    suspend fun backup(kind: BackupKind, selected: Set<String>? = null): BackupRunResult {
+    /**
+     * [selected] 透传给源：模块用它支持用户勾选，null = 全部；boot 忽略。
+     *
+     * [onProgress] 按时间节流上报"这次目标已经推出去多少字节"（见 [CountingInputStream]）。
+     * 总字节数取源产出的全部归档之和：被去重跳过的那些不会推出去，所以进度条最后可能差一点点，
+     * 调用方在目标结束时按"完成"处理。
+     */
+    suspend fun backup(
+        kind: BackupKind,
+        selected: Set<String>? = null,
+        onProgress: (TransferProgress) -> Unit = {},
+    ): BackupRunResult {
         val source = sources[kind]
             ?: return BackupRunResult(
                 kind,
@@ -38,6 +48,9 @@ class BackupEngine(
         }
         val written = mutableListOf<String>()
         val skipped = mutableListOf<String>()
+        val totalBytes = outcome.artifacts.sumOf { it.sizeBytes }
+        // 已经推完的那几个归档的字节数：进度是"这次目标"的累计，不是单个文件的。
+        var sentBefore = 0L
         // 源侧的失败（某个模块没打包成功）同样要报出来，否则用户看到"written N"以为全都备上了。
         val failures = outcome.failures.toMutableList()
 
@@ -62,10 +75,19 @@ class BackupEngine(
                         }
                         val fileName = ArchiveNaming.uniqueName(artifact.fileName, usedNames)
                         usedNames += fileName
-                        storage.put(fileName, artifact.sizeBytes, artifact.openContent)
+                        val bytesBefore = sentBefore
+                        storage.put(fileName, artifact.sizeBytes) {
+                            CountingInputStream(
+                                delegate = artifact.openContent(),
+                                onProgress = { inFile ->
+                                    onProgress(TransferProgress(fileName, bytesBefore + inFile, totalBytes))
+                                },
+                            )
+                        }
                             .onFailure { failures += BackupFailure(fileName, storage.id, reasonOf(it)) }
                             .onSuccess {
                                 written += fileName
+                                sentBefore += artifact.sizeBytes
                                 val metaName = artifact.metaFileName?.let { ArchiveNaming.metaFileNameFor(fileName) }
                                 if (metaName != null && artifact.metaJson != null) {
                                     storage.writeText(metaName, artifact.metaJson)
