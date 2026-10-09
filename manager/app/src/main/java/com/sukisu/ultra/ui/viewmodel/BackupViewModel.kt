@@ -17,6 +17,8 @@ import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.backup.reasonOf
 import com.sukisu.ultra.data.repository.ModuleRepositoryImpl
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
+import com.sukisu.ultra.ui.screen.settings.backup.BackupGroup
+import com.sukisu.ultra.ui.screen.settings.backup.BackupGrouping
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
 import com.sukisu.ultra.ui.screen.settings.backup.BackupLocation
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRow
@@ -25,7 +27,8 @@ import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
 import com.sukisu.ultra.ui.screen.settings.backup.OriginEntry
 import com.sukisu.ultra.ui.util.BackupText
-import com.sukisu.ultra.ui.util.formatRepoTime
+import com.sukisu.ultra.ui.util.formatSessionTime
+import com.sukisu.ultra.ui.util.isoToEpochMillis
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -200,6 +203,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(
                     loading = false,
                     rows = emptyList(),
+                    groups = emptyList(),
+                    openGroupId = null,
                     emptyText = string(R.string.backup_pick_a_target),
                 )
             }
@@ -235,15 +240,18 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         if (_uiState.value.origins != origins || _uiState.value.kinds != kinds) return@launch
         entries = collected
         metas = collectedMetas
+        // 两侧合起来列，最新的在最上面：来源不同不影响"我最近备了什么"这个问题。
+        val rows = BackupListFormatter.rows(
+            collected.sortedByDescending { item -> isoToEpochMillis(item.entry.createdAt) },
+            collectedMetas,
+            rowLabels(),
+        )
         _uiState.update {
             it.copy(
                 loading = false,
-                // 两侧合起来列，最新的在最上面：来源不同不影响"我最近备了什么"这个问题。
-                rows = BackupListFormatter.rows(
-                    collected.sortedByDescending { item -> item.entry.createdAt },
-                    collectedMetas,
-                    rowLabels(),
-                ),
+                rows = rows,
+                // 列表按"哪一次备份"分堆：一次备份 11 个模块不该是 11 行。
+                groups = BackupGrouping.group(rows) { iso -> formatSessionTime(context(), iso) },
                 // 空列表要说清"为什么空"：模块是"还没备份过"，boot 是"本机根本没有原厂镜像"。
                 // 读取失败时不给空状态文案——那句"还没有备份"会把"没读到"说成"没有"。
                 emptyText = if (collected.isEmpty() && !listingFailed) {
@@ -255,6 +263,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
     }
+
+    /**
+     * 点开一次备份。
+     *
+     * 这一步只切视图，不碰任何后端：**恢复只由详情页里的按钮触发**。以前列表行点一下就是恢复，
+     * 在 root 工具里误触一次就等于把设备拉回上一个状态。
+     */
+    fun openGroup(group: BackupGroup) = _uiState.update { it.copy(openGroupId = group.id) }
+
+    fun closeGroup() = _uiState.update { it.copy(openGroupId = null) }
 
     /**
      * 按勾选组合备份：位置 × 内容 每种组合各写一份。
@@ -433,7 +451,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private fun rowLabels() = BackupRowLabels(
         bootTitle = string(R.string.backup_boot_row_title),
         disabled = string(R.string.backup_row_disabled),
-        formatTime = ::formatRepoTime,
         originLabel = { origin -> originLabel(origin) },
     )
 
@@ -454,12 +471,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private fun backupMessage(results: List<BackupTargetResult>): String {
         val multiple = results.size > 1
         return results.joinToString(MULTI_TARGET_SEPARATOR) { target ->
-            val location = BackupLocation.full(target.origin, _uiState.value.cloudSavedUrl)
-            val body = BackupText.summary(
-                context = context(),
-                result = target.result,
-                location = BackupLocation.short(location),
-            )
+            val body = targetBody(target, multiple)
             if (multiple) {
                 string(
                     R.string.backup_target_line,
@@ -471,6 +483,37 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 body
             }
         }
+    }
+
+    /**
+     * 单个目标的摘要。
+     *
+     * 一项都没写、也没跳过、也没有失败，说明源里根本没有可备的东西（boot 就是这种情况：
+     * ksud 只在打补丁时留下原厂镜像）。"已写入 0 项 · 跳过 0 项"对用户等于什么都没说。
+     */
+    private fun targetBody(target: BackupTargetResult, multiple: Boolean): String {
+        val result = target.result
+        if (result.written.isEmpty() && result.skipped.isEmpty() && result.failures.isEmpty()) {
+            return string(
+                if (target.kind == BackupKind.BOOT) {
+                    R.string.backup_nothing_boot
+                } else {
+                    R.string.backup_nothing_module
+                },
+            )
+        }
+        return BackupText.summary(
+            context = context(),
+            result = result,
+            // 多目标时不再缀位置：几行并排会超出 snackbar 的两行上限，后面那行连失败原因一起
+            // 被截掉；位置常驻在按钮下面那一行里，不缺这一句。
+            location = if (multiple) {
+                null
+            } else {
+                BackupLocation.short(BackupLocation.full(target.origin, _uiState.value.cloudSavedUrl))
+            },
+            compact = multiple,
+        )
     }
 
     /**

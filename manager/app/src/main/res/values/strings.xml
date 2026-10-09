@@ -769,4 +769,13 @@
     <string name="backup_channel_name">Backup</string>
     <string name="backup_auto_notify_title">Automatic backup did not finish</string>
     <string name="backup_auto_notify_partial">Local backup done, cloud failed: %1$s</string>
+    <string name="backup_nothing_boot">no stock image to back up</string>
+    <string name="backup_nothing_module">no modules to back up</string>
+    <string name="backup_group_summary">%1$s · %2$d items</string>
+    <string name="backup_group_rollback">Restore point</string>
+    <string name="backup_detail_title">Backup details</string>
+    <plurals name="backup_group_items">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
 </resources>

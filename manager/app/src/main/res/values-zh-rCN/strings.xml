@@ -752,4 +752,12 @@
     <string name="backup_channel_name">备份</string>
     <string name="backup_auto_notify_title">自动备份未完成</string>
     <string name="backup_auto_notify_partial">本地已备份，云端失败：%1$s</string>
+    <string name="backup_nothing_boot">没有可备份的原厂镜像</string>
+    <string name="backup_nothing_module">没有可备份的模块</string>
+    <string name="backup_group_summary">%1$s · %2$d 项</string>
+    <string name="backup_group_rollback">恢复点</string>
+    <string name="backup_detail_title">备份详情</string>
+    <plurals name="backup_group_items">
+        <item quantity="other">%1$d 项</item>
+    </plurals>
 </resources>

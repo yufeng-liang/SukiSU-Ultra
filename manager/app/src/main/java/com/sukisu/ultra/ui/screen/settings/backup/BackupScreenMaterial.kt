@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
@@ -311,48 +312,25 @@ fun BackupMaterial(
                     )
                 }
             }
-            items(state.rows, key = { it.id }) { row ->
-                SegmentedListItem(
-                    onClick = { actions.onRestore(row) },
-                    enabled = !state.loading,
-                    headlineContent = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(row.title)
-                            if (row.isRollback) {
-                                Text(
-                                    stringResource(R.string.backup_rollback_badge),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
+            // 一次备份一行：11 个模块铺成 11 行会把"我最近备了什么"这个问题埋掉。点进去才看
+            // 具体条目（BackupDetailMaterial），恢复也只在那里按按钮才会发生。
+            items(state.groups, key = { it.id }) { group ->
+                SegmentedColumn {
+                    item {
+                        SegmentedListItem(
+                            onClick = { actions.onOpenGroup(group) },
+                            enabled = !state.loading,
+                            headlineContent = { Text(group.label) },
+                            supportingContent = { Text(groupSummary(group, state.showsOriginBadge)) },
+                            trailingContent = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
                                 )
-                            }
-                        }
-                    },
-                    // 两侧合起来列时，同名的一条在本地和云端各有一份；不标出来就分不清点的是哪一份。
-                    supportingContent = {
-                        Text(
-                            if (state.showsOriginBadge) {
-                                listOf(row.originLabel, row.subtitle).joinToString(BackupListFormatter.SEPARATOR)
-                            } else {
-                                row.subtitle
                             },
                         )
-                    },
-                    trailingContent = {
-                        Row {
-                            // 恢复/导出也要挡住并发：两次操作的结果都写同一个 message，
-                            // 谁后落地谁覆盖，用户可能永远看不到先失败的那一次。
-                            TextButton(onClick = { actions.onRestore(row) }, enabled = !state.loading) {
-                                Text(stringResource(R.string.backup_restore))
-                            }
-                            TextButton(onClick = { actions.onExport(row) }, enabled = !state.loading) {
-                                Text(stringResource(R.string.backup_export))
-                            }
-                        }
-                    },
-                )
+                    }
+                }
             }
             // 自动备份是"设一次就不管"的开关，属于页面末尾的收尾设置；放在列表上面会把
             // 用户真正要点的备份项挤下去。

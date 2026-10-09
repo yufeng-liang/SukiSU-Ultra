@@ -318,30 +318,15 @@ fun BackupMiuix(
                     }
                 }
             }
-            items(state.rows, key = { it.id }) { row ->
-                val title = if (row.isRollback) {
-                    row.title + BackupListFormatter.SEPARATOR + stringResource(R.string.backup_rollback_badge)
-                } else {
-                    row.title
-                }
-                // 两侧合起来列时，同名的一条在本地和云端各有一份；不标出来就分不清点的是哪一份。
-                val summary = if (state.showsOriginBadge) {
-                    listOf(row.originLabel, row.subtitle).joinToString(BackupListFormatter.SEPARATOR)
-                } else {
-                    row.subtitle
-                }
+            // 一次备份一行：11 个模块铺成 11 行会把"我最近备了什么"这个问题埋掉。点进去才看
+            // 具体条目（BackupDetailMiuix），恢复也只在那里按按钮才会发生。
+            items(state.groups, key = { it.id }) { group ->
                 Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
                     ArrowPreference(
-                        title = title,
-                        summary = summary,
+                        title = group.label,
+                        summary = groupSummary(group, state.showsOriginBadge),
                         enabled = !state.loading,
-                        onClick = { actions.onRestore(row) },
-                    )
-                    ArrowPreference(
-                        title = stringResource(R.string.backup_export),
-                        summary = title,
-                        enabled = !state.loading,
-                        onClick = { actions.onExport(row) },
+                        onClick = { actions.onOpenGroup(group) },
                     )
                 }
             }

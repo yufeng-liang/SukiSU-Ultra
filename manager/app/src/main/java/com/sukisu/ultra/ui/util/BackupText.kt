@@ -121,17 +121,31 @@ object BackupText {
      *
      * [location] 是这次写进去的位置（短形式）。只在**真的写进去了**的时候才说：整次失败时
      * 一句"存到 X"会让人以为文件在那儿，而那里什么都没有。
+     *
+     * [compact] 用于"一行一个目标"的场合（位置/内容勾了多个）。snackbar 只给两行，一行长了
+     * 就把后面那行连同失败原因整段截掉，所以这里省掉"跳过 0 项"——跳过为 0 是正常情况，
+     * 写出来只占宽度。非 0 时照旧显示，那才是用户要知道的。
      */
-    fun summary(context: Context, result: BackupRunResult, location: String? = null): String {
-        val parts = mutableListOf(
-            context.getString(R.string.backup_summary_written, result.written.size),
-            context.getString(R.string.backup_summary_skipped, result.skipped.size),
-        )
-        if (location != null && result.written.isNotEmpty()) {
-            parts += context.getString(R.string.backup_saved_to, location)
+    fun summary(context: Context, result: BackupRunResult, location: String? = null, compact: Boolean = false): String =
+        summaryParts(result, location, compact).joinToString(BackupListFormatter.SEPARATOR) { part ->
+            render(context, part)
         }
-        result.failures.map { failure(context, it) }.distinct().forEach { parts += it }
-        return parts.joinToString(BackupListFormatter.SEPARATOR)
+
+    /**
+     * [summary] 的纯形式：资源 id + 参数，取字符串交给 [render]。
+     *
+     * 拆出来是为了能进 JVM 单测——`Context.getString` 在单测里跑不了，而这里会出错的正是
+     * "什么时候该出现哪一段"（跳过为 0 要不要写、没写进去要不要报位置）。
+     */
+    fun summaryParts(result: BackupRunResult, location: String? = null, compact: Boolean = false): List<ReasonText> {
+        val parts = mutableListOf(ReasonText(R.string.backup_summary_written, listOf(result.written.size)))
+        if (result.skipped.isNotEmpty() || !compact) {
+            parts += ReasonText(R.string.backup_summary_skipped, listOf(result.skipped.size))
+        }
+        if (location != null && result.written.isNotEmpty()) {
+            parts += ReasonText(R.string.backup_saved_to, listOf(location))
+        }
+        return parts
     }
 
     /** 恢复失败的提示。 */

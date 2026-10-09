@@ -10,6 +10,12 @@ import java.util.Locale
 data class BackupRow(
     val id: String,
     val title: String,
+    /**
+     * 标题下面那行：版本 · 大小（· 已禁用）。
+     *
+     * 不写时间：条目是按"哪一次备份"分组的，同一组里每一行的时间都一样，而那个时刻已经写在
+     * 组标题上了——11 行都缀一句"3 分钟前"只是噪音。
+     */
     val subtitle: String,
     val fileName: String,
     /**
@@ -28,6 +34,13 @@ data class BackupRow(
      * 必须先问一次。列表里两种混在一起，光看标题分不出来。
      */
     val kind: BackupKind,
+    /**
+     * 索引里的原始时间戳（ISO-8601）。
+     *
+     * 列表按"哪一次备份"分组，而组标题要的是时刻本身——[subtitle] 里那个已经本地化、也已经被
+     * 拼进一句话里的时间拿不回来。
+     */
+    val createdAt: String,
     /** 恢复前自动拍下的安全网条目。UI 要标出来，否则用户会把它当成一份普通备份。 */
     val isRollback: Boolean = false,
 )
@@ -50,8 +63,6 @@ data class BackupRowLabels(
     val bootTitle: String,
     /** 模块处于禁用状态时缀在副标题里的词。 */
     val disabled: String,
-    /** 把索引里的 ISO 时间转成本地可读形式；解析不了时原样返回。 */
-    val formatTime: (String) -> String,
     /** 来源标签：本机 / 云端。 */
     val originLabel: (BackupOrigin) -> String,
 )
@@ -90,12 +101,12 @@ object BackupListFormatter {
     private fun bootRow(origin: BackupOrigin, entry: BackupEntry, labels: BackupRowLabels) = BackupRow(
         id = rowId(origin, entry),
         title = "${labels.bootTitle} ${entry.entryId.take(SHA1_PREFIX_LENGTH)}",
-        subtitle = listOf(humanSize(entry.sizeBytes), labels.formatTime(entry.createdAt))
-            .joinToString(SEPARATOR),
+        subtitle = humanSize(entry.sizeBytes),
         fileName = entry.fileName,
         origin = origin,
         originLabel = labels.originLabel(origin),
         kind = BackupKind.BOOT,
+        createdAt = entry.createdAt,
         isRollback = RollbackPolicy.isRollback(entry),
     )
 
@@ -112,13 +123,13 @@ object BackupListFormatter {
             subtitle = listOfNotNull(
                 meta?.versionName?.takeIf { it.isNotBlank() }?.let { "v$it" },
                 humanSize(entry.sizeBytes),
-                labels.formatTime(entry.createdAt),
                 labels.disabled.takeIf { meta?.disabled == true },
             ).joinToString(SEPARATOR),
             fileName = entry.fileName,
             origin = origin,
             originLabel = labels.originLabel(origin),
             kind = BackupKind.MODULE,
+            createdAt = entry.createdAt,
             isRollback = RollbackPolicy.isRollback(entry),
         )
     }

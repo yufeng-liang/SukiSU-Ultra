@@ -29,3 +29,19 @@ fun formatRepoTime(iso: String): String {
         DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_RELATIVE or DateUtils.FORMAT_ABBREV_ALL,
     ).toString()
 }
+
+/**
+ * 备份分组标题上的时刻："10月9日 17:36" / "Oct 9, 17:36"。
+ *
+ * 这里要的是**能对上号**的时刻，不是"3 天前"：列表按"哪一次备份"分组，标题就是那一次的身份，
+ * 而"3 天前"这种说法两次备份会撞在一起。日期与时间都由 [DateUtils] 按语言环境排版。
+ */
+fun formatSessionTime(context: android.content.Context, iso: String): String {
+    val millis = isoToEpochMillis(iso)
+    if (millis <= 0L) return iso
+    return DateUtils.formatDateTime(
+        context,
+        millis,
+        DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL,
+    )
+}

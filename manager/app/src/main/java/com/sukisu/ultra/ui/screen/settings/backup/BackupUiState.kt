@@ -23,6 +23,21 @@ data class BackupUiState(
     /** 勾选的内容（模块 / 原厂 boot 镜像）。同样可以同时勾上。 */
     val kinds: Set<BackupKind> = setOf(BackupKind.MODULE),
     val rows: List<BackupRow> = emptyList(),
+    /**
+     * [rows] 按"哪一次备份"分好的组，新的在前。
+     *
+     * 列表只显示它：一次备份 11 个模块就是 11 行，铺开来把"我最近备了什么"这个问题埋掉。
+     * 点进去看具体条目（见 [openGroup]）。
+     */
+    val groups: List<BackupGroup> = emptyList(),
+    /**
+     * 正打开着的那一组（点进去的备份详情）。
+     *
+     * 详情放在这一页里而不是单开一条路由：它要的数据就是这一页已经列出来的那些行，多一条路由
+     * 就得把来源/内容再从路由参数里传一遍，还要处理"详情页的 ViewModel 用默认勾选重新列一遍
+     * 列表"这种分叉。系统返回键由界面拦一次（见 BackupScreen）。
+     */
+    val openGroupId: String? = null,
     val message: String? = null,
     /** 输入框里的地址（可能是还没保存的编辑）。 */
     val cloudUrl: String = "",
@@ -104,6 +119,9 @@ data class BackupUiState(
 
     /** 稳定的展示顺序（本机在前），集合本身没有顺序。 */
     val orderedOrigins: List<BackupOrigin> get() = origins.sortedBy { it.ordinal }
+
+    /** 正打开着的那一组；刷新后这一组没了（被保留策略淘汰）就退回列表。 */
+    val openGroup: BackupGroup? get() = groups.firstOrNull { it.id == openGroupId }
 }
 
 @Immutable
@@ -119,6 +137,9 @@ data class BackupActions(
     val onToggleOrigin: (BackupOrigin) -> Unit,
     val onToggleKind: (BackupKind) -> Unit,
     val onBackup: () -> Unit,
+    /** 点开一次备份看详情。**不在这里恢复任何东西**——列表行点一下就恢复等于给误触点了个火。 */
+    val onOpenGroup: (BackupGroup) -> Unit,
+    val onCloseGroup: () -> Unit,
     val onRestore: (BackupRow) -> Unit,
     val onExport: (BackupRow) -> Unit,
     val onImport: () -> Unit,

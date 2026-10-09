@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarHostState
@@ -10,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -68,6 +70,8 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onToggleOrigin = viewModel::toggleOrigin,
         onToggleKind = viewModel::toggleKind,
         onBackup = viewModel::backupNow,
+        onOpenGroup = viewModel::openGroup,
+        onCloseGroup = viewModel::closeGroup,
         onRestore = { row ->
             // 判断看行自己的类型，不看勾选：列表里模块和 boot 混在一起，用户点的可能不是
             // 当前勾选的那一类。
@@ -101,8 +105,34 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onSaveCloud = viewModel::saveCloudFromState,
     )
 
+    // 备份详情是这一页里的一层，不是另一条路由：系统返回键得先退回列表，否则用户从详情页
+    // 往回滑就直接离开了整个备份页。
+    val openGroup = state.openGroup
+    BackHandler(enabled = openGroup != null) { viewModel.closeGroup() }
+
     when (uiMode) {
-        UiMode.Miuix -> BackupMiuix(state, actions, miuixSnackbarHostState)
-        UiMode.Material -> BackupMaterial(state, actions, snackbarHostState)
+        UiMode.Miuix -> if (openGroup != null) {
+            BackupDetailMiuix(openGroup, state, actions, miuixSnackbarHostState)
+        } else {
+            BackupMiuix(state, actions, miuixSnackbarHostState)
+        }
+
+        UiMode.Material -> if (openGroup != null) {
+            BackupDetailMaterial(openGroup, state, actions, snackbarHostState)
+        } else {
+            BackupMaterial(state, actions, snackbarHostState)
+        }
     }
 }
+
+/**
+ * 分组卡片的一行说明：来源（两侧都勾上时才写）· 内容 · 项数。
+ *
+ * 两个主题共用：分组卡片的措辞只有一处，改的时候不会只改一边。
+ */
+@Composable
+fun groupSummary(group: BackupGroup, showsOrigin: Boolean): String = BackupLabels.groupSummary(
+    originLabel = stringResource(BackupLabels.origin(group.origin)).takeIf { showsOrigin },
+    kindLabel = stringResource(BackupLabels.groupKind(group)),
+    countText = pluralStringResource(R.plurals.backup_group_items, group.rows.size, group.rows.size),
+)

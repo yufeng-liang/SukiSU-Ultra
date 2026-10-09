@@ -37,7 +37,6 @@ class BackupListFormatterTest {
     private val labels = BackupRowLabels(
         bootTitle = "Stock image",
         disabled = "Disabled",
-        formatTime = { iso -> "T($iso)" },
         originLabel = { origin -> if (origin == BackupOrigin.CLOUD) "Cloud" else "This device" },
     )
 
@@ -64,10 +63,15 @@ class BackupListFormatterTest {
         assertEquals("zygisk-assistant", rowsOf(entry).single().title)
     }
 
+    /**
+     * 行里不带时间：条目按"哪一次备份"分组，同一组里每行的时间都一样，时刻已经写在组标题上。
+     * 但行要留着原始时刻——分组就是靠它算标题和排序的。
+     */
     @Test
-    fun `row time goes through the formatter instead of the raw index value`() {
+    fun `rows keep the raw timestamp for grouping but do not print it`() {
         val row = rowsOf(entry).single()
-        assertTrue(row.subtitle, row.subtitle.contains("T(2026-10-08T12:00:00Z)"))
+        assertEquals("2026-10-08T12:00:00Z", row.createdAt)
+        assertFalse(row.subtitle, row.subtitle.contains("2026-10-08"))
     }
 
     @Test
