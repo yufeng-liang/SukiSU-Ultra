@@ -113,6 +113,129 @@ fun BackupMaterial(
 }
 
 /**
+ * 云端（WebDAV）那一块：收起时只占一行，展开是配置表单。
+ *
+ * 两个分页都挂。备份的人要在这儿填地址；**从云端恢复的人也是先想到恢复页**——填完保存就会自动
+ * 去列一次云端并把云端勾上（见 BackupViewModel.saveCloudFromState），不用再切回备份页。
+ */
+@Composable
+private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
+    SegmentedColumn {
+        item {
+            val rotation by animateFloatAsState(
+                targetValue = if (state.cloudExpanded) 180f else 0f,
+                label = "cloudArrow",
+            )
+            SegmentedListItem(
+                headlineContent = { Text(stringResource(R.string.backup_cloud_title)) },
+                // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
+                supportingContent = {
+                    Text(
+                        text = state.cloudUrl.ifBlank {
+                            stringResource(R.string.backup_cloud_summary_unset)
+                        },
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.Filled.ExpandMore,
+                        contentDescription = stringResource(R.string.expand),
+                        modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                    )
+                },
+                onClick = actions.onToggleCloud,
+            )
+        }
+        item(visible = state.cloudExpanded) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(
+                    stringResource(R.string.backup_cloud_intro),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    // 四个预设放不下一行会折成两行，而 FlowRow 的行间距默认是 0：
+                    // 折起来的第二行边框直接贴在上一行上，看着像重叠。
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    WebDavPresets.ALL.forEach { preset ->
+                        val selected = preset == state.selectedPreset
+                        // 选中的那个带勾并换成主色底——不这样区分的话，点完预设
+                        // 用户只能从地址栏里的域名反推自己刚才点的是谁。
+                        FilterChip(
+                            selected = selected,
+                            onClick = { actions.onSelectPreset(preset) },
+                            label = { Text(preset.label) },
+                            leadingIcon = if (selected) {
+                                { Icon(Icons.Filled.Check, contentDescription = null) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+                // 点预设只是把地址填好，"去哪生成应用密码/要先开什么"才是真正会卡住人的
+                // 那一步，所以那句话必须跟着显示出来（内容来自 WebDavPresets 里的 hintRes）。
+                state.cloudPresetHintRes?.let { hintRes ->
+                    Text(
+                        stringResource(hintRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                OutlinedTextField(
+                    value = state.cloudUrl,
+                    onValueChange = actions.onUrlChange,
+                    label = { Text(stringResource(R.string.backup_cloud_url)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
+                OutlinedTextField(
+                    value = state.cloudUser,
+                    onValueChange = actions.onUserChange,
+                    label = { Text(stringResource(R.string.backup_cloud_user)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
+                OutlinedTextField(
+                    value = state.cloudPass,
+                    onValueChange = actions.onPassChange,
+                    label = { Text(stringResource(R.string.backup_cloud_password)) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
+                // 这句话说的就是上面那个密码框，贴在它下面才读得通；放到表单最底下
+                // 会跟"测试连接/保存"挤在一起，看着像按钮的说明。
+                Text(
+                    stringResource(R.string.backup_cloud_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                Row(
+                    Modifier.padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // 保存是这一步的落点，用实心按钮；测试连接是试一下，描边就够。
+                    OutlinedButton(onClick = actions.onTestCloud, enabled = !state.loading) {
+                        Text(stringResource(R.string.backup_cloud_test))
+                    }
+                    Button(onClick = actions.onSaveCloud, enabled = !state.loading) {
+                        Text(stringResource(R.string.backup_cloud_save))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * 「备份存在哪」那一行。
  *
  * snackbar 几秒就没了，而"文件在哪"是过几天才会想起来问的问题，所以它常驻在按钮下面。
@@ -207,121 +330,7 @@ private fun LazyListScope.backupTabItems(
     actions: BackupActions,
     context: Context,
 ) {
-    item {
-        SegmentedColumn {
-            item {
-                val rotation by animateFloatAsState(
-                    targetValue = if (state.cloudExpanded) 180f else 0f,
-                    label = "cloudArrow",
-                )
-                SegmentedListItem(
-                    headlineContent = { Text(stringResource(R.string.backup_cloud_title)) },
-                    // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
-                    supportingContent = {
-                        Text(
-                            text = state.cloudUrl.ifBlank {
-                                stringResource(R.string.backup_cloud_summary_unset)
-                            },
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    trailingContent = {
-                        Icon(
-                            imageVector = Icons.Filled.ExpandMore,
-                            contentDescription = stringResource(R.string.expand),
-                            modifier = Modifier.graphicsLayer { rotationZ = rotation },
-                        )
-                    },
-                    onClick = actions.onToggleCloud,
-                )
-            }
-            item(visible = state.cloudExpanded) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Text(
-                        stringResource(R.string.backup_cloud_intro),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        // 四个预设放不下一行会折成两行，而 FlowRow 的行间距默认是 0：
-                        // 折起来的第二行边框直接贴在上一行上，看着像重叠。
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        WebDavPresets.ALL.forEach { preset ->
-                            val selected = preset == state.selectedPreset
-                            // 选中的那个带勾并换成主色底——不这样区分的话，点完预设
-                            // 用户只能从地址栏里的域名反推自己刚才点的是谁。
-                            FilterChip(
-                                selected = selected,
-                                onClick = { actions.onSelectPreset(preset) },
-                                label = { Text(preset.label) },
-                                leadingIcon = if (selected) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null) }
-                                } else {
-                                    null
-                                },
-                            )
-                        }
-                    }
-                    // 点预设只是把地址填好，"去哪生成应用密码/要先开什么"才是真正会卡住人的
-                    // 那一步，所以那句话必须跟着显示出来（内容来自 WebDavPresets 里的 hintRes）。
-                    state.cloudPresetHintRes?.let { hintRes ->
-                        Text(
-                            stringResource(hintRes),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
-                    }
-                    OutlinedTextField(
-                        value = state.cloudUrl,
-                        onValueChange = actions.onUrlChange,
-                        label = { Text(stringResource(R.string.backup_cloud_url)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    )
-                    OutlinedTextField(
-                        value = state.cloudUser,
-                        onValueChange = actions.onUserChange,
-                        label = { Text(stringResource(R.string.backup_cloud_user)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    )
-                    OutlinedTextField(
-                        value = state.cloudPass,
-                        onValueChange = actions.onPassChange,
-                        label = { Text(stringResource(R.string.backup_cloud_password)) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    )
-                    // 这句话说的就是上面那个密码框，贴在它下面才读得通；放到表单最底下
-                    // 会跟"测试连接/保存"挤在一起，看着像按钮的说明。
-                    Text(
-                        stringResource(R.string.backup_cloud_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                    Row(
-                        Modifier.padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        // 保存是这一步的落点，用实心按钮；测试连接是试一下，描边就够。
-                        OutlinedButton(onClick = actions.onTestCloud, enabled = !state.loading) {
-                            Text(stringResource(R.string.backup_cloud_test))
-                        }
-                        Button(onClick = actions.onSaveCloud, enabled = !state.loading) {
-                            Text(stringResource(R.string.backup_cloud_save))
-                        }
-                    }
-                }
-            }
-        }
-    }
+    item { CloudCardMaterial(state, actions) }
     item {
         Column {
             GroupTitle(stringResource(R.string.backup_origin_group))
@@ -436,6 +445,7 @@ private fun LazyListScope.backupTabItems(
 
 /** 「恢复」分页：已备份的清单。点一行进详情，恢复/导出/删除都只在那里发生。 */
 private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupActions) {
+    item { CloudCardMaterial(state, actions) }
     locationItems(state)
     if (state.loading) {
         item { LinearProgressIndicator(Modifier.fillMaxWidth()) }

@@ -165,6 +165,151 @@ fun BackupMiuix(
 }
 
 /**
+ * 云端（WebDAV）那一块：收起时只占一行，展开是配置表单。
+ *
+ * 两个分页都挂。备份的人要在这儿填地址；**从云端恢复的人也是先想到恢复页**——填完保存就会自动
+ * 去列一次云端并把云端勾上（见 BackupViewModel.saveCloudFromState），不用再切回备份页。
+ */
+@Composable
+private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        // 收起时只占一行多一点，标题右边就是当前填的地址——配置是一次性的事，
+        // 铺开那块表单（说明 + 预设 + 三个输入框 + 两个按钮）会把列表挤到屏幕外。
+        //
+        // 这里不用 ArrowPreference：它自带的是朝右的箭头，而这一行是"展开/收起"，
+        // 箭头必须朝下、展开后翻过来。
+        //
+        // 整块（标题行 + 下面那行地址）一起当点击区：地址也是"这一栏现在是什么状态"的一部分，
+        // 只让标题行能点的话，手指落在地址上会像点空了。
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = actions.onToggleCloud)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.backup_cloud_title),
+                    fontSize = 16.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                ExpandChevron(expanded = state.cloudExpanded)
+            }
+            // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
+            Text(
+                text = state.cloudUrl.ifBlank {
+                    stringResource(R.string.backup_cloud_summary_unset)
+                },
+                fontSize = 13.sp,
+                color = colorScheme.onSurfaceVariantSummary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        // 展开要有过程：硬切时表单在标题行下面"跳"出来，看着像点错了。
+        AnimatedVisibility(
+            visible = state.cloudExpanded,
+            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(tween(EXPAND_MS)),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(tween(EXPAND_MS)),
+        ) {
+            Column {
+                // 一条分隔线把"标题行"和"表单"分开：没有它，第一句说明紧贴着标题，
+                // 看着像标题的续行。
+                HorizontalDivider()
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        text = stringResource(R.string.backup_cloud_intro),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
+                    FlowRow(
+                        modifier = Modifier.padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        // 四个预设放不下一行会折成两行，而 FlowRow 的行间距默认是 0：
+                        // 折起来的第二行边框直接贴在上一行上，看着像重叠。
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        WebDavPresets.ALL.forEach { preset ->
+                            // 选中的那个用主色，其余保持灰底——不这样区分的话，点完预设
+                            // 用户只能从地址栏里的域名反推自己刚才点的是谁。
+                            Button(
+                                onClick = { actions.onSelectPreset(preset) },
+                                colors = if (preset == state.selectedPreset) {
+                                    ButtonDefaults.buttonColorsPrimary()
+                                } else {
+                                    ButtonDefaults.buttonColors()
+                                },
+                            ) {
+                                Text(text = preset.label)
+                            }
+                        }
+                    }
+                    // 点预设只是把地址填好，"去哪生成应用密码/要先开什么"才是真正会卡住人的
+                    // 那一步，所以那句话必须跟着显示出来（内容来自 WebDavPresets 的 hintRes）。
+                    state.cloudPresetHintRes?.let { hintRes ->
+                        Text(
+                            text = stringResource(hintRes),
+                            fontSize = 12.sp,
+                            color = colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                    TextField(
+                        value = state.cloudUrl,
+                        onValueChange = actions.onUrlChange,
+                        label = stringResource(R.string.backup_cloud_url),
+                        useLabelAsPlaceholder = true,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    )
+                    TextField(
+                        value = state.cloudUser,
+                        onValueChange = actions.onUserChange,
+                        label = stringResource(R.string.backup_cloud_user),
+                        useLabelAsPlaceholder = true,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    )
+                    TextField(
+                        value = state.cloudPass,
+                        onValueChange = actions.onPassChange,
+                        label = stringResource(R.string.backup_cloud_password),
+                        useLabelAsPlaceholder = true,
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    )
+                    // 这句话说的就是上面那个密码框，贴在它下面才读得通；放到表单最底下
+                    // 会跟"测试连接/保存"挤在一起，看着像按钮的说明。
+                    Text(
+                        text = stringResource(R.string.backup_cloud_hint),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    FlowRow(
+                        modifier = Modifier.padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(onClick = actions.onTestCloud, enabled = !state.loading) {
+                            Text(text = stringResource(R.string.backup_cloud_test))
+                        }
+                        Button(onClick = actions.onSaveCloud, enabled = !state.loading) {
+                            Text(text = stringResource(R.string.backup_cloud_save))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * 展开/收起用的箭头：朝下，展开后翻过来。
  *
  * 用 Material 的图标而不是 Miuix 的 `ExpandMore`——后者在这套图标里画的是一对直角括号加一个点，
@@ -287,136 +432,7 @@ private fun LazyListScope.backupTabItems(
     actions: BackupActions,
     context: Context,
 ) {
-    item {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            // 收起时只占一行多一点，标题右边就是当前填的地址——配置是一次性的事，
-            // 铺开那块表单（说明 + 预设 + 三个输入框 + 两个按钮）会把列表挤到屏幕外。
-            //
-            // 这里不用 ArrowPreference：它自带的是朝右的箭头，而这一行是"展开/收起"，
-            // 箭头必须朝下、展开后翻过来。
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = actions.onToggleCloud)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.backup_cloud_title),
-                    fontSize = 16.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                ExpandChevron(expanded = state.cloudExpanded)
-            }
-            // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
-            Text(
-                text = state.cloudUrl.ifBlank {
-                    stringResource(R.string.backup_cloud_summary_unset)
-                },
-                fontSize = 13.sp,
-                color = colorScheme.onSurfaceVariantSummary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-            )
-            // 展开要有过程：硬切时表单在标题行下面"跳"出来，看着像点错了。
-            AnimatedVisibility(
-                visible = state.cloudExpanded,
-                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(tween(EXPAND_MS)),
-                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(tween(EXPAND_MS)),
-            ) {
-                Column {
-                    // 一条分隔线把"标题行"和"表单"分开：没有它，第一句说明紧贴着标题，
-                    // 看着像标题的续行。
-                    HorizontalDivider()
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(
-                            text = stringResource(R.string.backup_cloud_intro),
-                            fontSize = 12.sp,
-                            color = colorScheme.onSurfaceVariantSummary,
-                        )
-                        FlowRow(
-                            modifier = Modifier.padding(top = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            // 四个预设放不下一行会折成两行，而 FlowRow 的行间距默认是 0：
-                            // 折起来的第二行边框直接贴在上一行上，看着像重叠。
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            WebDavPresets.ALL.forEach { preset ->
-                                // 选中的那个用主色，其余保持灰底——不这样区分的话，点完预设
-                                // 用户只能从地址栏里的域名反推自己刚才点的是谁。
-                                Button(
-                                    onClick = { actions.onSelectPreset(preset) },
-                                    colors = if (preset == state.selectedPreset) {
-                                        ButtonDefaults.buttonColorsPrimary()
-                                    } else {
-                                        ButtonDefaults.buttonColors()
-                                    },
-                                ) {
-                                    Text(text = preset.label)
-                                }
-                            }
-                        }
-                        // 点预设只是把地址填好，"去哪生成应用密码/要先开什么"才是真正会卡住人的
-                        // 那一步，所以那句话必须跟着显示出来（内容来自 WebDavPresets 的 hintRes）。
-                        state.cloudPresetHintRes?.let { hintRes ->
-                            Text(
-                                text = stringResource(hintRes),
-                                fontSize = 12.sp,
-                                color = colorScheme.primary,
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
-                        TextField(
-                            value = state.cloudUrl,
-                            onValueChange = actions.onUrlChange,
-                            label = stringResource(R.string.backup_cloud_url),
-                            useLabelAsPlaceholder = true,
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                        )
-                        TextField(
-                            value = state.cloudUser,
-                            onValueChange = actions.onUserChange,
-                            label = stringResource(R.string.backup_cloud_user),
-                            useLabelAsPlaceholder = true,
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                        )
-                        TextField(
-                            value = state.cloudPass,
-                            onValueChange = actions.onPassChange,
-                            label = stringResource(R.string.backup_cloud_password),
-                            useLabelAsPlaceholder = true,
-                            singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
-                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                        )
-                        // 这句话说的就是上面那个密码框，贴在它下面才读得通；放到表单最底下
-                        // 会跟"测试连接/保存"挤在一起，看着像按钮的说明。
-                        Text(
-                            text = stringResource(R.string.backup_cloud_hint),
-                            fontSize = 12.sp,
-                            color = colorScheme.onSurfaceVariantSummary,
-                            modifier = Modifier.padding(top = 6.dp),
-                        )
-                        FlowRow(
-                            modifier = Modifier.padding(top = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Button(onClick = actions.onTestCloud, enabled = !state.loading) {
-                                Text(text = stringResource(R.string.backup_cloud_test))
-                            }
-                            Button(onClick = actions.onSaveCloud, enabled = !state.loading) {
-                                Text(text = stringResource(R.string.backup_cloud_save))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    item { CloudCardMiuix(state, actions) }
     item {
         Column {
             GroupTitle(stringResource(R.string.backup_origin_group))
@@ -520,6 +536,7 @@ private fun LazyListScope.backupTabItems(
 
 /** 「恢复」分页：已备份的清单。点一行进详情，恢复/导出/删除都只在那里发生。 */
 private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupActions) {
+    item { CloudCardMiuix(state, actions) }
     locationItems(state)
     // 空列表必须给一句话：什么都不显示的话，用户分不清"没有备份"和"这一页坏了"。
     state.emptyText?.let { empty ->
