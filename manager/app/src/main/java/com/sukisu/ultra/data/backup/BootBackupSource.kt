@@ -38,7 +38,8 @@ class BootBackupSource(
 
     private fun sha1Of(entry: RootFileEntry): String = entry.path.substringAfterLast('/').removePrefix("ksu_backup_")
 
-    override suspend fun export(): Result<ExportOutcome> = runCatching {
+    // [selected] 被忽略：这一栏能备份的只有 ksud 留下的那几张原厂镜像，没有"挑一张"的余地。
+    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatching {
         staging.cleanupStale()
         val timestamp = ArchiveNaming.timestamp(clock())
         val artifacts = mutableListOf<BackupArtifact>()

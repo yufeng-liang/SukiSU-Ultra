@@ -26,13 +26,14 @@ class BackupEngine(
     private val clock: () -> Instant = { Instant.now() },
 ) {
 
-    suspend fun backup(kind: BackupKind): BackupRunResult {
+    /** [selected] 透传给源：模块用它支持用户勾选，null = 全部；boot 忽略。 */
+    suspend fun backup(kind: BackupKind, selected: Set<String>? = null): BackupRunResult {
         val source = sources[kind]
             ?: return BackupRunResult(
                 kind,
                 failures = listOf(BackupFailure("", ENGINE_STORAGE, BackupReason.NoSource(kind))),
             )
-        val outcome = source.export().getOrElse { error ->
+        val outcome = source.export(selected).getOrElse { error ->
             return BackupRunResult(kind, failures = listOf(BackupFailure("", SOURCE_STORAGE, reasonOf(error))))
         }
         val written = mutableListOf<String>()

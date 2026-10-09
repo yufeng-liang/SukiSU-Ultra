@@ -32,7 +32,12 @@ class ModuleBackupSource(
 
     override val kind: BackupKind = BackupKind.MODULE
 
-    override suspend fun export(): Result<ExportOutcome> = runCatching { exportAll(lister.list()) }
+    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatching {
+        // 勾选的模块在打包期间可能被卸载：过滤后为空就是"没得备份"，交给上层按空结果处理，
+        // 而不是把它当成错误——用户可能刚把勾上的模块删掉。
+        val modules = lister.list()
+        exportAll(if (selected == null) modules else modules.filter { it.id in selected })
+    }
 
     override suspend fun exportOne(entryId: String): Result<BackupArtifact?> = runCatching {
         lister.list().firstOrNull { it.id == entryId }?.let { exportAll(listOf(it)).artifacts.firstOrNull() }

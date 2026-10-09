@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -208,64 +210,81 @@ fun BackupMiuix(
                 }
             }
             item {
-                Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-                    CheckboxPreference(
-                        title = stringResource(R.string.backup_origin_local),
-                        checked = state.origin == BackupOrigin.LOCAL,
-                        onCheckedChange = { actions.onSelectOrigin(BackupOrigin.LOCAL) },
-                    )
-                    // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜；把原因
-                    // 挂在它自己的副标题上，就不用再单独占一行小字。
-                    CheckboxPreference(
-                        title = stringResource(R.string.backup_origin_cloud),
-                        summary = if (state.cloudConfigured) {
-                            null
-                        } else {
-                            stringResource(R.string.backup_cloud_chip_locked)
-                        },
-                        checked = state.origin == BackupOrigin.CLOUD,
-                        enabled = state.cloudConfigured,
-                        onCheckedChange = { actions.onSelectOrigin(BackupOrigin.CLOUD) },
-                    )
+                Column {
+                    GroupTitle(stringResource(R.string.backup_origin_group))
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        CheckboxPreference(
+                            title = stringResource(R.string.backup_origin_local),
+                            checked = state.origin == BackupOrigin.LOCAL,
+                            onCheckedChange = { actions.onSelectOrigin(BackupOrigin.LOCAL) },
+                        )
+                        // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜；把原因
+                        // 挂在它自己的副标题上，就不用再单独占一行小字。
+                        CheckboxPreference(
+                            title = stringResource(R.string.backup_origin_cloud),
+                            summary = if (state.cloudConfigured) {
+                                null
+                            } else {
+                                stringResource(R.string.backup_cloud_chip_locked)
+                            },
+                            checked = state.origin == BackupOrigin.CLOUD,
+                            enabled = state.cloudConfigured,
+                            onCheckedChange = { actions.onSelectOrigin(BackupOrigin.CLOUD) },
+                        )
+                    }
                 }
             }
             item {
-                Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-                    CheckboxPreference(
-                        title = stringResource(R.string.backup_kind_module),
-                        checked = state.kind == BackupKind.MODULE,
-                        onCheckedChange = { actions.onSelectKind(BackupKind.MODULE) },
-                    )
-                    // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
-                    // 状态——这句话只在选中它时出现，平时不占版面。
-                    CheckboxPreference(
-                        title = stringResource(R.string.backup_kind_boot),
-                        summary = if (state.kind == BackupKind.BOOT) {
-                            stringResource(R.string.backup_boot_explain)
-                        } else {
-                            null
-                        },
-                        checked = state.kind == BackupKind.BOOT,
-                        onCheckedChange = { actions.onSelectKind(BackupKind.BOOT) },
-                    )
+                Column {
+                    GroupTitle(stringResource(R.string.backup_kind_group))
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        // 模块这一行直接写数量：不写的话，"选模块"那一步看不出到底有几个模块。
+                        // 读不到列表、或一个模块都没装时，这里就是唯一能说明白的地方。
+                        CheckboxPreference(
+                            title = stringResource(R.string.backup_kind_module),
+                            summary = when {
+                                state.modulesUnavailable -> stringResource(R.string.backup_module_unavailable)
+                                state.modules.isEmpty() -> stringResource(R.string.backup_module_none)
+                                else -> pluralStringResource(R.plurals.backup_module_count, state.modules.size, state.modules.size)
+                            },
+                            checked = state.kind == BackupKind.MODULE,
+                            onCheckedChange = { actions.onSelectKind(BackupKind.MODULE) },
+                        )
+                        // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
+                        // 状态。这句话常显而不是选中才出现：选中时冒出来会把下面的东西整体推下去。
+                        CheckboxPreference(
+                            title = stringResource(R.string.backup_kind_boot),
+                            summary = stringResource(R.string.backup_boot_explain),
+                            checked = state.kind == BackupKind.BOOT,
+                            onCheckedChange = { actions.onSelectKind(BackupKind.BOOT) },
+                        )
+                        // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
+                        if (state.kind == BackupKind.MODULE && state.modules.isNotEmpty()) {
+                            ModulePickerMiuix(state = state, actions = actions)
+                        }
+                    }
                 }
             }
-            // 主操作铺满一行、用主色，和 Install 页的「下一步」一致：放在 Card 里当普通设置项
-            // 时，它和下面的「从文件导入」长得一模一样，用户得读字才知道该点哪个。
             item {
-                TextButton(
+                Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    text = stringResource(R.string.backup_now),
-                    enabled = !state.loading,
-                    colors = ButtonDefaults.textButtonColorsPrimary(),
-                    onClick = actions.onBackup,
-                )
-                TextButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    text = stringResource(R.string.backup_import),
-                    enabled = !state.loading,
-                    onClick = actions.onImport,
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // 导入是次要的，放左边；立即备份是这一步的落点，放右边并用主色。
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        text = stringResource(R.string.backup_import),
+                        enabled = !state.loading,
+                        onClick = actions.onImport,
+                    )
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        text = stringResource(R.string.backup_now),
+                        enabled = !state.loading && state.canBackUp,
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        onClick = actions.onBackup,
+                    )
+                }
             }
             // 空列表必须给一句话：什么都不显示的话，用户分不清"没有备份"和"这一页坏了"。
             state.emptyText?.let { empty ->
@@ -324,5 +343,55 @@ fun BackupMiuix(
                 }
             }
         }
+    }
+}
+
+/**
+ * 一组选项上方的小标题。
+ *
+ * 左内边距 16dp：外层 LazyColumn 已经有 12dp，加上 Card 自己的 16dp 内边距，标题就和
+ * 卡片里的文字对齐了。
+ */
+@Composable
+private fun GroupTitle(text: String) {
+    Text(
+        text = text,
+        fontSize = 14.sp,
+        color = colorScheme.onSurfaceVariantSummary,
+        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp),
+    )
+}
+
+/**
+ * 「模块」那一行下面的勾选列表。
+ *
+ * 默认全选、整块收起：多数人是要全部，把十几个模块铺出来只会把下面的按钮和列表顶走。
+ * 调用方只在有模块可挑时才调用它。
+ */
+@Composable
+private fun ModulePickerMiuix(state: BackupUiState, actions: BackupActions) {
+    ArrowPreference(
+        title = stringResource(R.string.backup_module_select),
+        summary = stringResource(
+            R.string.backup_module_selected,
+            state.selectedModuleIds.size,
+            state.modules.size,
+        ),
+        onClick = actions.onToggleModules,
+    )
+    if (!state.modulesExpanded) return
+    val disabledLabel = stringResource(R.string.backup_row_disabled)
+    CheckboxPreference(
+        title = stringResource(R.string.backup_module_select_all),
+        checked = state.selectedModuleIds.size == state.modules.size,
+        onCheckedChange = actions.onSetAllModules,
+    )
+    state.modules.forEach { module ->
+        CheckboxPreference(
+            title = ModuleOptionText.title(module),
+            summary = ModuleOptionText.summary(module, disabledLabel),
+            checked = module.id in state.selectedModuleIds,
+            onCheckedChange = { actions.onToggleModule(module.id) },
+        )
     }
 }

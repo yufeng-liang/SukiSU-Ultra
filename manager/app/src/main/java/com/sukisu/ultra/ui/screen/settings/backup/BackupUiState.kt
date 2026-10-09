@@ -7,6 +7,7 @@ import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.backup.WebDavPresets
+import com.sukisu.ultra.data.model.Module
 
 @Immutable
 data class BackupUiState(
@@ -42,6 +43,19 @@ data class BackupUiState(
      */
     val selectedPreset: WebDavPreset? = null,
     /**
+     * 已安装的模块，供用户勾选要备份哪几个。
+     *
+     * 读不到时为空且 [modulesUnavailable] 为真——此时按"全部备份"走，宁可多备也不让
+     * 一次读失败变成"什么都没备"。
+     */
+    val modules: List<Module> = emptyList(),
+    /** 勾选中的模块 id。默认全选：绝大多数人是"全都要"。 */
+    val selectedModuleIds: Set<String> = emptySet(),
+    /** 模块勾选列表是否展开。 */
+    val modulesExpanded: Boolean = false,
+    /** 模块列表读不出来（没有 root、ksud 出错）。 */
+    val modulesUnavailable: Boolean = false,
+    /**
      * 列表为空时该说的那句话（已本地化）。
      *
      * 空列表有两种完全不同的原因——"还没有备份，点立即备份"和"本机根本没有原厂镜像可备份"——
@@ -57,7 +71,16 @@ data class BackupUiState(
      * 关闭开关后仍然显示——历史是事实，不该被一个开关抹掉。
      */
     val autoBackupRecord: AutoBackupRecord? = null,
-)
+) {
+    /**
+     * 现在按「立即备份」有没有意义。
+     *
+     * 模块一个都没勾时按下去只会得到"写入 0 项"——那不是结果，是用户还没勾完。boot 没有可挑的，
+     * 列表读不出来时也不能拦（那是一次读失败，不是用户的选择）。
+     */
+    val canBackUp: Boolean
+        get() = kind != BackupKind.MODULE || modulesUnavailable || selectedModuleIds.isNotEmpty()
+}
 
 @Immutable
 data class BackupActions(
@@ -70,6 +93,9 @@ data class BackupActions(
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
     val onToggleCloud: () -> Unit,
+    val onToggleModules: () -> Unit,
+    val onToggleModule: (String) -> Unit,
+    val onSetAllModules: (Boolean) -> Unit,
     val onSelectPreset: (WebDavPreset) -> Unit,
     val onUrlChange: (String) -> Unit,
     val onUserChange: (String) -> Unit,

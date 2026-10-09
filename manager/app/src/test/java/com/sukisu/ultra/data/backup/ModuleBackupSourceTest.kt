@@ -69,6 +69,36 @@ class ModuleBackupSourceTest {
     }
 
     @Test
+    fun `export with a selection archives only the checked modules`() {
+        runBlocking {
+            val outcome = source(listOf(module("a"), module("b"), module("c")))
+                .export(setOf("a", "c")).getOrThrow()
+
+            assertEquals(listOf("a", "c"), outcome.artifacts.map { it.entryId })
+            // 没勾的模块不是"失败"，也不该出现在失败列表里——用户就是不想备份它。
+            assertTrue(outcome.failures.isEmpty())
+        }
+    }
+
+    @Test
+    fun `export with an empty selection archives nothing instead of everything`() {
+        runBlocking {
+            // 空集合和 null 必须是两件事：null 是"全部"，空是"一个都不要"。
+            val outcome = source(listOf(module("a"), module("b"))).export(emptySet()).getOrThrow()
+            assertTrue(outcome.artifacts.isEmpty())
+        }
+    }
+
+    @Test
+    fun `export ignores ids that are no longer installed`() {
+        runBlocking {
+            // 勾上之后模块被卸载：剩下的照常打包，卸载掉的那个不该让整次备份失败。
+            val outcome = source(listOf(module("a"))).export(setOf("a", "gone")).getOrThrow()
+            assertEquals(listOf("a"), outcome.artifacts.map { it.entryId })
+        }
+    }
+
+    @Test
     fun `disabled state is recorded in meta but not in the archive name`() {
         runBlocking {
             val artifacts = source(listOf(module("a", enabled = false))).export().getOrThrow().artifacts

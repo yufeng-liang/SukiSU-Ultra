@@ -15,6 +15,7 @@ import com.sukisu.ultra.data.backup.RestoreOutcome
 import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.backup.reasonOf
+import com.sukisu.ultra.data.repository.ModuleRepositoryImpl
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRowLabels
@@ -55,6 +56,58 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         refresh()
+        loadModules()
+    }
+
+    /**
+     * 读已安装模块，供勾选。
+     *
+     * 默认全选：多数人就是"全都要"，让人从零开始勾只会制造一次多余的点击。
+     * 读失败时把 [BackupUiState.modulesUnavailable] 置真，界面据此说明"将备份全部模块"——
+     * 静默失败会让人以为勾选功能坏了，而且 [backupNow] 会退化成"全部备份"，界面必须说实话。
+     */
+    private fun loadModules() = viewModelScope.launch {
+        ModuleRepositoryImpl().getModules().fold(
+            onSuccess = { modules ->
+                _uiState.update { state ->
+                    // 保住用户已经取消勾选的那些：重新读列表不该把选择重置掉。
+                    val known = state.modules.mapTo(mutableSetOf()) { it.id }
+                    val kept = state.selectedModuleIds.intersect(modules.mapTo(mutableSetOf()) { it.id })
+                    state.copy(
+                        modules = modules,
+                        modulesUnavailable = false,
+                        selectedModuleIds = if (known.isEmpty()) {
+                            modules.mapTo(mutableSetOf()) { it.id }
+                        } else {
+                            kept
+                        },
+                    )
+                }
+            },
+            onFailure = { _uiState.update { it.copy(modulesUnavailable = true) } },
+        )
+    }
+
+    fun toggleModules() = _uiState.update { it.copy(modulesExpanded = !it.modulesExpanded) }
+
+    fun toggleModule(id: String) = _uiState.update { state ->
+        state.copy(
+            selectedModuleIds = if (id in state.selectedModuleIds) {
+                state.selectedModuleIds - id
+            } else {
+                state.selectedModuleIds + id
+            },
+        )
+    }
+
+    fun setAllModules(selected: Boolean) = _uiState.update { state ->
+        state.copy(
+            selectedModuleIds = if (selected) {
+                state.modules.mapTo(mutableSetOf()) { it.id }
+            } else {
+                emptySet()
+            },
+        )
     }
 
     /**
@@ -75,6 +128,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectKind(kind: BackupKind) {
         _uiState.update { it.copy(kind = kind, message = null) }
+        // 上次读模块列表失败（当时没 root、ksud 没起来）就再试一次：切到模块这一栏时
+        // 用户马上要看的就是那份列表，不能一直停在"读不到"。
+        if (kind == BackupKind.MODULE && _uiState.value.modules.isEmpty()) loadModules()
         refresh()
     }
 
@@ -137,10 +193,18 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun backupNow() = viewModelScope.launch {
-        val origin = _uiState.value.origin
-        val kind = _uiState.value.kind
+        val state = _uiState.value
+        val origin = state.origin
+        val kind = state.kind
         _uiState.update { it.copy(loading = true, message = null) }
-        val result = repository.backup(origin, kind)
+        // 只有模块能挑；boot 那一栏传 null（源里有什么就备什么）。
+        // 列表读不出来时也传 null：那是一次读失败，不该变成"什么都没备"。
+        val selected = when {
+            kind != BackupKind.MODULE -> null
+            state.modulesUnavailable -> null
+            else -> state.selectedModuleIds
+        }
+        val result = repository.backup(origin, kind, selected)
         _uiState.update { it.copy(loading = false, message = summary(result)) }
         refresh()
     }

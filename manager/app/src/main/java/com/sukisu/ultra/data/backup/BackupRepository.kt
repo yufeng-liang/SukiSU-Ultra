@@ -123,7 +123,17 @@ class BackupRepository(private val context: Context = ksuApp) {
     suspend fun testCloud(url: String, user: String, pass: String): Result<Unit> =
         withContext(Dispatchers.IO) { cloudStorage(url.trim(), user.trim(), pass).test() }
 
-    suspend fun backup(origin: BackupOrigin, kind: BackupKind): BackupRunResult = withContext(Dispatchers.IO) {
+    /**
+     * [selected] 只对模块有意义：勾了哪几个就只打包哪几个，null = 全部。
+     *
+     * 自动备份（[autoBackupAfterInstall]）不走这里，它始终打包全部模块——那是一次无人值守的
+     * 快照，"刚装完东西"这一刻要的是完整状态，而不是用户上次手工勾的那几个。
+     */
+    suspend fun backup(
+        origin: BackupOrigin,
+        kind: BackupKind,
+        selected: Set<String>? = null,
+    ): BackupRunResult = withContext(Dispatchers.IO) {
         if (origin == BackupOrigin.CLOUD && !cloudConfigured()) {
             return@withContext BackupRunResult(
                 kind,
@@ -136,7 +146,7 @@ class BackupRepository(private val context: Context = ksuApp) {
                 ),
             )
         }
-        engineFor(origin).backup(kind)
+        engineFor(origin).backup(kind, selected)
     }
 
     suspend fun list(origin: BackupOrigin, kind: BackupKind): Result<List<BackupEntry>> =

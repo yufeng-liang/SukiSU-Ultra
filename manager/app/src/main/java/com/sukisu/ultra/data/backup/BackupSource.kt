@@ -13,8 +13,14 @@ data class ImportMeta(val entryId: String, val metaJson: String)
 interface BackupSource {
     val kind: BackupKind
 
-    /** 打包当前状态。单个条目失败应跳过该条目、并记进 [ExportOutcome.failures]，而不是整体失败。 */
-    suspend fun export(): Result<ExportOutcome>
+    /**
+     * 打包当前状态。
+     *
+     * [selected] 是"只要这些 entryId"；null = 源里有什么就打包什么。模块用它支持用户勾选，
+     * boot 忽略它（那一份镜像本来就只有一张）。单个条目失败应跳过该条目、并记进
+     * [ExportOutcome.failures]，而不是整体失败。
+     */
+    suspend fun export(selected: Set<String>? = null): Result<ExportOutcome>
 
     /** 只导出 [entryId] 这一项；不存在时返回 null。恢复前拍回滚点用它，避免为一项打包全部。 */
     suspend fun exportOne(entryId: String): Result<BackupArtifact?>

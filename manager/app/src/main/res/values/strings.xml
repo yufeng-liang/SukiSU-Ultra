@@ -689,6 +689,17 @@
     <string name="backup_cloud_test">Test connection</string>
     <string name="backup_cloud_save">Save</string>
     <string name="backup_cloud_hint">Always the app password, never your login password.</string>
+    <string name="backup_origin_group">Location</string>
+    <string name="backup_kind_group">What to back up</string>
+    <plurals name="backup_module_count">
+        <item quantity="one">%1$d module</item>
+        <item quantity="other">%1$d modules</item>
+    </plurals>
+    <string name="backup_module_select">Choose modules to back up</string>
+    <string name="backup_module_selected">%1$d of %2$d selected</string>
+    <string name="backup_module_select_all">Select all</string>
+    <string name="backup_module_none">No modules installed.</string>
+    <string name="backup_module_unavailable">Module list unavailable; all modules will be backed up.</string>
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
     <string name="backup_cloud_required">Configure the WebDAV server above and save it first.</string>

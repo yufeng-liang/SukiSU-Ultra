@@ -674,6 +674,16 @@
     <string name="backup_cloud_test">测试连接</string>
     <string name="backup_cloud_save">保存</string>
     <string name="backup_cloud_hint">密码栏一律填「应用密码」，不是登录密码。</string>
+    <string name="backup_origin_group">备份位置</string>
+    <string name="backup_kind_group">备份内容</string>
+    <plurals name="backup_module_count">
+        <item quantity="other">共 %1$d 个模块</item>
+    </plurals>
+    <string name="backup_module_select">选择要备份的模块</string>
+    <string name="backup_module_selected">已选 %1$d/%2$d</string>
+    <string name="backup_module_select_all">全选</string>
+    <string name="backup_module_none">没有已安装的模块。</string>
+    <string name="backup_module_unavailable">读不到模块列表，将备份全部模块。</string>
     <string name="backup_origin_local">本地</string>
     <string name="backup_origin_cloud">云端</string>
     <string name="backup_cloud_required">请先在上面配置 WebDAV 服务器并保存。</string>

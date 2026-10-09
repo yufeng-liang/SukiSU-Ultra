@@ -3,6 +3,7 @@ package com.sukisu.ultra.data.backup
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -51,7 +52,13 @@ private class FakeSource(
     /** 记录调用顺序：恢复前拍回滚点这件事只能靠顺序证明。 */
     val calls = mutableListOf<String>()
 
-    override suspend fun export() = Result.success(ExportOutcome(artifacts, failures))
+    /** 最近一次 [export] 收到的勾选集合：用来证明它被原样透传给了源。 */
+    var lastSelection: Set<String>? = null
+
+    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> {
+        lastSelection = selected
+        return Result.success(ExportOutcome(artifacts, failures))
+    }
 
     override suspend fun exportOne(entryId: String): Result<BackupArtifact?> {
         calls += "exportOne"
@@ -123,6 +130,27 @@ class BackupEngineTest {
                 listOf("a"),
                 BackupManifest.parseEntries(storage.files.getValue("index.json").decodeToString()).map { it.entryId }
             )
+        }
+    }
+
+    @Test
+    fun `the engine passes the module selection through to the source`() {
+        runBlocking {
+            val source = FakeSource(BackupKind.MODULE, listOf(artifact("a", "sha-a")))
+            engine(listOf(FakeStorage("local")), source).backup(BackupKind.MODULE, setOf("a", "b"))
+
+            assertEquals(setOf("a", "b"), source.lastSelection)
+        }
+    }
+
+    @Test
+    fun `no selection means every entry the source has`() {
+        runBlocking {
+            val source = FakeSource(BackupKind.MODULE, listOf(artifact("a", "sha-a")))
+            engine(listOf(FakeStorage("local")), source).backup(BackupKind.MODULE)
+
+            // null 而不是空集合：空集合是"一个都不要"，两者不能混。
+            assertNull(source.lastSelection)
         }
     }
 

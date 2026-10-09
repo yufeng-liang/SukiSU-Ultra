@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,7 @@ import com.sukisu.ultra.data.backup.AutoBackupOutcome
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.WebDavPresets
+import com.sukisu.ultra.ui.component.material.SegmentedCheckboxItem
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
 import com.sukisu.ultra.ui.component.material.SegmentedRadioItem
@@ -198,71 +200,88 @@ fun BackupMaterial(
                 }
             }
             item {
-                SegmentedColumn {
-                    item {
-                        SegmentedRadioItem(
-                            title = stringResource(R.string.backup_origin_local),
-                            selected = state.origin == BackupOrigin.LOCAL,
-                            onClick = { actions.onSelectOrigin(BackupOrigin.LOCAL) },
-                        )
-                    }
-                    item {
-                        // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜；把原因
-                        // 挂在它自己的副标题上，就不用再单独占一行小字。
-                        SegmentedRadioItem(
-                            title = stringResource(R.string.backup_origin_cloud),
-                            summary = if (state.cloudConfigured) {
-                                null
-                            } else {
-                                stringResource(R.string.backup_cloud_chip_locked)
-                            },
-                            selected = state.origin == BackupOrigin.CLOUD,
-                            enabled = state.cloudConfigured,
-                            onClick = { actions.onSelectOrigin(BackupOrigin.CLOUD) },
-                        )
+                Column {
+                    GroupTitle(stringResource(R.string.backup_origin_group))
+                    SegmentedColumn {
+                        item {
+                            SegmentedRadioItem(
+                                title = stringResource(R.string.backup_origin_local),
+                                selected = state.origin == BackupOrigin.LOCAL,
+                                onClick = { actions.onSelectOrigin(BackupOrigin.LOCAL) },
+                            )
+                        }
+                        item {
+                            // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜；把原因
+                            // 挂在它自己的副标题上，就不用再单独占一行小字。
+                            SegmentedRadioItem(
+                                title = stringResource(R.string.backup_origin_cloud),
+                                summary = if (state.cloudConfigured) {
+                                    null
+                                } else {
+                                    stringResource(R.string.backup_cloud_chip_locked)
+                                },
+                                selected = state.origin == BackupOrigin.CLOUD,
+                                enabled = state.cloudConfigured,
+                                onClick = { actions.onSelectOrigin(BackupOrigin.CLOUD) },
+                            )
+                        }
                     }
                 }
             }
             item {
-                SegmentedColumn {
-                    item {
-                        SegmentedRadioItem(
-                            title = stringResource(R.string.backup_kind_module),
-                            selected = state.kind == BackupKind.MODULE,
-                            onClick = { actions.onSelectKind(BackupKind.MODULE) },
-                        )
-                    }
-                    item {
-                        // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
-                        // 状态——这句话只在选中它时出现，平时不占版面。
-                        SegmentedRadioItem(
-                            title = stringResource(R.string.backup_kind_boot),
-                            summary = if (state.kind == BackupKind.BOOT) {
-                                stringResource(R.string.backup_boot_explain)
-                            } else {
-                                null
-                            },
-                            selected = state.kind == BackupKind.BOOT,
-                            onClick = { actions.onSelectKind(BackupKind.BOOT) },
-                        )
+                Column {
+                    GroupTitle(stringResource(R.string.backup_kind_group))
+                    SegmentedColumn {
+                        item {
+                            // 模块这一行直接写数量：不写的话，"选模块"那一步看不出到底有几个模块。
+                            // 读不到列表、或一个模块都没装时，这里就是唯一能说明白的地方。
+                            SegmentedRadioItem(
+                                title = stringResource(R.string.backup_kind_module),
+                                summary = when {
+                                    state.modulesUnavailable -> stringResource(R.string.backup_module_unavailable)
+                                    state.modules.isEmpty() -> stringResource(R.string.backup_module_none)
+                                    else -> pluralStringResource(R.plurals.backup_module_count, state.modules.size, state.modules.size)
+                                },
+                                selected = state.kind == BackupKind.MODULE,
+                                onClick = { actions.onSelectKind(BackupKind.MODULE) },
+                            )
+                        }
+                        item {
+                            // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
+                            // 状态。这句话常显而不是选中才出现：选中时冒出来会把下面的东西整体推下去。
+                            SegmentedRadioItem(
+                                title = stringResource(R.string.backup_kind_boot),
+                                summary = stringResource(R.string.backup_boot_explain),
+                                selected = state.kind == BackupKind.BOOT,
+                                onClick = { actions.onSelectKind(BackupKind.BOOT) },
+                            )
+                        }
+                        // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
+                        if (state.kind == BackupKind.MODULE && state.modules.isNotEmpty()) {
+                            item { ModulePickerHeaderMaterial(state = state, actions = actions) }
+                            item(visible = state.modulesExpanded) {
+                                ModulePickerListMaterial(state = state, actions = actions)
+                            }
+                        }
                     }
                 }
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = actions.onBackup,
-                        enabled = !state.loading,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(stringResource(R.string.backup_now))
-                    }
+                    // 导入是次要的，放左边；立即备份是这一步的落点，放右边。
                     OutlinedButton(
                         onClick = actions.onImport,
                         enabled = !state.loading,
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(stringResource(R.string.backup_import))
+                    }
+                    Button(
+                        onClick = actions.onBackup,
+                        enabled = !state.loading && state.canBackUp,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.backup_now))
                     }
                 }
             }
@@ -336,5 +355,68 @@ fun BackupMaterial(
                 }
             }
         }
+    }
+}
+
+/** 一组选项上方的小标题，样式与 [SegmentedColumn] 自带的分组标题一致。 */
+@Composable
+private fun GroupTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
+    )
+}
+
+/**
+ * 「模块」那一行下面的勾选入口。
+ *
+ * 默认全选、整块收起：多数人是要全部，把十几个模块铺出来只会把下面的按钮和列表顶走。
+ */
+@Composable
+private fun ModulePickerHeaderMaterial(state: BackupUiState, actions: BackupActions) {
+    val rotation by animateFloatAsState(
+        targetValue = if (state.modulesExpanded) 180f else 0f,
+        label = "modulesArrow",
+    )
+    SegmentedListItem(
+        headlineContent = { Text(stringResource(R.string.backup_module_select)) },
+        supportingContent = {
+            Text(
+                stringResource(
+                    R.string.backup_module_selected,
+                    state.selectedModuleIds.size,
+                    state.modules.size,
+                ),
+            )
+        },
+        trailingContent = {
+            Icon(
+                imageVector = Icons.Filled.ExpandMore,
+                contentDescription = stringResource(R.string.expand),
+                modifier = Modifier.graphicsLayer { rotationZ = rotation },
+            )
+        },
+        onClick = actions.onToggleModules,
+    )
+}
+
+/** 调用方只在有模块可挑时才调用它。 */
+@Composable
+private fun ModulePickerListMaterial(state: BackupUiState, actions: BackupActions) {
+    val disabledLabel = stringResource(R.string.backup_row_disabled)
+    SegmentedCheckboxItem(
+        title = stringResource(R.string.backup_module_select_all),
+        checked = state.selectedModuleIds.size == state.modules.size,
+        onCheckedChange = actions.onSetAllModules,
+    )
+    state.modules.forEach { module ->
+        SegmentedCheckboxItem(
+            title = ModuleOptionText.title(module),
+            summary = ModuleOptionText.summary(module, disabledLabel),
+            checked = module.id in state.selectedModuleIds,
+            onCheckedChange = { actions.onToggleModule(module.id) },
+        )
     }
 }
