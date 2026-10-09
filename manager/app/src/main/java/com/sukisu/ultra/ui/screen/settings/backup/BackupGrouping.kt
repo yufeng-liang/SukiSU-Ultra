@@ -46,6 +46,9 @@ object BackupGrouping {
     /**
      * @param label 把 [BackupRow.createdAt] 变成本地化的时间标题。这一层是纯 JVM 的（这样它能进
      *   单测），格式化要 `Context`，所以从外面传进来。
+     *
+     * 排序是"先按来源、再按时间倒序"：两侧都勾上时列表分成"本机"和"云端"两段，同一次备份在两边
+     * 各有一条，混在一起排会让人以为那是同一条被列了两遍。
      */
     fun group(rows: List<BackupRow>, label: (String) -> String): List<BackupGroup> =
         rows.groupBy { Key(it.origin, it.kind, sessionOf(it.fileName) ?: it.createdAt) }
@@ -61,7 +64,10 @@ object BackupGrouping {
                     isRollback = groupRows.all { it.isRollback },
                 )
             }
-            .sortedByDescending { instantOf(it.rows.first().createdAt) }
+            .sortedWith(
+                compareBy<BackupGroup> { it.origin.ordinal }
+                    .thenByDescending { instantOf(it.rows.first().createdAt) },
+            )
 
     private data class Key(val origin: BackupOrigin, val kind: BackupKind, val session: String)
 

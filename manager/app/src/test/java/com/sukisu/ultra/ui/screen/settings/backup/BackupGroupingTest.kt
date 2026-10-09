@@ -123,6 +123,21 @@ class BackupGroupingTest {
         assertEquals(2, groups.size)
         assertEquals(setOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.map { it.origin }.toSet())
         assertEquals(2, groups.map { it.id }.toSet().size)
+        // 本地在前：界面按这个顺序分段，云端段在下面。
+        assertEquals(listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.map { it.origin })
+    }
+
+    /** 分组顺序是"先来源、再时间倒序"，界面就是靠它切段的。 */
+    @Test
+    fun `origins come before recency in the group order`() {
+        val groups = BackupGrouping.group(
+            listOf(
+                row("module_a_1_20261009_093107.zip", "2026-10-09T09:31:07Z", origin = BackupOrigin.CLOUD),
+                row("module_b_1_20261008_120000.zip", "2026-10-08T12:00:00Z", origin = BackupOrigin.LOCAL),
+            ),
+            label,
+        )
+        assertEquals(listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.map { it.origin })
     }
 
     /** 一次备份里模块和 boot 是两条结果，各成一组：恢复它们的后果完全不同。 */

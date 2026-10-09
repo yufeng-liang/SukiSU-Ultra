@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -320,14 +321,28 @@ fun BackupMiuix(
             }
             // 一次备份一行：11 个模块铺成 11 行会把"我最近备了什么"这个问题埋掉。点进去才看
             // 具体条目（BackupDetailMiuix），恢复也只在那里按按钮才会发生。
-            items(state.groups, key = { it.id }) { group ->
-                Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-                    ArrowPreference(
-                        title = group.label,
-                        summary = groupSummary(group, state.showsOriginBadge),
-                        enabled = !state.loading,
-                        onClick = { actions.onOpenGroup(group) },
-                    )
+            itemsIndexed(state.groups, key = { _, group -> group.id }) { index, group ->
+                // 两侧都勾上时按来源分段：同一次备份在本地和云端各有一条，混着排会让人以为
+                // 那是同一条被列了两遍。只勾一侧时不加标题——每段前面挂一个"本机"没有信息量。
+                val startsSection = state.showsOriginBadge &&
+                    (index == 0 || state.groups[index - 1].origin != group.origin)
+                Column {
+                    if (startsSection) {
+                        Text(
+                            text = stringResource(BackupLabels.origin(group.origin)),
+                            fontSize = 13.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(top = 20.dp, start = 4.dp),
+                        )
+                    }
+                    Card(modifier = Modifier.padding(top = if (startsSection) 8.dp else 12.dp).fillMaxWidth()) {
+                        ArrowPreference(
+                            title = group.label,
+                            summary = groupSummary(group, showsOrigin = false),
+                            enabled = !state.loading,
+                            onClick = { actions.onOpenGroup(group) },
+                        )
+                    }
                 }
             }
             // 自动备份是"设一次就不管"的开关，属于页面末尾的收尾设置；放在列表上面会把

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -314,21 +315,35 @@ fun BackupMaterial(
             }
             // 一次备份一行：11 个模块铺成 11 行会把"我最近备了什么"这个问题埋掉。点进去才看
             // 具体条目（BackupDetailMaterial），恢复也只在那里按按钮才会发生。
-            items(state.groups, key = { it.id }) { group ->
-                SegmentedColumn {
-                    item {
-                        SegmentedListItem(
-                            onClick = { actions.onOpenGroup(group) },
-                            enabled = !state.loading,
-                            headlineContent = { Text(group.label) },
-                            supportingContent = { Text(groupSummary(group, state.showsOriginBadge)) },
-                            trailingContent = {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = null,
-                                )
-                            },
+            itemsIndexed(state.groups, key = { _, group -> group.id }) { index, group ->
+                // 两侧都勾上时按来源分段：同一次备份在本地和云端各有一条，混着排会让人以为
+                // 那是同一条被列了两遍。只勾一侧时不加标题——每段前面挂一个"本机"没有信息量。
+                val startsSection = state.showsOriginBadge &&
+                    (index == 0 || state.groups[index - 1].origin != group.origin)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (startsSection) {
+                        Text(
+                            text = stringResource(BackupLabels.origin(group.origin)),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 4.dp),
                         )
+                    }
+                    SegmentedColumn {
+                        item {
+                            SegmentedListItem(
+                                onClick = { actions.onOpenGroup(group) },
+                                enabled = !state.loading,
+                                headlineContent = { Text(group.label) },
+                                supportingContent = { Text(groupSummary(group, showsOrigin = false)) },
+                                trailingContent = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                    )
+                                },
+                            )
+                        }
                     }
                 }
             }

@@ -379,13 +379,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 cloudUser = user.trim(),
                 cloudPass = pass,
                 cloudConfigured = configured,
-                // 地址被清空时云端就选不了了：留着勾选状态会让列表一直报"请先配置"。
-                origins = if (configured) it.origins else it.origins - BackupOrigin.CLOUD,
+                // 存好地址就把云端勾上并立刻去列一次：用户配云端就是为了看它上面已经有什么，
+                // 再让他自己勾一次、再等一次刷新是多余的两步。地址被清空时反过来摘掉勾选，
+                // 否则列表会一直报"请先配置"。
+                origins = if (configured) it.origins + BackupOrigin.CLOUD else it.origins - BackupOrigin.CLOUD,
                 // 换了服务器，之前那次操作的结果已经不对应当前配置了。
                 message = null,
             )
         }
-        if (BackupOrigin.CLOUD in _uiState.value.origins) refresh()
+        // 连不上或凭据不对时，这次刷新会把原因说出来——那正是填完地址最需要的反馈。
+        refresh()
     }
 
     /** 输入框编辑态。三个字段各自更新，互不覆盖。 */
