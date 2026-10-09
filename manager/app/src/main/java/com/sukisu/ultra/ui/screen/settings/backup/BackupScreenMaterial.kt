@@ -44,9 +44,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.AutoBackupOutcome
 import com.sukisu.ultra.data.backup.BackupKind
@@ -127,7 +129,16 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
                 label = "cloudArrow",
             )
             SegmentedListItem(
-                headlineContent = { Text(stringResource(R.string.backup_cloud_title)) },
+                // 这一栏是整页最上面的一块，标题要比列表项默认的正文体量明显：
+                // 字号大两号再加一档字重，扫一眼就知道这一栏说的是云端。
+                headlineContent = {
+                    Text(
+                        stringResource(R.string.backup_cloud_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
                 // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
                 supportingContent = {
                     Text(
@@ -166,10 +177,14 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
                         val selected = preset == state.selectedPreset
                         // 选中的那个带勾并换成主色底——不这样区分的话，点完预设
                         // 用户只能从地址栏里的域名反推自己刚才点的是谁。
+                        // 预设是"填个模板"的快捷方式，字比正文小一档：它跟下面三个输入框
+                        // 是一组，和页面底部那个「立即备份」同样体量会把表单的层级顶乱。
                         FilterChip(
                             selected = selected,
                             onClick = { actions.onSelectPreset(preset) },
-                            label = { Text(preset.label) },
+                            label = {
+                                Text(preset.label, style = MaterialTheme.typography.labelMedium)
+                            },
                             leadingIcon = if (selected) {
                                 { Icon(Icons.Filled.Check, contentDescription = null) }
                             } else {
@@ -218,15 +233,25 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
                 )
+                // 两个动作等宽铺满一行：一长一短看着像没对齐的标签，而且"保存"是这一步的
+                // 落点，铺开之后它比"测试连接"更好按。层级靠描边/实心区分——两个都是实心时，
+                // 用户得读一遍字才知道该按哪个。
                 Row(
-                    Modifier.padding(top = 12.dp),
+                    Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // 保存是这一步的落点，用实心按钮；测试连接是试一下，描边就够。
-                    OutlinedButton(onClick = actions.onTestCloud, enabled = !state.loading) {
+                    OutlinedButton(
+                        onClick = actions.onTestCloud,
+                        enabled = !state.loading,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         Text(stringResource(R.string.backup_cloud_test))
                     }
-                    Button(onClick = actions.onSaveCloud, enabled = !state.loading) {
+                    Button(
+                        onClick = actions.onSaveCloud,
+                        enabled = !state.loading,
+                        modifier = Modifier.weight(1f),
+                    ) {
                         Text(stringResource(R.string.backup_cloud_save))
                     }
                 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -46,6 +47,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -192,9 +194,12 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
+                // 这一栏是整页最上面的一块，标题要比下面那些分组标题（14sp 灰字）明显：
+                // 字号大两号再加一档字重，扫一眼就知道这一栏说的是云端。
                 Text(
                     text = stringResource(R.string.backup_cloud_title),
-                    fontSize = 16.sp,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
                 Text(
@@ -236,6 +241,9 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
                         WebDavPresets.ALL.forEach { preset ->
                             // 选中的那个用主色，其余保持灰底——不这样区分的话，点完预设
                             // 用户只能从地址栏里的域名反推自己刚才点的是谁。
+                            //
+                            // 比标准按钮小一圈：它跟下面三个输入框是一组"填表"的东西，
+                            // 和页面底部那个「立即备份」同样体量会把表单的层级顶乱。
                             Button(
                                 onClick = { actions.onSelectPreset(preset) },
                                 colors = if (preset == state.selectedPreset) {
@@ -243,8 +251,11 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
                                 } else {
                                     ButtonDefaults.buttonColors()
                                 },
+                                minWidth = 0.dp,
+                                minHeight = 34.dp,
+                                insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             ) {
-                                Text(text = preset.label)
+                                Text(text = preset.label, fontSize = 13.sp)
                             }
                         }
                     }
@@ -291,15 +302,26 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
                         color = colorScheme.onSurfaceVariantSummary,
                         modifier = Modifier.padding(top = 6.dp),
                     )
-                    FlowRow(
-                        modifier = Modifier.padding(top = 12.dp),
+                    // 两个动作等宽铺满一行：一长一短看着像没对齐的标签，而且"保存"是这一步的
+                    // 落点，铺开之后它比"测试连接"更好按。测试连接是试一下，保持次一级的灰底；
+                    // 保存用主色——两个都用灰底时，用户得读一遍字才知道该按哪个。
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Button(onClick = actions.onTestCloud, enabled = !state.loading) {
+                        Button(
+                            onClick = actions.onTestCloud,
+                            modifier = Modifier.weight(1f),
+                            enabled = !state.loading,
+                        ) {
                             Text(text = stringResource(R.string.backup_cloud_test))
                         }
-                        Button(onClick = actions.onSaveCloud, enabled = !state.loading) {
+                        Button(
+                            onClick = actions.onSaveCloud,
+                            modifier = Modifier.weight(1f),
+                            enabled = !state.loading,
+                            colors = ButtonDefaults.buttonColorsPrimary(),
+                        ) {
                             Text(text = stringResource(R.string.backup_cloud_save))
                         }
                     }
