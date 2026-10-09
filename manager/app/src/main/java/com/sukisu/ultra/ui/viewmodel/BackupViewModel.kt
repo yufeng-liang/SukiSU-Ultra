@@ -76,13 +76,24 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * 点了服务商预设：填好地址，并把"去哪生成应用密码/要开什么"那句话显示出来。
+     * 展开/收起云端表单。
+     *
+     * 表单默认收起，只占一行（标题右边就是当前填的地址）；点这一行才铺开。
+     */
+    fun toggleCloud() = _uiState.update { it.copy(cloudExpanded = !it.cloudExpanded) }
+
+    /**
+     * 点了服务商预设：填好地址，把"去哪生成应用密码/要开什么"那句话显示出来，并确保表单是展开的。
      *
      * 提示不清除——用户改地址（Nextcloud 的模板带 `USERNAME`，必须改）时那句话正好是最需要的。
      */
     fun selectPreset(preset: WebDavPreset) {
         _uiState.update {
-            it.copy(cloudUrl = preset.urlTemplate, cloudPresetHintRes = preset.hintRes)
+            it.copy(
+                cloudUrl = preset.urlTemplate,
+                cloudPresetHintRes = preset.hintRes,
+                cloudExpanded = true,
+            )
         }
     }
 

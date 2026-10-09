@@ -87,6 +87,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         },
         onImport = { importLauncher.launch(arrayOf("*/*")) },
         onSetAutoBackup = viewModel::setAutoBackup,
+        onToggleCloud = viewModel::toggleCloud,
         onSelectPreset = viewModel::selectPreset,
         onUrlChange = { viewModel.editCloud(url = it) },
         onUserChange = { viewModel.editCloud(user = it) },

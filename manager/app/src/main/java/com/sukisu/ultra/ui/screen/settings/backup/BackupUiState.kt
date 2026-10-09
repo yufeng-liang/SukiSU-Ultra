@@ -27,6 +27,13 @@ data class BackupUiState(
      */
     @StringRes val cloudPresetHintRes: Int? = null,
     /**
+     * 云端表单是否展开。
+     *
+     * 默认收起：配置是一次性的事，而这块表单（说明 + 四个预设 + 三个输入框 + 两个按钮）铺开会
+     * 把列表挤到屏幕外。收起时只占一行，标题右边直接写着当前填的地址。
+     */
+    val cloudExpanded: Boolean = false,
+    /**
      * 列表为空时该说的那句话（已本地化）。
      *
      * 空列表有两种完全不同的原因——"还没有备份，点立即备份"和"本机根本没有原厂镜像可备份"——
@@ -54,6 +61,7 @@ data class BackupActions(
     val onExport: (String) -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
+    val onToggleCloud: () -> Unit,
     val onSelectPreset: (WebDavPreset) -> Unit,
     val onUrlChange: (String) -> Unit,
     val onUserChange: (String) -> Unit,
