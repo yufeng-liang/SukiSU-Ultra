@@ -115,6 +115,33 @@ class BackupEngine(
         readIndex(storage).map { entries -> entries.filter { it.kind == kind }.sortedByDescending { it.createdAt } }
 
     /**
+     * 删掉 [entries] 这几条备份。
+     *
+     * 顺序是先删文件再改索引：删不掉的文件必须留在索引里——从索引里摘掉却把文件留在盘上，
+     * 那份归档就再也没人指向它了，用户既看不到也清不掉。索引写不回去时把删掉的名字重新挂上，
+     * 否则"文件没了但索引还写着"会让列表点开就是空的。
+     */
+    suspend fun delete(storage: BackupStorage, entries: List<BackupEntry>): Result<Unit> = runCatching {
+        if (entries.isEmpty()) return@runCatching
+        withIndexLock(storage.id) {
+            val index = readIndex(storage).getOrThrow()
+            val targets = index.filter { candidate -> entries.any { it.fileName == candidate.fileName } }
+            val removed = mutableListOf<BackupEntry>()
+            targets.forEach { entry ->
+                val archive = storage.delete(entry.fileName)
+                val meta = entry.metaFileName?.let { storage.delete(it) } ?: Result.success(Unit)
+                if (archive.isSuccess && meta.isSuccess) {
+                    removed += entry
+                } else {
+                    throw (archive.exceptionOrNull() ?: meta.exceptionOrNull())!!
+                }
+            }
+            storage.writeText(ArchiveNaming.INDEX_FILE, BackupManifest.renderEntries(index - removed.toSet()))
+                .getOrThrow()
+        }
+    }
+
+    /**
      * 恢复 [entry]。
      *
      * [rollbackStorage] 是回滚点落点，默认与被恢复的项同一个后端；云端恢复必须显式传本地后端——

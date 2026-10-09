@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
@@ -36,6 +38,11 @@ object BackupDefaults {
 class BackupRepository(private val context: Context = ksuApp) {
 
     private val settings: SettingsRepository = SettingsRepositoryImpl()
+
+    private companion object {
+        /** 分享文件的落点：FileProvider 只暴露了 cache 目录，所以它必须在 cache 里。 */
+        const val SHARE_DIR = "backup-share"
+    }
 
     /** 打包、恢复、导入共用的临时区。 */
     private val workStaging = StagingArea(File(context.cacheDir, "backup-staging/work"))
@@ -161,12 +168,49 @@ class BackupRepository(private val context: Context = ksuApp) {
             engineFor(origin).restore(storageFor(origin), entry, rollbackStorage = localStorage)
         }
 
-    suspend fun exportToSaf(origin: BackupOrigin, entry: BackupEntry, uri: Uri): Result<Unit> =
+    /** 删掉这几条备份：归档、边车 meta 和索引一起清。 */
+    suspend fun delete(origin: BackupOrigin, entries: List<BackupEntry>): Result<Unit> =
+        withContext(Dispatchers.IO) { engineFor(origin).delete(storageFor(origin), entries) }
+
+    /**
+     * 把选中的条目收成一个可以分享出去的文件。
+     *
+     * 只选一条就给原样的归档：它还能被"从文件导入"吃回去，导出的东西才是可用的。多条打成一个
+     * zip——分享面板里 11 个附件用户没法处理。文件落在专门的 `share/` 目录里并且**不删**：
+     * 接收方的应用是分享面板关掉之后才去读它的；上一次分享的文件在这一次开始时清掉。
+     */
+    suspend fun packForShare(origin: BackupOrigin, entries: List<BackupEntry>): Result<File> =
         withContext(Dispatchers.IO) {
-            val sink = context.contentResolver.openOutputStream(uri, "w")
-                ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileUnreadable))
-            engineFor(origin).exportTo(storageFor(origin), entry, sink)
+            runCatching {
+                require(entries.isNotEmpty()) { "nothing selected" }
+                val dir = File(context.cacheDir, SHARE_DIR)
+                dir.listFiles().orEmpty().forEach { it.delete() }
+                dir.mkdirs()
+                val engine = engineFor(origin)
+                val storage = storageFor(origin)
+                if (entries.size == 1) {
+                    val entry = entries.single()
+                    val target = File(dir, entry.fileName.substringAfterLast('/'))
+                    target.outputStream().use { sink -> engine.exportTo(storage, entry, sink).getOrThrow() }
+                    return@runCatching target
+                }
+                val target = File(dir, shareZipName(entries))
+                ZipOutputStream(target.outputStream().buffered()).use { zip ->
+                    entries.forEach { entry ->
+                        zip.putNextEntry(ZipEntry(entry.fileName.substringAfterLast('/')))
+                        storage.get(entry.fileName).getOrThrow().use { content -> content.copyTo(zip) }
+                        zip.closeEntry()
+                    }
+                }
+                target
+            }
         }
+
+    /** zip 名字带上这一批是什么，用户存下来之后还认得出。 */
+    private fun shareZipName(entries: List<BackupEntry>): String {
+        val kind = if (entries.all { it.kind == BackupKind.BOOT }) "boot" else "modules"
+        return "SukiSU-Backup-$kind-${ArchiveNaming.timestamp(Instant.now())}.zip"
+    }
 
     /**
      * 模块安装成功后调用。未开启自动备份时返回 null。

@@ -93,14 +93,13 @@ fun BackupMaterial(
                         )
                         SegmentedListItem(
                             headlineContent = { Text(stringResource(R.string.backup_cloud_title)) },
+                            // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
                             supportingContent = {
                                 Text(
-                                    text = CloudSummary.of(
-                                        url = state.cloudUrl,
-                                        configured = state.cloudConfigured,
-                                        unset = stringResource(R.string.backup_cloud_summary_unset),
-                                    ),
-                                    maxLines = 1,
+                                    text = state.cloudUrl.ifBlank {
+                                        stringResource(R.string.backup_cloud_summary_unset)
+                                    },
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             },

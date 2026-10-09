@@ -778,4 +778,15 @@
         <item quantity="one">%1$d item</item>
         <item quantity="other">%1$d items</item>
     </plurals>
+    <string name="backup_detail_restore">Restore selected</string>
+    <string name="backup_detail_share">Export / share</string>
+    <string name="backup_detail_delete">Delete this backup</string>
+    <string name="backup_detail_select_all">Select all</string>
+    <string name="backup_restore_done">%1$d restored</string>
+    <string name="backup_restore_partial">%1$d restored · %2$d failed</string>
+    <string name="backup_restore_all_failed">none of the %1$d items could be restored</string>
+    <string name="backup_deleted">deleted %1$d items</string>
+    <string name="backup_delete_confirm_title">Delete this backup?</string>
+    <string name="backup_delete_confirm_body">Removes these %2$d items from %1$s. It cannot be undone.</string>
+    <string name="backup_share_chooser">Share backup</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -7,14 +8,15 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sukisu.ultra.BuildConfig
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.ui.LocalUiMode
@@ -31,7 +33,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     val navigator = LocalNavigator.current
     val uiMode = LocalUiMode.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var pendingExport by remember { mutableStateOf<BackupRow?>(null) }
+    val context = LocalContext.current
 
     // 两个主题各有一个宿主，消息通道只有 state.message 一条：在这里消费并清掉，
     // 否则主题各写一份（Material 弹完清、Miuix 只挂在行摘要上不清）就会漂成两种行为。
@@ -46,12 +48,21 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         viewModel.clearMessage(message)
     }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
-    ) { uri ->
-        val row = pendingExport
-        pendingExport = null
-        if (uri != null && row != null) viewModel.exportTo(uri, row)
+    // 导出走系统分享面板而不是 SAF 的"另存为"：一次备份是一整份（11 个模块打成 zip），
+    // 分享面板同时给"发给谁"和"存到文件"，SAF 只能覆盖后一半。
+    LaunchedEffect(state.pendingShare) {
+        val file = state.pendingShare ?: return@LaunchedEffect
+        val uri = FileProvider.getUriForFile(context, "${BuildConfig.APPLICATION_ID}.fileprovider", file)
+        val mime = if (file.name.endsWith(".zip", ignoreCase = true)) "application/zip" else "application/octet-stream"
+        val share = Intent(Intent.ACTION_SEND).apply {
+            putExtra(Intent.EXTRA_STREAM, uri)
+            setDataAndType(uri, mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(
+            Intent.createChooser(share, context.getString(R.string.backup_share_chooser))
+        )
+        viewModel.consumeShare()
     }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -64,6 +75,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     val confirmScope = rememberCoroutineScope()
     val bootConfirmTitle = stringResource(R.string.backup_boot_restore_confirm_title)
     val bootConfirmBody = stringResource(R.string.backup_boot_restore_confirm_body)
+    val deleteConfirmTitle = stringResource(R.string.backup_delete_confirm_title)
 
     val actions = BackupActions(
         onBack = { navigator.pop() },
@@ -72,24 +84,44 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onBackup = viewModel::backupNow,
         onOpenGroup = viewModel::openGroup,
         onCloseGroup = viewModel::closeGroup,
-        onRestore = { row ->
-            // 判断看行自己的类型，不看勾选：列表里模块和 boot 混在一起，用户点的可能不是
-            // 当前勾选的那一类。
-            if (row.kind == BackupKind.BOOT) {
+        onToggleGroupEntry = viewModel::toggleGroupEntry,
+        onSetAllGroupEntries = viewModel::setAllGroupEntries,
+        onRestoreSelected = {
+            // 选中的里面有原厂镜像就必须先问一次：恢复它等于把设备带回未 root 状态，
+            // 不可逆，而且用户未必知道自己勾上了它。
+            if (state.openGroupSelection.any { it.kind == BackupKind.BOOT }) {
                 confirmScope.launch {
                     val confirmed = confirmDialog.awaitConfirm(
                         title = bootConfirmTitle,
                         content = bootConfirmBody,
                     ) == ConfirmResult.Confirmed
-                    if (confirmed) viewModel.restore(row)
+                    if (confirmed) viewModel.restoreSelected()
                 }
             } else {
-                viewModel.restore(row)
+                viewModel.restoreSelected()
             }
         },
-        onExport = { row ->
-            pendingExport = row
-            exportLauncher.launch(row.fileName)
+        onShareSelected = viewModel::shareSelected,
+        onShareConsumed = viewModel::consumeShare,
+        onDeleteGroup = {
+            // 删的是文件，删完找不回来；而且云端那份也一起删，所以要说清动的是哪一侧。
+            val group = state.openGroup
+            if (group == null) {
+                Unit
+            } else {
+                confirmScope.launch {
+                    val originLabel = context.getString(BackupLabels.origin(group.origin))
+                    val confirmed = confirmDialog.awaitConfirm(
+                        title = deleteConfirmTitle,
+                        content = context.getString(
+                            R.string.backup_delete_confirm_body,
+                            originLabel,
+                            group.rows.size,
+                        ),
+                    ) == ConfirmResult.Confirmed
+                    if (confirmed) viewModel.deleteGroup()
+                }
+            }
         },
         onImport = { importLauncher.launch(arrayOf("*/*")) },
         onSetAutoBackup = viewModel::setAutoBackup,

@@ -1,5 +1,11 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
+import top.yukonga.miuix.kmp.icon.extended.ExpandMore
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -19,6 +25,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -113,16 +120,43 @@ fun BackupMiuix(
         ) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    // 收起时只占一行，标题右边就是当前填的地址——配置是一次性的事，
+                    // 收起时只占一行多一点，标题右边就是当前填的地址——配置是一次性的事，
                     // 铺开那块表单（说明 + 预设 + 三个输入框 + 两个按钮）会把列表挤到屏幕外。
-                    ArrowPreference(
-                        title = stringResource(R.string.backup_cloud_title),
-                        summary = CloudSummary.of(
-                            url = state.cloudUrl,
-                            configured = state.cloudConfigured,
-                            unset = stringResource(R.string.backup_cloud_summary_unset),
-                        ),
-                        onClick = actions.onToggleCloud,
+                    //
+                    // 这里不用 ArrowPreference：它自带的是朝右的箭头，而这一行是"展开/收起"，
+                    // 箭头必须朝下、展开后翻过来。
+                    val rotation by animateFloatAsState(
+                        targetValue = if (state.cloudExpanded) 180f else 0f,
+                        label = "cloudArrow",
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = actions.onToggleCloud)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.backup_cloud_title),
+                            fontSize = 16.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = MiuixIcons.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                        )
+                    }
+                    // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
+                    Text(
+                        text = state.cloudUrl.ifBlank {
+                            stringResource(R.string.backup_cloud_summary_unset)
+                        },
+                        fontSize = 13.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                     )
                     if (state.cloudExpanded) {
                         // 一条分隔线把"标题行"和"表单"分开：没有它，第一句说明紧贴着标题，

@@ -760,4 +760,15 @@
     <plurals name="backup_group_items">
         <item quantity="other">%1$d 项</item>
     </plurals>
+    <string name="backup_detail_restore">恢复勾选</string>
+    <string name="backup_detail_share">导出/分享</string>
+    <string name="backup_detail_delete">删除这次备份</string>
+    <string name="backup_detail_select_all">全选</string>
+    <string name="backup_restore_done">已恢复 %1$d 项</string>
+    <string name="backup_restore_partial">已恢复 %1$d 项 · %2$d 项失败</string>
+    <string name="backup_restore_all_failed">%1$d 项都没恢复成功</string>
+    <string name="backup_deleted">已删除 %1$d 项备份</string>
+    <string name="backup_delete_confirm_title">删除这次备份？</string>
+    <string name="backup_delete_confirm_body">会从%1$s删掉这 %2$d 项，删掉之后找不回来。</string>
+    <string name="backup_share_chooser">分享备份</string>
 </resources>

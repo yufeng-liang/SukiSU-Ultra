@@ -14,6 +14,7 @@ private class FakeStorage(
     override val id: String,
     private val failWrites: Boolean = false,
     private val failIndexRead: Boolean = false,
+    private val failDeletes: Boolean = false,
 ) : BackupStorage {
     val files = mutableMapOf<String, ByteArray>()
 
@@ -29,8 +30,11 @@ private class FakeStorage(
         ?.let { Result.success(ByteArrayInputStream(it) as InputStream) }
         ?: Result.failure(NoSuchElementException(relativePath))
 
-    override suspend fun delete(relativePath: String) =
-        Result.success(Unit).also { files.remove(relativePath) }
+    override suspend fun delete(relativePath: String): Result<Unit> {
+        if (failDeletes) return Result.failure(IllegalStateException("$id is read-only"))
+        files.remove(relativePath)
+        return Result.success(Unit)
+    }
 
     /** 与真实后端一致：文件不存在等于空文本，读不到才是失败。 */
     override suspend fun readText(relativePath: String): Result<String> {
@@ -126,6 +130,43 @@ class BackupEngineTest {
             assertEquals(listOf("module_a_1_20261008_120000.zip"), result.written)
             assertTrue(storage.files.containsKey("module_a_1_20261008_120000.zip"))
             assertTrue(storage.files.containsKey("module_a_1_20261008_120000.zip.meta.json"))
+            assertEquals(
+                listOf("a"),
+                BackupManifest.parseEntries(storage.files.getValue("index.json").decodeToString()).map { it.entryId }
+            )
+        }
+    }
+
+    @Test
+    fun `delete removes the archive, its meta and the index entry`() {
+        runBlocking {
+            val storage = FakeStorage("local")
+            val engine = engine(listOf(storage), moduleSource(artifact("a", "sha-a"), artifact("b", "sha-b")))
+            engine.backup(BackupKind.MODULE)
+            val listed = engine.list(storage, BackupKind.MODULE).getOrThrow()
+            val doomed = listed.first { it.entryId == "a" }
+
+            engine.delete(storage, listOf(doomed)).getOrThrow()
+
+            assertFalse(storage.files.containsKey(doomed.fileName))
+            assertFalse(storage.files.containsKey(doomed.metaFileName!!))
+            assertEquals(
+                listOf("b"),
+                BackupManifest.parseEntries(storage.files.getValue("index.json").decodeToString()).map { it.entryId }
+            )
+        }
+    }
+
+    /** 删不掉的文件必须留在索引里，否则那份归档再也没人指向它，用户既看不到也清不掉。 */
+    @Test
+    fun `a failed delete leaves both the file and its index entry in place`() {
+        runBlocking {
+            val storage = FakeStorage("local", failDeletes = true)
+            val engine = engine(listOf(storage), moduleSource(artifact("a", "sha-a")))
+            engine.backup(BackupKind.MODULE)
+            val doomed = engine.list(storage, BackupKind.MODULE).getOrThrow().single()
+
+            assertTrue(engine.delete(storage, listOf(doomed)).isFailure)
             assertEquals(
                 listOf("a"),
                 BackupManifest.parseEntries(storage.files.getValue("index.json").decodeToString()).map { it.entryId }

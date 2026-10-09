@@ -9,6 +9,7 @@ import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.model.Module
+import java.io.File
 
 @Immutable
 data class BackupUiState(
@@ -38,6 +39,20 @@ data class BackupUiState(
      * 列表"这种分叉。系统返回键由界面拦一次（见 BackupScreen）。
      */
     val openGroupId: String? = null,
+    /**
+     * 详情页里勾选的条目（行 id）。
+     *
+     * 打开一组时默认全勾：进来多半就是"把这一份恢复回去"或"整份导出"，让人从零开始勾一次
+     * 是多余的一步。取消勾选是给"只要其中几个模块"那种情况用的。
+     */
+    val openGroupSelected: Set<String> = emptySet(),
+    /**
+     * 已经打包好、等着交给分享面板的文件。
+     *
+     * 状态里带一个文件是因为界面要拿它拼 Intent：消息通道只有一条字符串，塞不下文件。
+     * 界面交出去之后调 [BackupActions.onShareConsumed] 清掉。
+     */
+    val pendingShare: File? = null,
     val message: String? = null,
     /** 输入框里的地址（可能是还没保存的编辑）。 */
     val cloudUrl: String = "",
@@ -122,6 +137,17 @@ data class BackupUiState(
 
     /** 正打开着的那一组；刷新后这一组没了（被保留策略淘汰）就退回列表。 */
     val openGroup: BackupGroup? get() = groups.firstOrNull { it.id == openGroupId }
+
+    /** 详情页里勾中的那些条目。 */
+    val openGroupSelection: List<BackupRow>
+        get() = openGroup?.rows.orEmpty().filter { it.id in openGroupSelected }
+
+    /** 详情页里的"全选"是否处于选中态。 */
+    val allGroupEntriesSelected: Boolean
+        get() {
+            val rows = openGroup?.rows.orEmpty()
+            return rows.isNotEmpty() && openGroupSelected.size == rows.size
+        }
 }
 
 @Immutable
@@ -140,8 +166,17 @@ data class BackupActions(
     /** 点开一次备份看详情。**不在这里恢复任何东西**——列表行点一下就恢复等于给误触点了个火。 */
     val onOpenGroup: (BackupGroup) -> Unit,
     val onCloseGroup: () -> Unit,
-    val onRestore: (BackupRow) -> Unit,
-    val onExport: (BackupRow) -> Unit,
+    /** 详情页：勾选/取消一个条目。 */
+    val onToggleGroupEntry: (String) -> Unit,
+    val onSetAllGroupEntries: (Boolean) -> Unit,
+    /** 恢复勾中的那些条目。boot 的那次二次确认由界面在调它之前问。 */
+    val onRestoreSelected: () -> Unit,
+    /** 导出/分享勾中的那些条目（一条给原样归档，多条打成一个 zip）。 */
+    val onShareSelected: () -> Unit,
+    /** 删掉这一整组备份。界面先问一次。 */
+    val onDeleteGroup: () -> Unit,
+    /** 分享文件已经交给系统了。 */
+    val onShareConsumed: () -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
     val onToggleCloud: () -> Unit,

@@ -270,9 +270,122 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 这一步只切视图，不碰任何后端：**恢复只由详情页里的按钮触发**。以前列表行点一下就是恢复，
      * 在 root 工具里误触一次就等于把设备拉回上一个状态。
      */
-    fun openGroup(group: BackupGroup) = _uiState.update { it.copy(openGroupId = group.id) }
+    fun openGroup(group: BackupGroup) = _uiState.update {
+        // 默认全勾：进来多半就是"整份恢复"或"整份导出"，让人从零开始勾一次是多余的一步。
+        it.copy(openGroupId = group.id, openGroupSelected = group.rows.mapTo(mutableSetOf()) { row -> row.id })
+    }
 
-    fun closeGroup() = _uiState.update { it.copy(openGroupId = null) }
+    fun closeGroup() = _uiState.update { it.copy(openGroupId = null, openGroupSelected = emptySet()) }
+
+    fun toggleGroupEntry(rowId: String) = _uiState.update { state ->
+        state.copy(
+            openGroupSelected = if (rowId in state.openGroupSelected) {
+                state.openGroupSelected - rowId
+            } else {
+                state.openGroupSelected + rowId
+            },
+        )
+    }
+
+    fun setAllGroupEntries(selected: Boolean) = _uiState.update { state ->
+        state.copy(
+            openGroupSelected = if (selected) {
+                state.openGroup?.rows.orEmpty().mapTo(mutableSetOf()) { it.id }
+            } else {
+                emptySet()
+            },
+        )
+    }
+
+    /**
+     * 恢复勾中的那些条目。
+     *
+     * 一条一条来、逐个记结果：中途失败不能把已经恢复成功的那几条说成没恢复，也不能因为第一条
+     * 失败就放弃后面几条——用户勾了 5 个，最坏情况是"3 个好了、2 个没好"，那就照实说。
+     */
+    fun restoreSelected() = viewModelScope.launch {
+        val selected = _uiState.value.openGroupSelection
+        if (selected.isEmpty()) return@launch
+        _uiState.update { it.copy(loading = true, message = null) }
+        var restored = 0
+        val failures = mutableListOf<String>()
+        selected.forEach { row ->
+            val entry = entryOf(row) ?: return@forEach
+            repository.restore(row.origin, entry).fold(
+                onSuccess = { outcome ->
+                    if (outcome.success) {
+                        restored++
+                    } else {
+                        failures += BackupText.restoreFailure(context(), outcome.reason)
+                    }
+                },
+                onFailure = { error -> failures += describe(error) },
+            )
+        }
+        _uiState.update {
+            it.copy(
+                loading = false,
+                message = (listOf(restoreCountMessage(restored, failures.size)) + failures.distinct())
+                    .joinToString(BackupListFormatter.SEPARATOR),
+            )
+        }
+        // 恢复会在本地落一个回滚点，列表要跟着更新（它自成一堆）。
+        refresh()
+    }
+
+    private fun restoreCountMessage(restored: Int, failed: Int): String = when {
+        failed == 0 -> string(R.string.backup_restore_done, restored)
+        restored == 0 -> string(R.string.backup_restore_all_failed, failed)
+        else -> string(R.string.backup_restore_partial, restored, failed)
+    }
+
+    /**
+     * 导出/分享勾中的那些条目。
+     *
+     * 打包交给数据层，这里只把文件放进状态：界面拿它拼 Intent（消息通道只有一条字符串）。
+     */
+    fun shareSelected() = viewModelScope.launch {
+        val group = _uiState.value.openGroup ?: return@launch
+        val selected = _uiState.value.openGroupSelection
+        if (selected.isEmpty()) return@launch
+        _uiState.update { it.copy(loading = true, message = null) }
+        val entries = selected.mapNotNull { entryOf(it) }
+        val result = repository.packForShare(group.origin, entries)
+        _uiState.update {
+            it.copy(
+                loading = false,
+                pendingShare = result.getOrNull(),
+                message = result.exceptionOrNull()?.let { error -> describe(error) },
+            )
+        }
+    }
+
+    fun consumeShare() = _uiState.update { it.copy(pendingShare = null) }
+
+    /** 删掉这一整组备份。删完退回列表：留在详情页看一个已经不存在的东西没有意义。 */
+    fun deleteGroup() = viewModelScope.launch {
+        val group = _uiState.value.openGroup ?: return@launch
+        val entries = group.rows.mapNotNull { entryOf(it) }
+        _uiState.update { it.copy(loading = true, message = null) }
+        val result = repository.delete(group.origin, entries)
+        _uiState.update {
+            it.copy(
+                loading = false,
+                openGroupId = if (result.isSuccess) null else it.openGroupId,
+                openGroupSelected = if (result.isSuccess) emptySet() else it.openGroupSelected,
+                message = result.fold(
+                    onSuccess = { string(R.string.backup_deleted, entries.size) },
+                    onFailure = { error -> describe(error) },
+                ),
+            )
+        }
+        refresh()
+    }
+
+    /** 行 → 索引里的条目。用行自己的来源：两侧合起来列之后，只看文件名会恢复错那一侧。 */
+    private fun entryOf(row: BackupRow): BackupEntry? = entries
+        .firstOrNull { it.origin == row.origin && it.entry.fileName == row.fileName }
+        ?.entry
 
     /**
      * 按勾选组合备份：位置 × 内容 每种组合各写一份。
@@ -303,42 +416,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
         _uiState.update { it.copy(loading = false, message = backupMessage(results)) }
         refresh()
-    }
-
-    fun restore(row: BackupRow) = viewModelScope.launch {
-        // 用行自己的来源：两侧合起来列之后，只看文件名会恢复错那一侧。
-        val entry = entries
-            .firstOrNull { it.origin == row.origin && it.entry.fileName == row.fileName }
-            ?.entry ?: return@launch
-        _uiState.update { it.copy(loading = true, message = null) }
-        val outcome = repository.restore(row.origin, entry)
-        _uiState.update {
-            it.copy(
-                loading = false,
-                message = outcome.fold(
-                    onSuccess = { value -> outcomeMessage(value, entry) },
-                    onFailure = { error -> describe(error) },
-                ),
-            )
-        }
-        refresh()
-    }
-
-    fun exportTo(uri: Uri, row: BackupRow) = viewModelScope.launch {
-        val entry = entries
-            .firstOrNull { it.origin == row.origin && it.entry.fileName == row.fileName }
-            ?.entry ?: return@launch
-        _uiState.update { it.copy(loading = true, message = null) }
-        val result = repository.exportToSaf(row.origin, entry, uri)
-        _uiState.update {
-            it.copy(
-                loading = false,
-                message = result.fold(
-                    onSuccess = { string(R.string.backup_exported, entry.entryId) },
-                    onFailure = { error -> describe(error) },
-                ),
-            )
-        }
     }
 
     /**
