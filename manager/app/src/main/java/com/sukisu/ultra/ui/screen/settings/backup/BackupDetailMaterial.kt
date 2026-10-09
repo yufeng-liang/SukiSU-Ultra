@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -128,6 +127,8 @@ fun BackupDetailMaterial(
                     }
                 }
             }
+            // 全选和条目放在同一张卡里（和主列表的模块勾选一样）：一条一张卡在 11 条时
+            // 就是一堵卡片墙，而它们本来就是同一份备份里的东西。
             item {
                 SegmentedColumn {
                     item {
@@ -138,17 +139,15 @@ fun BackupDetailMaterial(
                             onCheckedChange = actions.onSetAllGroupEntries,
                         )
                     }
-                }
-            }
-            items(group.rows, key = { it.id }) { row ->
-                SegmentedColumn {
-                    item {
-                        SegmentedCheckboxItem(
-                            title = entryTitle(row, group),
-                            summary = row.subtitle.takeIf { it.isNotBlank() },
-                            checked = row.id in state.openGroupSelected,
-                            onCheckedChange = { actions.onToggleGroupEntry(row.id) },
-                        )
+                    group.rows.forEach { row ->
+                        item {
+                            SegmentedCheckboxItem(
+                                title = entryTitle(row, group),
+                                summary = row.subtitle.takeIf { it.isNotBlank() },
+                                checked = row.id in state.openGroupSelected,
+                                onCheckedChange = { actions.onToggleGroupEntry(row.id) },
+                            )
+                        }
                     }
                 }
             }

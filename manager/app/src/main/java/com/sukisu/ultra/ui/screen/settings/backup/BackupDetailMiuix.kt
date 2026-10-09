@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -163,6 +162,8 @@ fun BackupDetailMiuix(
                     }
                 }
             }
+            // 全选和条目放在同一张卡里（和主列表的模块勾选一样）：一条一张卡在 11 条时
+            // 就是一堵卡片墙，而它们本来就是同一份备份里的东西。
             item {
                 Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
                     CheckboxPreference(
@@ -171,16 +172,14 @@ fun BackupDetailMiuix(
                         checked = state.allGroupEntriesSelected,
                         onCheckedChange = actions.onSetAllGroupEntries,
                     )
-                }
-            }
-            items(group.rows, key = { it.id }) { row ->
-                Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-                    CheckboxPreference(
-                        title = entryTitle(row, group),
-                        summary = row.subtitle.takeIf { it.isNotBlank() },
-                        checked = row.id in state.openGroupSelected,
-                        onCheckedChange = { actions.onToggleGroupEntry(row.id) },
-                    )
+                    group.rows.forEach { row ->
+                        CheckboxPreference(
+                            title = entryTitle(row, group),
+                            summary = row.subtitle.takeIf { it.isNotBlank() },
+                            checked = row.id in state.openGroupSelected,
+                            onCheckedChange = { actions.onToggleGroupEntry(row.id) },
+                        )
+                    }
                 }
             }
             // 和主列表一样：滚到底不能贴着屏幕边缘，最后一行会被手势条压掉。
