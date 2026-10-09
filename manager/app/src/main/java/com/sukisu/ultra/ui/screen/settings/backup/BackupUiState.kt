@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import com.sukisu.ultra.data.backup.AutoBackupRecord
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
+import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.model.Module
@@ -12,11 +13,26 @@ import com.sukisu.ultra.data.model.Module
 @Immutable
 data class BackupUiState(
     val loading: Boolean = false,
-    val origin: BackupOrigin = BackupOrigin.LOCAL,
-    val kind: BackupKind = BackupKind.MODULE,
+    /**
+     * 勾选的来源（本机 / 云端）。
+     *
+     * 可以同时勾上：一次「立即备份」就写两份，列表也把两侧合起来列。默认只勾本机——云端
+     * 没配好之前它本来也选不了。
+     */
+    val origins: Set<BackupOrigin> = setOf(BackupOrigin.LOCAL),
+    /** 勾选的内容（模块 / 原厂 boot 镜像）。同样可以同时勾上。 */
+    val kinds: Set<BackupKind> = setOf(BackupKind.MODULE),
     val rows: List<BackupRow> = emptyList(),
     val message: String? = null,
+    /** 输入框里的地址（可能是还没保存的编辑）。 */
     val cloudUrl: String = "",
+    /**
+     * 已经保存生效的地址。
+     *
+     * 和 [cloudUrl] 分开：列表是从已保存的配置读的，"备份存在哪"这句话必须说已保存的那个，
+     * 否则用户改完地址没保存就会看到一句谎话。
+     */
+    val cloudSavedUrl: String = "",
     val cloudUser: String = "",
     val cloudPass: String = "",
     val cloudConfigured: Boolean = false,
@@ -58,7 +74,7 @@ data class BackupUiState(
     /**
      * 列表为空时该说的那句话（已本地化）。
      *
-     * 空列表有两种完全不同的原因——"还没有备份，点立即备份"和"本机根本没有原厂镜像可备份"——
+     * 空列表的原因不止一种——"还没有备份，点立即备份"和"本机根本没有原厂镜像可备份"完全是两件事——
      * 界面上什么都不显示的话，用户会以为功能坏了。
      */
     val emptyText: String? = null,
@@ -75,21 +91,36 @@ data class BackupUiState(
     /**
      * 现在按「立即备份」有没有意义。
      *
-     * 模块一个都没勾时按下去只会得到"写入 0 项"——那不是结果，是用户还没勾完。boot 没有可挑的，
-     * 列表读不出来时也不能拦（那是一次读失败，不是用户的选择）。
+     * 模块一个都没勾时按下去只会得到"写入 0 项"——那不是结果，是用户还没勾完。位置和内容都
+     * 空着同理。列表读不出来时不能拦（那是一次读失败，不是用户的选择）。
      */
     val canBackUp: Boolean
-        get() = kind != BackupKind.MODULE || modulesUnavailable || selectedModuleIds.isNotEmpty()
+        get() = origins.isNotEmpty() &&
+            kinds.isNotEmpty() &&
+            (BackupKind.MODULE !in kinds || modulesUnavailable || selectedModuleIds.isNotEmpty())
+
+    /** 两侧都勾上时列表里每行要标出它在哪一侧；只勾一侧时标了也没信息量。 */
+    val showsOriginBadge: Boolean get() = origins.size > 1
+
+    /** 稳定的展示顺序（本机在前），集合本身没有顺序。 */
+    val orderedOrigins: List<BackupOrigin> get() = origins.sortedBy { it.ordinal }
 }
+
+@Immutable
+data class BackupTargetResult(
+    val origin: BackupOrigin,
+    val kind: BackupKind,
+    val result: BackupRunResult,
+)
 
 @Immutable
 data class BackupActions(
     val onBack: () -> Unit,
-    val onSelectOrigin: (BackupOrigin) -> Unit,
-    val onSelectKind: (BackupKind) -> Unit,
+    val onToggleOrigin: (BackupOrigin) -> Unit,
+    val onToggleKind: (BackupKind) -> Unit,
     val onBackup: () -> Unit,
-    val onRestore: (String) -> Unit,
-    val onExport: (String) -> Unit,
+    val onRestore: (BackupRow) -> Unit,
+    val onExport: (BackupRow) -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
     val onToggleCloud: () -> Unit,

@@ -118,12 +118,18 @@ object BackupText {
      *
      * 失败行按文本去重：凭据被拒时每一个文件都会给出同一句话，重复五遍会把 snackbar
      * 变成一堵墙，而用户需要的信息只有一句。具体哪几个文件失败了在备份列表里能看到。
+     *
+     * [location] 是这次写进去的位置（短形式）。只在**真的写进去了**的时候才说：整次失败时
+     * 一句"存到 X"会让人以为文件在那儿，而那里什么都没有。
      */
-    fun summary(context: Context, result: BackupRunResult): String {
+    fun summary(context: Context, result: BackupRunResult, location: String? = null): String {
         val parts = mutableListOf(
             context.getString(R.string.backup_summary_written, result.written.size),
             context.getString(R.string.backup_summary_skipped, result.skipped.size),
         )
+        if (location != null && result.written.isNotEmpty()) {
+            parts += context.getString(R.string.backup_saved_to, location)
+        }
         result.failures.map { failure(context, it) }.distinct().forEach { parts += it }
         return parts.joinToString(BackupListFormatter.SEPARATOR)
     }

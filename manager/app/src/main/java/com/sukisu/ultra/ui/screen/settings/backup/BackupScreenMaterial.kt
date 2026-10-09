@@ -50,7 +50,6 @@ import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.ui.component.material.SegmentedCheckboxItem
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
-import com.sukisu.ultra.ui.component.material.SegmentedRadioItem
 import com.sukisu.ultra.ui.component.material.SegmentedSwitchItem
 import com.sukisu.ultra.ui.util.BackupText
 
@@ -204,27 +203,36 @@ fun BackupMaterial(
                     GroupTitle(stringResource(R.string.backup_origin_group))
                     SegmentedColumn {
                         item {
-                            SegmentedRadioItem(
+                            SegmentedCheckboxItem(
                                 title = stringResource(R.string.backup_origin_local),
-                                selected = state.origin == BackupOrigin.LOCAL,
-                                onClick = { actions.onSelectOrigin(BackupOrigin.LOCAL) },
+                                checked = BackupOrigin.LOCAL in state.origins,
+                                onCheckedChange = { actions.onToggleOrigin(BackupOrigin.LOCAL) },
                             )
                         }
                         item {
                             // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜；把原因
                             // 挂在它自己的副标题上，就不用再单独占一行小字。
-                            SegmentedRadioItem(
+                            SegmentedCheckboxItem(
                                 title = stringResource(R.string.backup_origin_cloud),
                                 summary = if (state.cloudConfigured) {
                                     null
                                 } else {
                                     stringResource(R.string.backup_cloud_chip_locked)
                                 },
-                                selected = state.origin == BackupOrigin.CLOUD,
+                                checked = BackupOrigin.CLOUD in state.origins,
                                 enabled = state.cloudConfigured,
-                                onClick = { actions.onSelectOrigin(BackupOrigin.CLOUD) },
+                                onCheckedChange = { actions.onToggleOrigin(BackupOrigin.CLOUD) },
                             )
                         }
+                    }
+                    // 两个都勾上才出现：一次备份会写两份，这件事不说出来就像个 bug。
+                    if (state.showsOriginBadge) {
+                        Text(
+                            text = stringResource(R.string.backup_origin_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+                        )
                     }
                 }
             }
@@ -235,29 +243,29 @@ fun BackupMaterial(
                         item {
                             // 模块这一行直接写数量：不写的话，"选模块"那一步看不出到底有几个模块。
                             // 读不到列表、或一个模块都没装时，这里就是唯一能说明白的地方。
-                            SegmentedRadioItem(
+                            SegmentedCheckboxItem(
                                 title = stringResource(R.string.backup_kind_module),
                                 summary = when {
                                     state.modulesUnavailable -> stringResource(R.string.backup_module_unavailable)
                                     state.modules.isEmpty() -> stringResource(R.string.backup_module_none)
                                     else -> pluralStringResource(R.plurals.backup_module_count, state.modules.size, state.modules.size)
                                 },
-                                selected = state.kind == BackupKind.MODULE,
-                                onClick = { actions.onSelectKind(BackupKind.MODULE) },
+                                checked = BackupKind.MODULE in state.kinds,
+                                onCheckedChange = { actions.onToggleKind(BackupKind.MODULE) },
                             )
                         }
                         item {
                             // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
                             // 状态。这句话常显而不是选中才出现：选中时冒出来会把下面的东西整体推下去。
-                            SegmentedRadioItem(
+                            SegmentedCheckboxItem(
                                 title = stringResource(R.string.backup_kind_boot),
                                 summary = stringResource(R.string.backup_boot_explain),
-                                selected = state.kind == BackupKind.BOOT,
-                                onClick = { actions.onSelectKind(BackupKind.BOOT) },
+                                checked = BackupKind.BOOT in state.kinds,
+                                onCheckedChange = { actions.onToggleKind(BackupKind.BOOT) },
                             )
                         }
                         // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
-                        if (state.kind == BackupKind.MODULE && state.modules.isNotEmpty()) {
+                        if (BackupKind.MODULE in state.kinds && state.modules.isNotEmpty()) {
                             item { ModulePickerHeaderMaterial(state = state, actions = actions) }
                             item(visible = state.modulesExpanded) {
                                 ModulePickerListMaterial(state = state, actions = actions)
@@ -285,6 +293,11 @@ fun BackupMaterial(
                     }
                 }
             }
+            // 备份到底存在哪：snackbar 几秒就没了，而"文件在哪"是过几天才会想起来问的问题，
+            // 所以它得一直挂在这儿。两边都勾上时两行都写。
+            items(state.orderedOrigins, key = { "location-${it.name}" }) { origin ->
+                LocationLineMaterial(origin = origin, cloudUrl = state.cloudSavedUrl)
+            }
             if (state.loading) {
                 item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             }
@@ -300,7 +313,7 @@ fun BackupMaterial(
             }
             items(state.rows, key = { it.id }) { row ->
                 SegmentedListItem(
-                    onClick = { actions.onRestore(row.fileName) },
+                    onClick = { actions.onRestore(row) },
                     enabled = !state.loading,
                     headlineContent = {
                         Row(
@@ -317,15 +330,24 @@ fun BackupMaterial(
                             }
                         }
                     },
-                    supportingContent = { Text(row.subtitle) },
+                    // 两侧合起来列时，同名的一条在本地和云端各有一份；不标出来就分不清点的是哪一份。
+                    supportingContent = {
+                        Text(
+                            if (state.showsOriginBadge) {
+                                listOf(row.originLabel, row.subtitle).joinToString(BackupListFormatter.SEPARATOR)
+                            } else {
+                                row.subtitle
+                            },
+                        )
+                    },
                     trailingContent = {
                         Row {
                             // 恢复/导出也要挡住并发：两次操作的结果都写同一个 message，
                             // 谁后落地谁覆盖，用户可能永远看不到先失败的那一次。
-                            TextButton(onClick = { actions.onRestore(row.fileName) }, enabled = !state.loading) {
+                            TextButton(onClick = { actions.onRestore(row) }, enabled = !state.loading) {
                                 Text(stringResource(R.string.backup_restore))
                             }
-                            TextButton(onClick = { actions.onExport(row.fileName) }, enabled = !state.loading) {
+                            TextButton(onClick = { actions.onExport(row) }, enabled = !state.loading) {
                                 Text(stringResource(R.string.backup_export))
                             }
                         }
@@ -356,6 +378,27 @@ fun BackupMaterial(
             }
         }
     }
+}
+
+/**
+ * 「备份存在哪」那一行。
+ *
+ * snackbar 几秒就没了，而"文件在哪"是过几天才会想起来问的问题，所以它常驻在按钮下面。
+ * 地址还没填的云端不显示——写一行空的地址等于什么都没说。
+ */
+@Composable
+private fun LocationLineMaterial(origin: BackupOrigin, cloudUrl: String) {
+    val location = BackupLocation.full(origin, cloudUrl)
+    if (location.isBlank()) return
+    Text(
+        text = stringResource(
+            if (origin == BackupOrigin.CLOUD) R.string.backup_location_cloud else R.string.backup_location_local,
+            location,
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
+    )
 }
 
 /** 一组选项上方的小标题，样式与 [SegmentedColumn] 自带的分组标题一致。 */

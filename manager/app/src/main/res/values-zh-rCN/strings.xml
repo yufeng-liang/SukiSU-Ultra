@@ -684,6 +684,13 @@
     <string name="backup_module_select_all">全选</string>
     <string name="backup_module_none">没有已安装的模块。</string>
     <string name="backup_module_unavailable">读不到模块列表，将备份全部模块。</string>
+    <string name="backup_saved_to">存到 %1$s</string>
+    <string name="backup_location_local">本机备份存在 %1$s</string>
+    <string name="backup_location_cloud">云端备份存在 %1$s</string>
+    <string name="backup_target_line">%1$s %2$s：%3$s</string>
+    <string name="backup_pick_a_target">请至少勾选一个位置和一种内容。</string>
+    <string name="backup_empty_mixed">勾选的位置还没有备份。点「立即备份」写一份进去。</string>
+    <string name="backup_origin_hint">两边都勾上时，一次备份会写两份。</string>
     <string name="backup_origin_local">本地</string>
     <string name="backup_origin_cloud">云端</string>
     <string name="backup_cloud_required">请先在上面配置 WebDAV 服务器并保存。</string>

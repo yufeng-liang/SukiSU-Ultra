@@ -5,12 +5,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.captionBar
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
@@ -215,8 +220,8 @@ fun BackupMiuix(
                     Card(modifier = Modifier.fillMaxWidth()) {
                         CheckboxPreference(
                             title = stringResource(R.string.backup_origin_local),
-                            checked = state.origin == BackupOrigin.LOCAL,
-                            onCheckedChange = { actions.onSelectOrigin(BackupOrigin.LOCAL) },
+                            checked = BackupOrigin.LOCAL in state.origins,
+                            onCheckedChange = { actions.onToggleOrigin(BackupOrigin.LOCAL) },
                         )
                         // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜；把原因
                         // 挂在它自己的副标题上，就不用再单独占一行小字。
@@ -227,9 +232,18 @@ fun BackupMiuix(
                             } else {
                                 stringResource(R.string.backup_cloud_chip_locked)
                             },
-                            checked = state.origin == BackupOrigin.CLOUD,
+                            checked = BackupOrigin.CLOUD in state.origins,
                             enabled = state.cloudConfigured,
-                            onCheckedChange = { actions.onSelectOrigin(BackupOrigin.CLOUD) },
+                            onCheckedChange = { actions.onToggleOrigin(BackupOrigin.CLOUD) },
+                        )
+                    }
+                    // 两个都勾上才出现：一次备份会写两份，这件事不说出来就像个 bug。
+                    if (state.showsOriginBadge) {
+                        Text(
+                            text = stringResource(R.string.backup_origin_hint),
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(start = 16.dp, top = 8.dp),
                         )
                     }
                 }
@@ -247,19 +261,19 @@ fun BackupMiuix(
                                 state.modules.isEmpty() -> stringResource(R.string.backup_module_none)
                                 else -> pluralStringResource(R.plurals.backup_module_count, state.modules.size, state.modules.size)
                             },
-                            checked = state.kind == BackupKind.MODULE,
-                            onCheckedChange = { actions.onSelectKind(BackupKind.MODULE) },
+                            checked = BackupKind.MODULE in state.kinds,
+                            onCheckedChange = { actions.onToggleKind(BackupKind.MODULE) },
                         )
                         // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
                         // 状态。这句话常显而不是选中才出现：选中时冒出来会把下面的东西整体推下去。
                         CheckboxPreference(
                             title = stringResource(R.string.backup_kind_boot),
                             summary = stringResource(R.string.backup_boot_explain),
-                            checked = state.kind == BackupKind.BOOT,
-                            onCheckedChange = { actions.onSelectKind(BackupKind.BOOT) },
+                            checked = BackupKind.BOOT in state.kinds,
+                            onCheckedChange = { actions.onToggleKind(BackupKind.BOOT) },
                         )
                         // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
-                        if (state.kind == BackupKind.MODULE && state.modules.isNotEmpty()) {
+                        if (BackupKind.MODULE in state.kinds && state.modules.isNotEmpty()) {
                             ModulePickerMiuix(state = state, actions = actions)
                         }
                     }
@@ -286,6 +300,11 @@ fun BackupMiuix(
                     )
                 }
             }
+            // 备份到底存在哪：snackbar 几秒就没了，而"文件在哪"是过几天才会想起来问的问题，
+            // 所以它得一直挂在这儿。两边都勾上时两行都写。
+            items(state.orderedOrigins, key = { "location-${it.name}" }) { origin ->
+                LocationLineMiuix(origin = origin, cloudUrl = state.cloudSavedUrl)
+            }
             // 空列表必须给一句话：什么都不显示的话，用户分不清"没有备份"和"这一页坏了"。
             state.emptyText?.let { empty ->
                 item {
@@ -305,18 +324,24 @@ fun BackupMiuix(
                 } else {
                     row.title
                 }
+                // 两侧合起来列时，同名的一条在本地和云端各有一份；不标出来就分不清点的是哪一份。
+                val summary = if (state.showsOriginBadge) {
+                    listOf(row.originLabel, row.subtitle).joinToString(BackupListFormatter.SEPARATOR)
+                } else {
+                    row.subtitle
+                }
                 Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
                     ArrowPreference(
                         title = title,
-                        summary = row.subtitle,
+                        summary = summary,
                         enabled = !state.loading,
-                        onClick = { actions.onRestore(row.fileName) },
+                        onClick = { actions.onRestore(row) },
                     )
                     ArrowPreference(
                         title = stringResource(R.string.backup_export),
                         summary = title,
                         enabled = !state.loading,
-                        onClick = { actions.onExport(row.fileName) },
+                        onClick = { actions.onExport(row) },
                     )
                 }
             }
@@ -342,8 +367,41 @@ fun BackupMiuix(
                     )
                 }
             }
+            // 这一页的 contentWindowInsets 只要了水平方向（顶栏自己吃状态栏），所以底部 inset
+            // 不在 innerPadding 里。不自己留出这段高度，滚到底时最后一行就贴在屏幕边缘、
+            // 被手势条压掉一半。
+            item {
+                Spacer(
+                    Modifier.height(
+                        12.dp +
+                            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+                            WindowInsets.captionBar.asPaddingValues().calculateBottomPadding()
+                    )
+                )
+            }
         }
     }
+}
+
+/**
+ * 「备份存在哪」那一行。
+ *
+ * 完整路径/地址照原样给出来，不省略：用户是照着它去文件管理器或 NAS 上找文件的，
+ * 中间截掉一段就等于没给。
+ */
+@Composable
+private fun LocationLineMiuix(origin: BackupOrigin, cloudUrl: String) {
+    val location = BackupLocation.full(origin, cloudUrl)
+    if (location.isBlank()) return
+    Text(
+        text = stringResource(
+            if (origin == BackupOrigin.CLOUD) R.string.backup_location_cloud else R.string.backup_location_local,
+            location,
+        ),
+        fontSize = 12.sp,
+        color = colorScheme.onSurfaceVariantSummary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+    )
 }
 
 /**

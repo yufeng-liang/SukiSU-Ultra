@@ -29,7 +29,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     val navigator = LocalNavigator.current
     val uiMode = LocalUiMode.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var pendingExport by remember { mutableStateOf<String?>(null) }
+    var pendingExport by remember { mutableStateOf<BackupRow?>(null) }
 
     // 两个主题各有一个宿主，消息通道只有 state.message 一条：在这里消费并清掉，
     // 否则主题各写一份（Material 弹完清、Miuix 只挂在行摘要上不清）就会漂成两种行为。
@@ -47,9 +47,9 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
-        val name = pendingExport
+        val row = pendingExport
         pendingExport = null
-        if (uri != null && name != null) viewModel.exportTo(uri, name)
+        if (uri != null && row != null) viewModel.exportTo(uri, row)
     }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -65,25 +65,27 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
 
     val actions = BackupActions(
         onBack = { navigator.pop() },
-        onSelectOrigin = viewModel::selectOrigin,
-        onSelectKind = viewModel::selectKind,
+        onToggleOrigin = viewModel::toggleOrigin,
+        onToggleKind = viewModel::toggleKind,
         onBackup = viewModel::backupNow,
-        onRestore = { fileName ->
-            if (state.kind == BackupKind.BOOT) {
+        onRestore = { row ->
+            // 判断看行自己的类型，不看勾选：列表里模块和 boot 混在一起，用户点的可能不是
+            // 当前勾选的那一类。
+            if (row.kind == BackupKind.BOOT) {
                 confirmScope.launch {
                     val confirmed = confirmDialog.awaitConfirm(
                         title = bootConfirmTitle,
                         content = bootConfirmBody,
                     ) == ConfirmResult.Confirmed
-                    if (confirmed) viewModel.restore(fileName)
+                    if (confirmed) viewModel.restore(row)
                 }
             } else {
-                viewModel.restore(fileName)
+                viewModel.restore(row)
             }
         },
-        onExport = { fileName ->
-            pendingExport = fileName
-            exportLauncher.launch(fileName)
+        onExport = { row ->
+            pendingExport = row
+            exportLauncher.launch(row.fileName)
         },
         onImport = { importLauncher.launch(arrayOf("*/*")) },
         onSetAutoBackup = viewModel::setAutoBackup,

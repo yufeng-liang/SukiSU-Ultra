@@ -700,6 +700,13 @@
     <string name="backup_module_select_all">Select all</string>
     <string name="backup_module_none">No modules installed.</string>
     <string name="backup_module_unavailable">Module list unavailable; all modules will be backed up.</string>
+    <string name="backup_saved_to">saved to %1$s</string>
+    <string name="backup_location_local">Local backups are stored in %1$s</string>
+    <string name="backup_location_cloud">Cloud backups are stored in %1$s</string>
+    <string name="backup_target_line">%1$s %2$s: %3$s</string>
+    <string name="backup_pick_a_target">Pick at least one location and one kind of content.</string>
+    <string name="backup_empty_mixed">No backups in the selected locations yet. Back up now writes one.</string>
+    <string name="backup_origin_hint">With both checked, one backup writes two copies.</string>
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
     <string name="backup_cloud_required">Configure the WebDAV server above and save it first.</string>
