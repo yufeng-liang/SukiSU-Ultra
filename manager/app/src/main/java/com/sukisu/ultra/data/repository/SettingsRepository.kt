@@ -32,6 +32,15 @@ interface SettingsRepository {
     var showFullStatus: Boolean
     var autoJailbreak: Boolean
     var useSoftReboot: Boolean
+
+    /** WebDAV 云端备份设置。三个凭据属性对外都是明文，密文只落在 SharedPreferences 里。 */
+    var webDavUrl: String
+    var webDavUser: String
+    var webDavPassword: String
+    var backupCloudEnabled: Boolean
+    var backupAutoAfterInstall: Boolean
+    var backupRetention: Int
+
     val intentToken: String
 
     suspend fun getSuCompatStatus(): String

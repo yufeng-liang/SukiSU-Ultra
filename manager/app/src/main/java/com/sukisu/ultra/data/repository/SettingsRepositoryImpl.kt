@@ -9,6 +9,9 @@ import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
 import com.topjohnwu.superuser.ShellUtils
 import com.sukisu.ultra.Natives
+import com.sukisu.ultra.data.backup.BackupDefaults
+import com.sukisu.ultra.data.backup.CredentialCipher
+import com.sukisu.ultra.data.backup.KeystoreKeyProvider
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.magica.BootCompletedReceiver
 import com.sukisu.ultra.ui.UiMode
@@ -174,6 +177,35 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var useSoftReboot: Boolean
         get() = prefs.getBoolean(KEY_USE_SOFT_REBOOT, false)
         set(value) = prefs.edit { putBoolean(KEY_USE_SOFT_REBOOT, value) }
+
+    override var webDavUrl: String
+        get() = prefs.getString("backup_webdav_url", "") ?: ""
+        set(value) = prefs.edit { putString("backup_webdav_url", value) }
+
+    override var webDavUser: String
+        get() = prefs.getString("backup_webdav_user", "") ?: ""
+        set(value) = prefs.edit { putString("backup_webdav_user", value) }
+
+    /** 落盘的是密文；解密失败（如 Keystore 密钥被系统清掉）当作空串，避免整页崩。 */
+    override var webDavPassword: String
+        get() = prefs.getString("backup_webdav_password", "")?.takeIf { it.isNotBlank() }
+            ?.let { runCatching { CredentialCipher.decrypt(KeystoreKeyProvider.key(), it) }.getOrDefault("") } ?: ""
+        set(value) = prefs.edit {
+            if (value.isBlank()) remove("backup_webdav_password")
+            else putString("backup_webdav_password", CredentialCipher.encrypt(KeystoreKeyProvider.key(), value))
+        }
+
+    override var backupCloudEnabled: Boolean
+        get() = prefs.getBoolean("backup_cloud_enabled", false)
+        set(value) = prefs.edit { putBoolean("backup_cloud_enabled", value) }
+
+    override var backupAutoAfterInstall: Boolean
+        get() = prefs.getBoolean("backup_auto_after_install", true)
+        set(value) = prefs.edit { putBoolean("backup_auto_after_install", value) }
+
+    override var backupRetention: Int
+        get() = prefs.getInt("backup_retention", BackupDefaults.RETENTION)
+        set(value) = prefs.edit { putInt("backup_retention", value) }
 
     override val intentToken: String
         get() {
