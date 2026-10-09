@@ -3,7 +3,6 @@ package com.sukisu.ultra.data.backup
 import com.sukisu.ultra.data.model.Module
 import com.topjohnwu.superuser.io.SuFile
 import com.topjohnwu.superuser.io.SuFileInputStream
-import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
@@ -49,12 +48,14 @@ class ZipModuleArchiver(private val staging: StagingArea) : ModuleArchiver {
 
     private fun addEntry(zip: ZipOutputStream, file: SuFile, entryPath: String) {
         if (file.isDirectory) {
-            zip.putNextEntry(ZipEntry("$entryPath/"))
+            zip.putNextEntry(DeterministicZip.newEntry("$entryPath/"))
             zip.closeEntry()
-            file.listFiles().orEmpty().forEach { addEntry(zip, it, "$entryPath/${it.name}") }
+            // 顺序也要固定：listFiles() 给的是文件系统顺序，同一份内容两次可能不同，打出来的
+            // 字节不同、sha256 就不同，去重照样命不中。
+            file.listFiles().orEmpty().sortedBy { it.name }.forEach { addEntry(zip, it, "$entryPath/${it.name}") }
             return
         }
-        zip.putNextEntry(ZipEntry(entryPath))
+        zip.putNextEntry(DeterministicZip.newEntry(entryPath))
         SuFileInputStream.open(file).use { it.copyTo(zip) }
         zip.closeEntry()
     }
