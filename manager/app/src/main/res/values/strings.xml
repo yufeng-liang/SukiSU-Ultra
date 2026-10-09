@@ -666,12 +666,21 @@
     <string name="home_zygisk_reboot_required">Reboot required</string>
     <string name="backup_title">Backup &amp; restore</string>
     <string name="backup_kind_module">Modules</string>
-    <string name="backup_kind_boot">Boot image</string>
+    <string name="backup_kind_boot">Stock boot image</string>
+    <string name="backup_boot_row_title">Stock image</string>
+    <string name="backup_boot_explain">These are the stock images ksud saved when it patched — not the system that is running now. Restoring one flashes it back to the boot partition, which returns the device to an unrooted state until it is patched again.</string>
+    <string name="backup_boot_restore_confirm_title">Flash the stock image back?</string>
+    <string name="backup_boot_restore_confirm_body">The patched boot image is replaced, so the device becomes unrooted until it is patched again.</string>
     <string name="backup_now">Back up now</string>
     <string name="backup_import">Import from file</string>
     <string name="backup_restore">Restore</string>
     <string name="backup_export">Export</string>
     <string name="backup_cloud_title">Cloud (WebDAV)</string>
+    <string name="backup_cloud_intro">No WebDAV server? A free Nutstore account provides one. To keep backups on Aliyun Drive, Quark or Baidu, mount it in Alist and use the address Alist gives you.</string>
+    <string name="backup_preset_hint_nutstore">In the Nutstore web console open Account info → Security → Third-party apps, add one there and use the app password it generates (not your login password). The free plan currently allows 1GB of uploads per month and 500MB per file; going over makes uploads fail. The first "Test connection" creates the SukiSU-Backup folder on the server; if it reports that it cannot, create that folder in Nutstore first and fill in its address.</string>
+    <string name="backup_preset_hint_synology">Install and enable WebDAV Server in Package Center first, then replace your-nas with your NAS address (ports 5005 HTTP / 5006 HTTPS).</string>
+    <string name="backup_preset_hint_nextcloud">Replace USERNAME with your account name, and use a password created under Settings → Security → Create new app password.</string>
+    <string name="backup_preset_hint_alist">Mount Aliyun Drive, Quark, Baidu and others in Alist / OpenList, then use the address Alist itself serves — that is how backups get onto those drives.</string>
     <string name="backup_cloud_url">Server URL</string>
     <string name="backup_cloud_user">Username</string>
     <string name="backup_cloud_password">App password</string>
@@ -680,13 +689,19 @@
     <string name="backup_cloud_hint">Most providers require an app-specific password instead of your login password. Works with Nutstore, Synology, Nextcloud and Alist.</string>
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
-    <string name="backup_cloud_required">Configure the WebDAV server below and save it first.</string>
+    <string name="backup_cloud_required">Configure the WebDAV server above and save it first.</string>
+    <string name="backup_cloud_chip_locked">Fill in the address above and save it to make Cloud selectable.</string>
     <string name="backup_cloud_test_ok">Connection OK</string>
     <string name="backup_restored">Restored %s</string>
     <string name="backup_exported">Exported %s</string>
     <string name="backup_imported">Imported</string>
     <string name="backup_rollback_badge">Restore point</string>
+    <string name="backup_row_disabled">Disabled</string>
     <string name="backup_restore_failed">Restore failed</string>
+    <string name="backup_empty_module_local">No backups yet. Back up now packages the installed modules and stores them on this device.</string>
+    <string name="backup_empty_module_cloud">Nothing in this folder on the server yet. Back up now uploads the modules here.</string>
+    <string name="backup_empty_boot_local">No stock image on this device to back up: ksud leaves one behind when it patches, so this stays empty if the device was never patched or its kernel changed.</string>
+    <string name="backup_empty_boot_cloud">No stock image on the server yet. Back up now uploads the one on this device.</string>
 
     <!-- Backup summaries and diagnostics. Every string here is shown to the user, so no
          internal vocabulary (PUT/MKCOL/index-read) and no bare counters. Technical details
@@ -697,7 +712,7 @@
     <string name="backup_storage_local">Local</string>
     <string name="backup_storage_cloud">Cloud</string>
     <string name="backup_reason_with_detail">%1$s (%2$s)</string>
-    <string name="backup_reason_cloud_not_configured">Cloud backup is not set up. Fill in the server address below and save it.</string>
+    <string name="backup_reason_cloud_not_configured">Cloud backup is not set up. Fill in the server address above and save it.</string>
     <string name="backup_reason_cloud_credentials">The server rejected the credentials (HTTP %1$d). Most providers need an app-specific password rather than your login password.</string>
     <string name="backup_reason_http_mkcol">Could not create the folder %1$s on the server (HTTP %2$d).</string>
     <string name="backup_reason_http_upload">Uploading %1$s failed (HTTP %2$d).</string>

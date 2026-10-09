@@ -12,11 +12,14 @@ import com.sukisu.ultra.data.backup.BackupRepository
 import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
 import com.sukisu.ultra.data.backup.RestoreOutcome
+import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.backup.reasonOf
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
+import com.sukisu.ultra.ui.screen.settings.backup.BackupRowLabels
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
 import com.sukisu.ultra.ui.util.BackupText
+import com.sukisu.ultra.ui.util.formatRepoTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -73,6 +76,17 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * 点了服务商预设：填好地址，并把"去哪生成应用密码/要开什么"那句话显示出来。
+     *
+     * 提示不清除——用户改地址（Nextcloud 的模板带 `USERNAME`，必须改）时那句话正好是最需要的。
+     */
+    fun selectPreset(preset: WebDavPreset) {
+        _uiState.update {
+            it.copy(cloudUrl = preset.urlTemplate, cloudPresetHintRes = preset.hintRes)
+        }
+    }
+
+    /**
      * 重新列当前来源与类型。
      *
      * 注意这里**不碰 message**：操作的结果（备份摘要、失败原因）刚写进 message，紧接着就 refresh，
@@ -97,7 +111,14 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         if (_uiState.value.origin != origin || _uiState.value.kind != kind) return@launch
         entries = listed
         metas = loadMetas(origin, listed)
-        _uiState.update { it.copy(loading = false, rows = BackupListFormatter.rows(listed, metas)) }
+        _uiState.update {
+            it.copy(
+                loading = false,
+                rows = BackupListFormatter.rows(listed, metas, rowLabels()),
+                // 空列表要说清"为什么空"：模块是"还没备份过"，boot 是"本机根本没有原厂镜像"。
+                emptyText = emptyText(origin, kind).takeIf { listed.isEmpty() },
+            )
+        }
     }
 
     fun backupNow() = viewModelScope.launch {
@@ -239,10 +260,32 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             it.copy(
                 loading = false,
                 rows = emptyList(),
+                // 列表读不出来时不留空状态文案：那句"还没有备份"会把"没读到"说成"没有"。
+                emptyText = null,
                 message = BackupListFormatter.mergeMessages(it.message, text),
             )
         }
     }
+
+    /**
+     * 列表为空时该说的那句话。
+     *
+     * boot 与模块要分开：模块空 = 还没备份过（可操作），boot 空 = 本机没有原厂镜像
+     * （ksud 只在打补丁时留下它，用户做什么都不会有），这两件事给同一句话就是误导。
+     */
+    private fun emptyText(origin: BackupOrigin, kind: BackupKind): String = when {
+        kind == BackupKind.BOOT && origin == BackupOrigin.CLOUD -> string(R.string.backup_empty_boot_cloud)
+        kind == BackupKind.BOOT -> string(R.string.backup_empty_boot_local)
+        origin == BackupOrigin.CLOUD -> string(R.string.backup_empty_module_cloud)
+        else -> string(R.string.backup_empty_module_local)
+    }
+
+    /** 列表里那几段必须跟着语言走的文案，见 [BackupListFormatter.rows]。 */
+    private fun rowLabels() = BackupRowLabels(
+        bootTitle = string(R.string.backup_boot_row_title),
+        disabled = string(R.string.backup_row_disabled),
+        formatTime = ::formatRepoTime,
+    )
 
     /**
      * 一次备份的摘要：计数 + 去重后的失败原因。
@@ -270,8 +313,14 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private fun string(resId: Int, vararg formatArgs: Any): String =
         getApplication<Application>().getString(resId, *formatArgs)
 
+    /**
+     * 读边车 meta 用于列表展示。
+     *
+     * 只读模块的：boot 的边车 meta 是另一套结构（sha1/sha256），硬按模块 meta 解析只会得到
+     * 一个名字为空的壳，而 boot 行的标题本来就不看 meta（见 [BackupListFormatter.rows]）。
+     */
     private suspend fun loadMetas(origin: BackupOrigin, list: List<BackupEntry>): Map<String, ModuleBackupMeta> =
-        list.mapNotNull { entry ->
+        list.filter { it.kind == BackupKind.MODULE }.mapNotNull { entry ->
             val metaName = entry.metaFileName ?: return@mapNotNull null
             repository.readMeta(origin, entry)?.let { metaName to it }
         }.toMap()

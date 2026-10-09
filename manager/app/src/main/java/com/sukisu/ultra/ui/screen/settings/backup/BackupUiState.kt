@@ -1,9 +1,11 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import com.sukisu.ultra.data.backup.AutoBackupRecord
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
+import com.sukisu.ultra.data.backup.WebDavPreset
 
 @Immutable
 data class BackupUiState(
@@ -16,6 +18,21 @@ data class BackupUiState(
     val cloudUser: String = "",
     val cloudPass: String = "",
     val cloudConfigured: Boolean = false,
+    /**
+     * 用户刚点的那个服务商预设的提示。
+     *
+     * 填地址只是第一步，"去哪生成应用密码"才是小白卡住的地方，所以点预设必须把这句话显示出来。
+     * 存在状态里而不是从 URL 反推：Nextcloud 的模板带 `USERNAME` 占位符，用户改完地址那一刻
+     * 恰恰是最需要提示的时候。
+     */
+    @StringRes val cloudPresetHintRes: Int? = null,
+    /**
+     * 列表为空时该说的那句话（已本地化）。
+     *
+     * 空列表有两种完全不同的原因——"还没有备份，点立即备份"和"本机根本没有原厂镜像可备份"——
+     * 界面上什么都不显示的话，用户会以为功能坏了。
+     */
+    val emptyText: String? = null,
     /** 安装模块成功后是否自动备份一次。默认开。 */
     val autoBackupEnabled: Boolean = true,
     /**
@@ -37,6 +54,7 @@ data class BackupActions(
     val onExport: (String) -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
+    val onSelectPreset: (WebDavPreset) -> Unit,
     val onUrlChange: (String) -> Unit,
     val onUserChange: (String) -> Unit,
     val onPassChange: (String) -> Unit,

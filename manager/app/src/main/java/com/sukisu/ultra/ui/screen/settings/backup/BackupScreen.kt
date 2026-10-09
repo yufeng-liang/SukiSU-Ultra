@@ -8,13 +8,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sukisu.ultra.R
+import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
+import com.sukisu.ultra.ui.component.dialog.ConfirmResult
+import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.navigation3.LocalNavigator
 import com.sukisu.ultra.ui.viewmodel.BackupViewModel
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarHostState as MiuixSnackbarHostState
 
 @Composable
@@ -49,18 +56,38 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importFrom(it) } }
 
+    // 恢复原厂镜像会把当前已打补丁的 boot 换掉，设备直接回到未 root 状态——不可逆、且用户
+    // 未必知道，所以这一项必须问一次。模块恢复只是重装一个模块，不需要拦。
+    val confirmDialog = rememberConfirmDialog()
+    val confirmScope = rememberCoroutineScope()
+    val bootConfirmTitle = stringResource(R.string.backup_boot_restore_confirm_title)
+    val bootConfirmBody = stringResource(R.string.backup_boot_restore_confirm_body)
+
     val actions = BackupActions(
         onBack = { navigator.pop() },
         onSelectOrigin = viewModel::selectOrigin,
         onSelectKind = viewModel::selectKind,
         onBackup = viewModel::backupNow,
-        onRestore = viewModel::restore,
+        onRestore = { fileName ->
+            if (state.kind == BackupKind.BOOT) {
+                confirmScope.launch {
+                    val confirmed = confirmDialog.awaitConfirm(
+                        title = bootConfirmTitle,
+                        content = bootConfirmBody,
+                    ) == ConfirmResult.Confirmed
+                    if (confirmed) viewModel.restore(fileName)
+                }
+            } else {
+                viewModel.restore(fileName)
+            }
+        },
         onExport = { fileName ->
             pendingExport = fileName
             exportLauncher.launch(fileName)
         },
         onImport = { importLauncher.launch(arrayOf("*/*")) },
         onSetAutoBackup = viewModel::setAutoBackup,
+        onSelectPreset = viewModel::selectPreset,
         onUrlChange = { viewModel.editCloud(url = it) },
         onUserChange = { viewModel.editCloud(user = it) },
         onPassChange = { viewModel.editCloud(pass = it) },

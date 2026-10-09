@@ -651,12 +651,21 @@
     <string name="home_zygisk_reboot_required">需要重启</string>
     <string name="backup_title">备份与恢复</string>
     <string name="backup_kind_module">模块</string>
-    <string name="backup_kind_boot">boot 镜像</string>
+    <string name="backup_kind_boot">原厂 boot 镜像</string>
+    <string name="backup_boot_row_title">原厂镜像</string>
+    <string name="backup_boot_explain">这里备份的是 ksud 打补丁时留下的原厂镜像（未 root 的那一份），不是当前正在运行的系统。恢复它会把原厂镜像刷回 boot 分区，设备会回到未 root 状态，要重新打补丁才有 root。</string>
+    <string name="backup_boot_restore_confirm_title">刷回原厂镜像？</string>
+    <string name="backup_boot_restore_confirm_body">当前已打补丁的 boot 会被替换掉，设备回到未 root 状态，需要重新打补丁才有 root。</string>
     <string name="backup_now">立即备份</string>
     <string name="backup_import">从文件导入</string>
     <string name="backup_restore">恢复</string>
     <string name="backup_export">导出</string>
     <string name="backup_cloud_title">云端（WebDAV）</string>
+    <string name="backup_cloud_intro">没有 WebDAV 服务器也能用：坚果云免费账号就提供。想把备份放到阿里云盘、夸克、百度，用 Alist 挂载后填 Alist 的地址。</string>
+    <string name="backup_preset_hint_nutstore">在坚果云网页版「账户信息 → 安全选项 → 第三方应用管理」里添加应用，用它的应用密码（不是登录密码）。免费版当前每月可上传 1GB、单文件 500MB，超了会上传失败。首次「测试连接」会在服务器上创建 SukiSU-Backup 目录；若提示建不了，先在你的坚果云里手动建好这个文件夹，再把地址填成它。</string>
+    <string name="backup_preset_hint_synology">先在套件中心安装并启用 WebDAV Server，再把地址里的 your-nas 换成你的 NAS 地址（端口 5005 HTTP / 5006 HTTPS）。</string>
+    <string name="backup_preset_hint_nextcloud">把 USERNAME 换成你的用户名，密码栏填「设置 → 安全 → 创建新应用密码」生成的那个密码。</string>
+    <string name="backup_preset_hint_alist">用 Alist / OpenList 把阿里云盘、夸克、百度等挂载进来，再填 Alist 自己的地址——这是把备份放到这些网盘的办法。</string>
     <string name="backup_cloud_url">服务器地址</string>
     <string name="backup_cloud_user">用户名</string>
     <string name="backup_cloud_password">应用密码</string>
@@ -665,13 +674,19 @@
     <string name="backup_cloud_hint">多数服务商要求填「应用密码」而不是登录密码。支持坚果云、群晖、Nextcloud 与 Alist。</string>
     <string name="backup_origin_local">本地</string>
     <string name="backup_origin_cloud">云端</string>
-    <string name="backup_cloud_required">请先在下方配置 WebDAV 服务器并保存。</string>
+    <string name="backup_cloud_required">请先在上面配置 WebDAV 服务器并保存。</string>
+    <string name="backup_cloud_chip_locked">先在上面填好地址并保存，「云端」才能选。</string>
     <string name="backup_cloud_test_ok">连接正常</string>
     <string name="backup_restored">已恢复 %s</string>
     <string name="backup_exported">已导出 %s</string>
     <string name="backup_imported">已导入</string>
     <string name="backup_rollback_badge">恢复点</string>
+    <string name="backup_row_disabled">已禁用</string>
     <string name="backup_restore_failed">恢复失败</string>
+    <string name="backup_empty_module_local">还没有备份。点「立即备份」会把已安装的模块打包存到本机。</string>
+    <string name="backup_empty_module_cloud">云端这个位置还没有备份。点「立即备份」会把模块上传到这里。</string>
+    <string name="backup_empty_boot_local">本机没有原厂镜像可备份：ksud 只在打补丁时把它留下，没打过补丁或换过内核时这里就是空的。</string>
+    <string name="backup_empty_boot_cloud">云端还没有原厂镜像的备份。点「立即备份」会把本机这份上传到这里。</string>
 
     <!-- 备份摘要与诊断。这里每一句都会显示给用户：不出现内部术语（PUT/MKCOL/index-read），
          不出现裸露的计数器；但对排查有用的技术细节保留在括号里（HTTP 状态码、截断的哈希、文件名）。 -->
@@ -681,7 +696,7 @@
     <string name="backup_storage_local">本地</string>
     <string name="backup_storage_cloud">云端</string>
     <string name="backup_reason_with_detail">%1$s（%2$s）</string>
-    <string name="backup_reason_cloud_not_configured">云端备份还没配置。请先在下方填写服务器地址并保存。</string>
+    <string name="backup_reason_cloud_not_configured">云端备份还没配置。请先在上面填写服务器地址并保存。</string>
     <string name="backup_reason_cloud_credentials">服务端拒绝了凭据（HTTP %1$d）。多数服务商需要填「应用密码」，而不是登录密码。</string>
     <string name="backup_reason_http_mkcol">无法在服务器上创建目录 %1$s（HTTP %2$d）。</string>
     <string name="backup_reason_http_upload">上传 %1$s 失败（HTTP %2$d）。</string>

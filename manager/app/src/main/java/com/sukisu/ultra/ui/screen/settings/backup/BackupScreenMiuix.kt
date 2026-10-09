@@ -103,15 +103,31 @@ fun BackupMiuix(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Text(text = stringResource(R.string.backup_cloud_title))
+                        Text(
+                            text = stringResource(R.string.backup_cloud_intro),
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
                         FlowRow(
                             modifier = Modifier.padding(top = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             WebDavPresets.ALL.forEach { preset ->
-                                Button(onClick = { actions.onUrlChange(preset.urlTemplate) }) {
+                                Button(onClick = { actions.onSelectPreset(preset) }) {
                                     Text(text = preset.label)
                                 }
                             }
+                        }
+                        // 点预设只是把地址填好，"去哪生成应用密码/要先开什么"才是真正会卡住人的
+                        // 那一步，所以那句话必须跟着显示出来（内容来自 WebDavPresets 的 hintRes）。
+                        state.cloudPresetHintRes?.let { hintRes ->
+                            Text(
+                                text = stringResource(hintRes),
+                                fontSize = 12.sp,
+                                color = colorScheme.primary,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
                         }
                         TextField(
                             value = state.cloudUrl,
@@ -171,6 +187,15 @@ fun BackupMiuix(
                         enabled = state.cloudConfigured,
                         onClick = { actions.onSelectOrigin(BackupOrigin.CLOUD) },
                     )
+                    // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜。
+                    if (!state.cloudConfigured) {
+                        Text(
+                            text = stringResource(R.string.backup_cloud_chip_locked),
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
                 }
             }
             item {
@@ -185,6 +210,16 @@ fun BackupMiuix(
                         summary = if (state.kind == BackupKind.BOOT) "✓" else "",
                         onClick = { actions.onSelectKind(BackupKind.BOOT) },
                     )
+                    // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root 状态——
+                    // 这两件事不说清，用户会以为自己在备份"当前系统"。
+                    if (state.kind == BackupKind.BOOT) {
+                        Text(
+                            text = stringResource(R.string.backup_boot_explain),
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
                 }
             }
             item {
@@ -219,6 +254,19 @@ fun BackupMiuix(
                         },
                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                     )
+                }
+            }
+            // 空列表必须给一句话：什么都不显示的话，用户分不清"没有备份"和"这一页坏了"。
+            state.emptyText?.let { empty ->
+                item {
+                    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
+                        Text(
+                            text = empty,
+                            fontSize = 14.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        )
+                    }
                 }
             }
             items(state.rows, key = { it.id }) { row ->

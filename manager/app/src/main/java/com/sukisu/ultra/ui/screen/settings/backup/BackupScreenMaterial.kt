@@ -67,13 +67,32 @@ fun BackupMaterial(
     ) { innerPadding ->
         Column(Modifier.padding(innerPadding).padding(16.dp)) {
             Text(stringResource(R.string.backup_cloud_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.backup_cloud_intro),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
             FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 WebDavPresets.ALL.forEach { preset ->
-                    AssistChip(onClick = { actions.onUrlChange(preset.urlTemplate) }, label = { Text(preset.label) })
+                    AssistChip(
+                        onClick = { actions.onSelectPreset(preset) },
+                        label = { Text(preset.label) },
+                    )
                 }
+            }
+            // 点预设只是把地址填好，"去哪生成应用密码/要先开什么"才是真正会卡住人的那一步，
+            // 所以那句话必须跟着显示出来（内容来自 WebDavPresets 里的 hintRes）。
+            state.cloudPresetHintRes?.let { hintRes ->
+                Text(
+                    stringResource(hintRes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
             OutlinedTextField(
                 value = state.cloudUrl,
@@ -122,6 +141,14 @@ fun BackupMaterial(
                     label = { Text(stringResource(R.string.backup_origin_cloud)) },
                 )
             }
+            // 禁用的 chip 不解释为什么点不动，等于让人对着一个死按钮猜。
+            if (!state.cloudConfigured) {
+                Text(
+                    stringResource(R.string.backup_cloud_chip_locked),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = state.kind == BackupKind.MODULE,
@@ -132,6 +159,16 @@ fun BackupMaterial(
                     selected = state.kind == BackupKind.BOOT,
                     onClick = { actions.onSelectKind(BackupKind.BOOT) },
                     label = { Text(stringResource(R.string.backup_kind_boot)) },
+                )
+            }
+            // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root 状态——
+            // 这两件事不说清，用户会以为自己在备份"当前系统"。
+            if (state.kind == BackupKind.BOOT) {
+                Text(
+                    stringResource(R.string.backup_boot_explain),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
             Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -155,6 +192,15 @@ fun BackupMaterial(
                 },
                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
             )
+            // 空列表必须给一句话：什么都不显示的话，用户分不清"没有备份"和"这一页坏了"。
+            state.emptyText?.let { empty ->
+                Text(
+                    empty,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
             LazyColumn {
                 items(state.rows, key = { it.id }) { row ->
                     SegmentedListItem(

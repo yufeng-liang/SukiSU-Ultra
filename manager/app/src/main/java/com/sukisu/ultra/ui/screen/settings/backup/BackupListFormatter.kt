@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
 import com.sukisu.ultra.data.backup.BackupEntry
+import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
 import com.sukisu.ultra.data.backup.RollbackPolicy
 import java.util.Locale
@@ -14,6 +15,21 @@ data class BackupRow(
     val isRollback: Boolean = false,
 )
 
+/**
+ * 列表里由调用方提供的那几段文案。
+ *
+ * [BackupListFormatter] 是纯 JVM 的（这样它能进单测），拿不到 `Context`；而这几段必须跟着语言走，
+ * 所以从外面传进来，不在这里写死英文。
+ */
+data class BackupRowLabels(
+    /** boot 行的标题前缀：那一行的 id 是一串 sha1，光看它没人知道这是原厂镜像。 */
+    val bootTitle: String,
+    /** 模块处于禁用状态时缀在副标题里的词。 */
+    val disabled: String,
+    /** 把索引里的 ISO 时间转成本地可读形式；解析不了时原样返回。 */
+    val formatTime: (String) -> String,
+)
+
 object BackupListFormatter {
 
     /**
@@ -24,16 +40,46 @@ object BackupListFormatter {
      */
     const val SEPARATOR = " · "
 
-    fun rows(entries: List<BackupEntry>, metas: Map<String, ModuleBackupMeta>): List<BackupRow> = entries.map { entry ->
+    /** 与归档文件名里的 sha1 前缀等长：用户在文件名里看到的那 12 位，就是这里显示的那 12 位。 */
+    private const val SHA1_PREFIX_LENGTH = 12
+
+    fun rows(
+        entries: List<BackupEntry>,
+        metas: Map<String, ModuleBackupMeta>,
+        labels: BackupRowLabels,
+    ): List<BackupRow> = entries.map { entry ->
+        if (entry.kind == BackupKind.BOOT) bootRow(entry, labels) else moduleRow(entry, metas, labels)
+    }
+
+    /**
+     * boot 行的标题不能用 [BackupEntry.entryId]——那是一条 40 位 sha1。
+     *
+     * boot 的边车 meta 不是模块 meta（没有名称/版本），所以这里也不去查 [metas]：能讲的只有
+     * "这是哪一张原厂镜像"，用标题 + sha1 前缀（与归档文件名里的前缀一致，用户能对上）。
+     */
+    private fun bootRow(entry: BackupEntry, labels: BackupRowLabels) = BackupRow(
+        id = entry.fileName,
+        title = "${labels.bootTitle} ${entry.entryId.take(SHA1_PREFIX_LENGTH)}",
+        subtitle = listOf(humanSize(entry.sizeBytes), labels.formatTime(entry.createdAt))
+            .joinToString(SEPARATOR),
+        fileName = entry.fileName,
+        isRollback = RollbackPolicy.isRollback(entry),
+    )
+
+    private fun moduleRow(
+        entry: BackupEntry,
+        metas: Map<String, ModuleBackupMeta>,
+        labels: BackupRowLabels,
+    ): BackupRow {
         val meta = entry.metaFileName?.let { metas[it] }
-        BackupRow(
+        return BackupRow(
             id = entry.fileName,
             title = meta?.name?.takeIf { it.isNotBlank() } ?: entry.entryId,
             subtitle = listOfNotNull(
                 meta?.versionName?.takeIf { it.isNotBlank() }?.let { "v$it" },
                 humanSize(entry.sizeBytes),
-                entry.createdAt,
-                "disabled".takeIf { meta?.disabled == true },
+                labels.formatTime(entry.createdAt),
+                labels.disabled.takeIf { meta?.disabled == true },
             ).joinToString(SEPARATOR),
             fileName = entry.fileName,
             isRollback = RollbackPolicy.isRollback(entry),
