@@ -665,6 +665,7 @@
     <string name="home_zygisk_disabled">Disabled</string>
     <string name="home_zygisk_reboot_required">Reboot required</string>
     <string name="backup_title">Backup &amp; restore</string>
+    <string name="backup_entry_summary">Back up modules and the stock boot image, on this device or in the cloud.</string>
     <string name="backup_kind_module">Modules</string>
     <string name="backup_kind_boot">Stock boot image</string>
     <string name="backup_boot_row_title">Stock image</string>

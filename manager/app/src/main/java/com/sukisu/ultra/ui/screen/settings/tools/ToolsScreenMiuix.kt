@@ -141,26 +141,6 @@ fun ToolsMiuix(
                             .padding(top = 12.dp)
                             .fillMaxWidth(),
                     ) {
-                        val backupTitle = stringResource(R.string.backup_title)
-                        ArrowPreference(
-                            title = backupTitle,
-                            startAction = {
-                                Icon(
-                                    Icons.Rounded.Backup,
-                                    modifier = Modifier.padding(end = 6.dp),
-                                    contentDescription = backupTitle,
-                                    tint = colorScheme.onBackground
-                                )
-                            },
-                            onClick = actions.onOpenBackup
-                        )
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .padding(top = 12.dp)
-                            .fillMaxWidth(),
-                    ) {
                         val spoofCpuTitle = stringResource(id = R.string.tools_spoof_cpu_title)
                         ArrowPreference(
                             title = spoofCpuTitle,

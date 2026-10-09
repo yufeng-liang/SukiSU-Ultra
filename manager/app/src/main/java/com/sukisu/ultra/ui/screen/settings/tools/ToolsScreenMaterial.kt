@@ -114,24 +114,6 @@ fun ToolsMaterial(
                     SegmentedColumn(
                         modifier = Modifier.padding(top = 12.dp),
                         content = listOf({
-                            val backupTitle = stringResource(R.string.backup_title)
-                            SegmentedListItem(
-                                onClick = actions.onOpenBackup,
-                                headlineContent = { Text(backupTitle) },
-                                leadingContent = {
-                                    Icon(
-                                        Icons.Rounded.Backup,
-                                        backupTitle,
-                                        tint = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            )
-                        })
-                    )
-
-                    SegmentedColumn(
-                        modifier = Modifier.padding(top = 12.dp),
-                        content = listOf({
                             val spoofCpuTitle = stringResource(id = R.string.tools_spoof_cpu_title)
                             SegmentedListItem(
                                 onClick = actions.onOpenSpoofCpuDialog,

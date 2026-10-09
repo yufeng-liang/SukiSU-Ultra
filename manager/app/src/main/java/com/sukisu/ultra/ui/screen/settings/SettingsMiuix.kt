@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.Rule
 import androidx.compose.material.icons.rounded.Adb
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Android
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
@@ -239,6 +240,26 @@ fun SettingPagerMiuix(
                                     )
                                 },
                                 onClick = actions.onOpenProfileTemplate
+                            )
+                        }
+                        val backupTitle = stringResource(id = R.string.backup_title)
+                        Card(
+                            modifier = Modifier
+                                .padding(top = 12.dp)
+                                .fillMaxWidth(),
+                        ) {
+                            ArrowPreference(
+                                title = backupTitle,
+                                summary = stringResource(id = R.string.backup_entry_summary),
+                                startAction = {
+                                    Icon(
+                                        Icons.Rounded.Backup,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        contentDescription = backupTitle,
+                                        tint = colorScheme.onBackground
+                                    )
+                                },
+                                onClick = actions.onOpenBackup
                             )
                         }
                         val toolsTitle = stringResource(id = R.string.settings_tools)

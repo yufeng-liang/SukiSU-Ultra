@@ -71,6 +71,7 @@ fun SettingPager(
         onOpenTools = { navigator.push(Route.Tool) },
         onOpenKpm = { navigator.push(Route.Kpm) },
         onOpenSusfsConfig = { navigator.push(Route.SuSFS) },
+        onOpenBackup = { navigator.push(Route.Backup) },
     )
 
     when (LocalUiMode.current) {
