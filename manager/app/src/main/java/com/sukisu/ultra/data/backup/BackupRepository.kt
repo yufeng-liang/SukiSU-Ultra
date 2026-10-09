@@ -158,19 +158,31 @@ class BackupRepository(private val context: Context = ksuApp) {
             engineFor(origin).exportTo(storageFor(origin), entry, sink)
         }
 
-    /** 模块安装成功后调用。未开启自动备份时返回 null。 */
-    suspend fun autoBackupAfterInstall(): BackupRunResult? = withContext(Dispatchers.IO) {
-        if (!AutoBackupPolicy.shouldRun(settings.backupAutoAfterInstall, BackupKind.MODULE)) return@withContext null
+    /**
+     * 模块安装成功后调用。未开启自动备份时返回 null。
+     *
+     * 结果**落盘**：调用方（刷入流程）跑完就散，用户看不到任何东西，这条记录是事后唯一
+     * 能回答"那次备上了没有"的地方。
+     */
+    suspend fun autoBackupAfterInstall(): AutoBackupRecord? = withContext(Dispatchers.IO) {
+        if (!AutoBackupPolicy.shouldRun(settings.backupAutoAfterInstall, BackupKind.MODULE)) {
+            return@withContext null
+        }
         val local = engine.backup(BackupKind.MODULE)
-        if (!cloudConfigured()) return@withContext local
         // 云端失败也要报出来，否则自动上传一直失败而用户什么都看不到。
-        val cloud = cloudEngine().backup(BackupKind.MODULE)
-        local.copy(
-            written = local.written + cloud.written,
-            skipped = local.skipped + cloud.skipped,
-            failures = local.failures + cloud.failures,
+        val cloud = if (cloudConfigured()) cloudEngine().backup(BackupKind.MODULE) else null
+        val record = AutoBackupRecord(
+            atEpochMs = System.currentTimeMillis(),
+            outcome = AutoBackupPolicy.classify(local, cloud),
+            writtenCount = local.written.size + (cloud?.written?.size ?: 0),
+            failures = local.failures + cloud?.failures.orEmpty(),
         )
+        settings.backupAutoLastRecord = AutoBackupRecordJson.render(record)
+        record
     }
+
+    /** 上一次自动备份的结果。没跑过、或记录坏了都返回 null。 */
+    fun lastAutoBackup(): AutoBackupRecord? = AutoBackupRecordJson.parse(settings.backupAutoLastRecord)
 
     /** 读某条备份的边车元数据，用于列表展示（名称/版本/禁用状态）。 */
     suspend fun readMeta(origin: BackupOrigin, entry: BackupEntry): ModuleBackupMeta? = withContext(Dispatchers.IO) {

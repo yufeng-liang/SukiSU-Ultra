@@ -57,4 +57,22 @@ object RollbackPolicy {
 object AutoBackupPolicy {
     /** 自动备份只覆盖模块，且必须显式开启；boot 镜像体积大且变化少，不做自动上传。 */
     fun shouldRun(enabled: Boolean, kind: BackupKind): Boolean = enabled && kind == BackupKind.MODULE
+
+    /**
+     * 本地与云端两次备份合起来算成功还是失败。
+     *
+     * 一边成功一边失败是 [AutoBackupOutcome.PARTIAL]，不是 FAILED：成功的那一份已经是可用的
+     * 安全网，报"失败"会让用户以为什么都没备上；但另一份确实没有，也不能说成功。
+     * 没配云端时只有本地一次，那就只看本地。
+     */
+    fun classify(local: BackupRunResult, cloud: BackupRunResult?): AutoBackupOutcome {
+        val localOk = local.failures.isEmpty()
+        if (cloud == null) return if (localOk) AutoBackupOutcome.OK else AutoBackupOutcome.FAILED
+        val cloudOk = cloud.failures.isEmpty()
+        return when {
+            localOk && cloudOk -> AutoBackupOutcome.OK
+            localOk || cloudOk -> AutoBackupOutcome.PARTIAL
+            else -> AutoBackupOutcome.FAILED
+        }
+    }
 }

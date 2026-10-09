@@ -41,6 +41,14 @@ interface SettingsRepository {
     var backupAutoAfterInstall: Boolean
     var backupRetention: Int
 
+    /**
+     * 上一次自动备份的结果（JSON，见 `AutoBackupRecordJson`）。
+     *
+     * 自动备份跑完时用户早已离开刷入页，这条记录是唯一能告诉他"那次到底备上了没有"的东西，
+     * 所以它得跨进程存活。空串表示还没跑过。
+     */
+    var backupAutoLastRecord: String
+
     val intentToken: String
 
     suspend fun getSuCompatStatus(): String

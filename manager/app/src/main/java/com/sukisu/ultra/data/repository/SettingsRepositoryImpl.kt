@@ -207,6 +207,12 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = prefs.getInt("backup_retention", BackupDefaults.RETENTION)
         set(value) = prefs.edit { putInt("backup_retention", value) }
 
+    override var backupAutoLastRecord: String
+        get() = prefs.getString("backup_auto_last_record", "") ?: ""
+        set(value) = prefs.edit {
+            if (value.isBlank()) remove("backup_auto_last_record") else putString("backup_auto_last_record", value)
+        }
+
     override val intentToken: String
         get() {
         val existing = prefs.getString(INTENT_TOKEN_KEY, null)

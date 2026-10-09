@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.BackupRepository
+import com.sukisu.ultra.ui.util.BackupNotifier
 import com.sukisu.ultra.ui.util.FlashResult
 import com.sukisu.ultra.ui.util.LkmSelection
 import com.sukisu.ultra.ui.util.downloadBoot
@@ -119,7 +120,12 @@ fun flashModulesSequentially(
     }
     // 全部安装成功（code == 0）：按设置触发一次自动备份。备份要跑 zip/tar 打包与网络上传，
     // 因此丢到独立的 IO 协程里，既不阻塞刷入流程，也不会因为刷入页面的离开而被取消。
-    CoroutineScope(Dispatchers.IO).launch { BackupRepository().autoBackupAfterInstall() }
+    CoroutineScope(Dispatchers.IO).launch {
+        val record = BackupRepository().autoBackupAfterInstall() ?: return@launch
+        // 失败要主动说一声：跑完时用户早已离开这个页面，而"以为有备份其实没有"正是这套功能
+        // 最糟的失败模式。成功不打扰。结果本身已经落盘，备份页那条「上次自动备份」才是底账。
+        BackupNotifier().notifyIfNeeded(record)
+    }
     return FlashResult(0, "", true)
 }
 

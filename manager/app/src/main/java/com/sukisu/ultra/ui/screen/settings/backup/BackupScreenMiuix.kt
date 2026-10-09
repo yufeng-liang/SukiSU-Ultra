@@ -19,15 +19,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.backup.AutoBackupOutcome
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
+import com.sukisu.ultra.ui.util.BackupText
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.Button
@@ -44,6 +47,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -55,6 +59,7 @@ fun BackupMiuix(
     actions: BackupActions,
     snackbarHostState: SnackbarHostState,
 ) {
+    val context = LocalContext.current
     val scrollBehavior = MiuixScrollBehavior()
     val enableBlur = LocalEnableBlur.current
     val backdrop = rememberBlurBackdrop(enableBlur)
@@ -193,6 +198,26 @@ fun BackupMiuix(
                         title = stringResource(R.string.backup_import),
                         enabled = !state.loading,
                         onClick = actions.onImport,
+                    )
+                }
+            }
+            item {
+                Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
+                    SwitchPreference(
+                        title = stringResource(R.string.backup_auto_title),
+                        summary = stringResource(R.string.backup_auto_summary),
+                        checked = state.autoBackupEnabled,
+                        onCheckedChange = actions.onSetAutoBackup,
+                    )
+                    Text(
+                        text = BackupText.autoBackupLine(context, state.autoBackupRecord, state.autoBackupEnabled),
+                        fontSize = 12.sp,
+                        color = if (state.autoBackupRecord?.outcome?.let { it != AutoBackupOutcome.OK } == true) {
+                            colorScheme.error
+                        } else {
+                            colorScheme.onSurfaceVariantSummary
+                        },
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                     )
                 }
             }

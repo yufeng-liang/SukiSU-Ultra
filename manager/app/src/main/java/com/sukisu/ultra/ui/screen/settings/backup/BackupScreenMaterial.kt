@@ -30,14 +30,18 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.backup.AutoBackupOutcome
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
+import com.sukisu.ultra.ui.component.material.SegmentedSwitchItem
+import com.sukisu.ultra.ui.util.BackupText
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -46,6 +50,8 @@ fun BackupMaterial(
     actions: BackupActions,
     snackbarHostState: SnackbarHostState,
 ) {
+    val context = LocalContext.current
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -133,6 +139,22 @@ fun BackupMaterial(
                 OutlinedButton(onClick = actions.onImport, enabled = !state.loading) { Text(stringResource(R.string.backup_import)) }
             }
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            SegmentedSwitchItem(
+                title = stringResource(R.string.backup_auto_title),
+                summary = stringResource(R.string.backup_auto_summary),
+                checked = state.autoBackupEnabled,
+                onCheckedChange = actions.onSetAutoBackup,
+            )
+            Text(
+                text = BackupText.autoBackupLine(context, state.autoBackupRecord, state.autoBackupEnabled),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (state.autoBackupRecord?.outcome?.let { it != AutoBackupOutcome.OK } == true) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+            )
             LazyColumn {
                 items(state.rows, key = { it.id }) { row ->
                     SegmentedListItem(

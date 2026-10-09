@@ -38,6 +38,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             cloudUser = settings.webDavUser,
             cloudPass = settings.webDavPassword,
             cloudConfigured = repository.cloudConfigured(),
+            autoBackupEnabled = settings.backupAutoAfterInstall,
+            autoBackupRecord = repository.lastAutoBackup(),
         )
     )
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
@@ -47,6 +49,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         refresh()
+    }
+
+    /**
+     * 自动备份开关。
+     *
+     * 偏好项本来就存在、默认开，只是以前没有界面——用户没法拒绝一个会在后台打包并上传的行为。
+     */
+    fun setAutoBackup(enabled: Boolean) {
+        settings.backupAutoAfterInstall = enabled
+        _uiState.update { it.copy(autoBackupEnabled = enabled) }
     }
 
     fun selectOrigin(origin: BackupOrigin) {
@@ -70,7 +82,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     fun refresh() = viewModelScope.launch {
         val origin = _uiState.value.origin
         val kind = _uiState.value.kind
-        _uiState.update { it.copy(loading = true) }
+        // 顺带把自动备份记录重新读一遍：装完模块的自动备份是在别的界面跑完的，
+        // 用户回到这一页时才看得到它。
+        _uiState.update { it.copy(loading = true, autoBackupRecord = repository.lastAutoBackup()) }
         if (origin == BackupOrigin.CLOUD && !repository.cloudConfigured()) {
             showEmpty(origin, kind, string(R.string.backup_cloud_required))
             return@launch

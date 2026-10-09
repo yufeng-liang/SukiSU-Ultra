@@ -21,6 +21,7 @@ import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.component.dialog.ConfirmResult
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.screen.flash.FlashIt
+import com.sukisu.ultra.ui.util.BackupNotifier
 import com.sukisu.ultra.ui.util.getFileName
 import com.sukisu.ultra.ui.webui.WebUIActivity
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,9 @@ private sealed interface PendingAction {
 
     /** Open a module's WebUI — triggered by shortcut. */
     data class OpenWebUI(val moduleId: String) : PendingAction
+
+    /** Open the backup screen — triggered by the automatic-backup failure notification. */
+    data object OpenBackup : PendingAction
 }
 
 private sealed interface KsuDeepLink {
@@ -64,6 +68,13 @@ private fun buildInternalWebUiUri(moduleId: String): Uri {
  * Returns null if the intent carries no recognized action.
  */
 private fun resolveIntent(intent: Intent): PendingAction? {
+    // 自动备份失败的通知点进来：只做一次跳转，没有破坏性动作，但仍校验 token——
+    // 免得任何第三方 app 都能让管理器跳到某个页面。
+    if (intent.action == BackupNotifier.ACTION_OPEN_BACKUP) {
+        if (intent.getStringExtra(BackupNotifier.EXTRA_TOKEN) != SettingsRepositoryImpl().intentToken) return null
+        return PendingAction.OpenBackup
+    }
+
     // Check deep links
     return when (val deepLink = parseValidatedDeepLink(intent.data)) {
         is KsuDeepLink.Action -> PendingAction.ExecuteAction(deepLink.moduleId)
@@ -106,6 +117,10 @@ fun IntentDispatcher(intentChannel: ReceiveChannel<Intent>) {
                 val webIntent = Intent(context, WebUIActivity::class.java)
                     .setData(buildInternalWebUiUri(action.moduleId))
                 context.startActivity(webIntent)
+            }
+
+            is PendingAction.OpenBackup -> {
+                navigator.push(Route.Backup)
             }
         }
     }
