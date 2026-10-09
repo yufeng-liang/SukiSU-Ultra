@@ -14,10 +14,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -118,13 +119,25 @@ fun BackupMaterial(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             FlowRow(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                // 四个预设放不下一行会折成两行，而 FlowRow 的行间距默认是 0：
+                                // 折起来的第二行边框直接贴在上一行上，看着像重叠。
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 WebDavPresets.ALL.forEach { preset ->
-                                    AssistChip(
+                                    val selected = preset == state.selectedPreset
+                                    // 选中的那个带勾并换成主色底——不这样区分的话，点完预设
+                                    // 用户只能从地址栏里的域名反推自己刚才点的是谁。
+                                    FilterChip(
+                                        selected = selected,
                                         onClick = { actions.onSelectPreset(preset) },
                                         label = { Text(preset.label) },
+                                        leadingIcon = if (selected) {
+                                            { Icon(Icons.Filled.Check, contentDescription = null) }
+                                        } else {
+                                            null
+                                        },
                                     )
                                 }
                             }
@@ -135,7 +148,7 @@ fun BackupMaterial(
                                     stringResource(hintRes),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(top = 4.dp),
+                                    modifier = Modifier.padding(top = 8.dp),
                                 )
                             }
                             OutlinedTextField(
@@ -143,14 +156,14 @@ fun BackupMaterial(
                                 onValueChange = actions.onUrlChange,
                                 label = { Text(stringResource(R.string.backup_cloud_url)) },
                                 singleLine = true,
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                             )
                             OutlinedTextField(
                                 value = state.cloudUser,
                                 onValueChange = actions.onUserChange,
                                 label = { Text(stringResource(R.string.backup_cloud_user)) },
                                 singleLine = true,
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                             )
                             OutlinedTextField(
                                 value = state.cloudPass,
@@ -158,25 +171,28 @@ fun BackupMaterial(
                                 label = { Text(stringResource(R.string.backup_cloud_password)) },
                                 visualTransformation = PasswordVisualTransformation(),
                                 singleLine = true,
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                             )
-                            Row(
-                                Modifier.padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Button(onClick = actions.onTestCloud, enabled = !state.loading) {
-                                    Text(stringResource(R.string.backup_cloud_test))
-                                }
-                                OutlinedButton(onClick = actions.onSaveCloud, enabled = !state.loading) {
-                                    Text(stringResource(R.string.backup_cloud_save))
-                                }
-                            }
+                            // 这句话说的就是上面那个密码框，贴在它下面才读得通；放到表单最底下
+                            // 会跟"测试连接/保存"挤在一起，看着像按钮的说明。
                             Text(
                                 stringResource(R.string.backup_cloud_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp),
+                                modifier = Modifier.padding(top = 6.dp),
                             )
+                            Row(
+                                Modifier.padding(top = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                // 保存是这一步的落点，用实心按钮；测试连接是试一下，描边就够。
+                                OutlinedButton(onClick = actions.onTestCloud, enabled = !state.loading) {
+                                    Text(stringResource(R.string.backup_cloud_test))
+                                }
+                                Button(onClick = actions.onSaveCloud, enabled = !state.loading) {
+                                    Text(stringResource(R.string.backup_cloud_save))
+                                }
+                            }
                         }
                     }
                 }

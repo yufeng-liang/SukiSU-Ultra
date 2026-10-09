@@ -39,4 +39,17 @@ object WebDavPresets {
             hintRes = R.string.backup_preset_hint_alist,
         ),
     )
+
+    /**
+     * 地址正好等于某个模板时，那个预设就是"选中的"。
+     *
+     * 页面重开时用它把高亮恢复回来：用户上次点的是坚果云，这次进来看见坚果云还是亮的，
+     * 不用回忆自己当初点的是哪个。只认完全相等——用户改过地址（Nextcloud 的模板带
+     * `USERNAME`，必须改）之后就不是模板了，此时不高亮比错高亮一个更诚实。
+     */
+    fun match(url: String): WebDavPreset? {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return null
+        return ALL.firstOrNull { it.urlTemplate == trimmed }
+    }
 }

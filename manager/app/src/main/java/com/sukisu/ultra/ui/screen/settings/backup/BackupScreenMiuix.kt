@@ -36,6 +36,7 @@ import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -116,18 +117,33 @@ fun BackupMiuix(
                         onClick = actions.onToggleCloud,
                     )
                     if (state.cloudExpanded) {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp)) {
+                        // 一条分隔线把"标题行"和"表单"分开：没有它，第一句说明紧贴着标题，
+                        // 看着像标题的续行。
+                        HorizontalDivider()
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                             Text(
                                 text = stringResource(R.string.backup_cloud_intro),
                                 fontSize = 12.sp,
                                 color = colorScheme.onSurfaceVariantSummary,
                             )
                             FlowRow(
-                                modifier = Modifier.padding(top = 8.dp),
+                                modifier = Modifier.padding(top = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                // 四个预设放不下一行会折成两行，而 FlowRow 的行间距默认是 0：
+                                // 折起来的第二行边框直接贴在上一行上，看着像重叠。
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 WebDavPresets.ALL.forEach { preset ->
-                                    Button(onClick = { actions.onSelectPreset(preset) }) {
+                                    // 选中的那个用主色，其余保持灰底——不这样区分的话，点完预设
+                                    // 用户只能从地址栏里的域名反推自己刚才点的是谁。
+                                    Button(
+                                        onClick = { actions.onSelectPreset(preset) },
+                                        colors = if (preset == state.selectedPreset) {
+                                            ButtonDefaults.buttonColorsPrimary()
+                                        } else {
+                                            ButtonDefaults.buttonColors()
+                                        },
+                                    ) {
                                         Text(text = preset.label)
                                     }
                                 }
@@ -139,7 +155,7 @@ fun BackupMiuix(
                                     text = stringResource(hintRes),
                                     fontSize = 12.sp,
                                     color = colorScheme.primary,
-                                    modifier = Modifier.padding(top = 4.dp),
+                                    modifier = Modifier.padding(top = 8.dp),
                                 )
                             }
                             TextField(
@@ -148,7 +164,7 @@ fun BackupMiuix(
                                 label = stringResource(R.string.backup_cloud_url),
                                 useLabelAsPlaceholder = true,
                                 singleLine = true,
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                             )
                             TextField(
                                 value = state.cloudUser,
@@ -156,7 +172,7 @@ fun BackupMiuix(
                                 label = stringResource(R.string.backup_cloud_user),
                                 useLabelAsPlaceholder = true,
                                 singleLine = true,
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                             )
                             TextField(
                                 value = state.cloudPass,
@@ -165,11 +181,20 @@ fun BackupMiuix(
                                 useLabelAsPlaceholder = true,
                                 singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(),
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                            )
+                            // 这句话说的就是上面那个密码框，贴在它下面才读得通；放到表单最底下
+                            // 会跟"测试连接/保存"挤在一起，看着像按钮的说明。
+                            Text(
+                                text = stringResource(R.string.backup_cloud_hint),
+                                fontSize = 12.sp,
+                                color = colorScheme.onSurfaceVariantSummary,
+                                modifier = Modifier.padding(top = 6.dp),
                             )
                             FlowRow(
-                                modifier = Modifier.padding(top = 8.dp),
+                                modifier = Modifier.padding(top = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Button(onClick = actions.onTestCloud, enabled = !state.loading) {
                                     Text(text = stringResource(R.string.backup_cloud_test))
@@ -178,12 +203,6 @@ fun BackupMiuix(
                                     Text(text = stringResource(R.string.backup_cloud_save))
                                 }
                             }
-                            Text(
-                                text = stringResource(R.string.backup_cloud_hint),
-                                fontSize = 12.sp,
-                                color = colorScheme.onSurfaceVariantSummary,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
                         }
                     }
                 }

@@ -13,6 +13,7 @@ import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
 import com.sukisu.ultra.data.backup.RestoreOutcome
 import com.sukisu.ultra.data.backup.WebDavPreset
+import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.backup.reasonOf
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
@@ -41,6 +42,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             cloudUser = settings.webDavUser,
             cloudPass = settings.webDavPassword,
             cloudConfigured = repository.cloudConfigured(),
+            // 上次存的就是某个模板时，把那个预设的高亮恢复回来。
+            selectedPreset = WebDavPresets.match(settings.webDavUrl),
             autoBackupEnabled = settings.backupAutoAfterInstall,
             autoBackupRecord = repository.lastAutoBackup(),
         )
@@ -93,6 +96,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 cloudUrl = preset.urlTemplate,
                 cloudPresetHintRes = preset.hintRes,
                 cloudExpanded = true,
+                selectedPreset = preset,
             )
         }
     }

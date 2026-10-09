@@ -6,6 +6,7 @@ import com.sukisu.ultra.data.backup.AutoBackupRecord
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.WebDavPreset
+import com.sukisu.ultra.data.backup.WebDavPresets
 
 @Immutable
 data class BackupUiState(
@@ -33,6 +34,13 @@ data class BackupUiState(
      * 把列表挤到屏幕外。收起时只占一行，标题右边直接写着当前填的地址。
      */
     val cloudExpanded: Boolean = false,
+    /**
+     * 当前高亮的服务商预设。
+     *
+     * 点了哪个预设哪个就亮着——否则用户点完只能从地址栏里的域名反推刚才点的是谁。手动改地址
+     * 不取消高亮（改完多半还是那家的地址），重开页面时按地址再认一次（[WebDavPresets.match]）。
+     */
+    val selectedPreset: WebDavPreset? = null,
     /**
      * 列表为空时该说的那句话（已本地化）。
      *

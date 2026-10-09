@@ -24,4 +24,26 @@ class WebDavPresetsTest {
     fun `labels are unique`() {
         assertEquals(WebDavPresets.ALL.size, WebDavPresets.ALL.map { it.label }.toSet().size)
     }
+
+    @Test
+    fun `match finds the preset whose template is in the box`() {
+        // 重开页面时靠它恢复高亮：存下来的地址正好等于某个模板，那个预设就该是亮的。
+        WebDavPresets.ALL.forEach { preset ->
+            assertEquals(preset, WebDavPresets.match(preset.urlTemplate))
+        }
+    }
+
+    @Test
+    fun `match tolerates surrounding whitespace`() {
+        assertEquals(WebDavPresets.ALL.first(), WebDavPresets.match("  ${WebDavPresets.ALL.first().urlTemplate} "))
+    }
+
+    @Test
+    fun `match returns null for an edited or empty address`() {
+        // 用户改过地址（Nextcloud 的模板带 USERNAME，必须改）之后就不是模板了：
+        // 不高亮比错高亮一个更诚实。
+        assertEquals(null, WebDavPresets.match("https://dav.jianguoyun.com/dav/My-Own-Folder"))
+        assertEquals(null, WebDavPresets.match(""))
+        assertEquals(null, WebDavPresets.match("   "))
+    }
 }
