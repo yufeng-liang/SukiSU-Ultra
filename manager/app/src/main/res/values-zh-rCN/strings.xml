@@ -715,6 +715,7 @@
          不出现裸露的计数器；但对排查有用的技术细节保留在括号里（HTTP 状态码、截断的哈希、文件名）。 -->
     <string name="backup_summary_written">已写入 %1$d 项</string>
     <string name="backup_summary_skipped">跳过 %1$d 项</string>
+    <string name="backup_summary_all_skipped">这 %1$d 项和已有的备份内容一样，没有再存一份</string>
     <string name="backup_failure_line">%1$s：%2$s</string>
     <string name="backup_storage_local">本地</string>
     <string name="backup_storage_cloud">云端</string>
@@ -743,6 +744,7 @@
     <string name="backup_reason_boot_flash_failed">恢复原厂镜像失败。</string>
     <string name="backup_reason_file_unreadable">打不开所选的文件。</string>
     <string name="backup_reason_file_name">拿不到所选文件的文件名。</string>
+    <string name="backup_reason_duplicate_content">这个文件和已有的备份（%1$s）内容一样，没有再导一份的必要。</string>
     <string name="backup_reason_external">未预期的失败：%1$s</string>
 
     <string name="backup_auto_title">自动备份</string>
@@ -752,6 +754,7 @@
     <string name="backup_auto_off">已关闭</string>
     <string name="backup_auto_dest_none">本机和云端都没勾，自动备份不会执行。</string>
     <string name="backup_auto_result_ok">成功，已写入 %1$d 项</string>
+    <string name="backup_auto_result_unchanged">成功，%1$d 项内容没变，没有新东西可存</string>
     <string name="backup_auto_result_partial">部分失败</string>
     <string name="backup_auto_result_failed">失败</string>
     <string name="backup_channel_name">备份</string>

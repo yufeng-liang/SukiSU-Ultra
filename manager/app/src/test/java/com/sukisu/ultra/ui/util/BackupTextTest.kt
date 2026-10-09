@@ -1,7 +1,10 @@
 package com.sukisu.ultra.ui.util
 
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.backup.BackupFailure
+import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupReason
+import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.HttpOperation
 import com.sukisu.ultra.data.backup.LocalBackupStorage
 import com.sukisu.ultra.data.backup.WebDavBackupStorage
@@ -15,6 +18,62 @@ import org.junit.Test
  * "每个 [BackupReason] 都有对应文案"由编译器的穷尽 `when` 保证。
  */
 class BackupTextTest {
+
+    @Test
+    fun `the duplicate reason names the archive it matched`() {
+        assertEquals(
+            ReasonText(R.string.backup_reason_duplicate_content, listOf("module_x_1_20261008_130000.zip")),
+            BackupText.reasonText(BackupReason.DuplicateContent("module_x_1_20261008_130000.zip")),
+        )
+    }
+
+    @Test
+    fun `a backup that wrote nothing but skipped everything says so`() {
+        // 按了「立即备份」，看到"已写入 0 项 · 跳过 3 项"像是失败；这里要的是那句话本身：
+        // "内容和已有的备份一样"。
+        val parts = BackupText.summaryParts(
+            BackupRunResult(
+                kind = BackupKind.MODULE,
+                written = emptyList(),
+                skipped = listOf("a.zip", "b.zip", "c.zip"),
+            ),
+            location = "/sdcard/Download/SukiSU-Backup",
+        )
+
+        assertEquals(listOf(ReasonText(R.string.backup_summary_all_skipped, listOf(3))), parts)
+    }
+
+    @Test
+    fun `a partly skipped backup still reports both counts`() {
+        val parts = BackupText.summaryParts(
+            BackupRunResult(kind = BackupKind.MODULE, written = listOf("a.zip"), skipped = listOf("b.zip")),
+        )
+
+        assertEquals(
+            listOf(
+                ReasonText(R.string.backup_summary_written, listOf(1)),
+                ReasonText(R.string.backup_summary_skipped, listOf(1)),
+            ),
+            parts,
+        )
+    }
+
+    @Test
+    fun `the same failure for every file is listed once`() {
+        // 凭据被拒：11 个文件各报一条，原因和路径都一样——列 11 遍只会把结果框变成一堵墙。
+        val same = (1..11).map {
+            BackupFailure(path = "", storage = WebDavBackupStorage.ID, reason = BackupReason.CloudCredentialsRejected(401))
+        }
+        // 两个具体文件没传上去：这是两条不同的信息，不能并掉。
+        val perFile = listOf(
+            BackupFailure(path = "a.zip", storage = WebDavBackupStorage.ID, reason = BackupReason.HttpFailed(HttpOperation.UPLOAD, "a.zip", 500)),
+            BackupFailure(path = "b.zip", storage = WebDavBackupStorage.ID, reason = BackupReason.HttpFailed(HttpOperation.UPLOAD, "b.zip", 500)),
+        )
+
+        val lines = BackupText.failureLines(BackupRunResult(kind = BackupKind.MODULE, failures = same + perFile))
+
+        assertEquals(3, lines.size)
+    }
 
     @Test
     fun `the http status code keeps its place after the file name`() {

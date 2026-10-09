@@ -36,6 +36,7 @@ class AutoBackupRecordJsonTest {
         BackupReason.BootFlashFailed("no matching backup"),
         BackupReason.FileUnreadable,
         BackupReason.FileNameUnresolved,
+        BackupReason.DuplicateContent("module_x_1_20261008_130000.zip"),
         BackupReason.External("unexpected"),
     )
 
@@ -70,6 +71,25 @@ class AutoBackupRecordJsonTest {
         val parsed = AutoBackupRecordJson.parse(AutoBackupRecordJson.render(record))
 
         assertEquals(record, parsed)
+    }
+
+    @Test
+    fun `the skipped count survives a round trip and defaults to zero for older records`() {
+        val record = AutoBackupRecord(
+            atEpochMs = 1_760_000_000_000L,
+            outcome = AutoBackupOutcome.OK,
+            writtenCount = 0,
+            skippedCount = 11,
+            failures = emptyList(),
+        )
+
+        assertEquals(11, AutoBackupRecordJson.parse(AutoBackupRecordJson.render(record))?.skippedCount)
+
+        // 更早版本写下的记录里没有这一项：当成 0，而不是让整条记录读不出来。
+        val older = AutoBackupRecordJson.render(record)
+            .replace("\"skippedCount\":11,", "")
+            .replace(",\"skippedCount\":11", "")
+        assertEquals(0, AutoBackupRecordJson.parse(older)?.skippedCount)
     }
 
     @Test

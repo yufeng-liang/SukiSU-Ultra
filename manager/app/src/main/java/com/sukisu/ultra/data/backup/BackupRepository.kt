@@ -241,6 +241,9 @@ class BackupRepository(private val context: Context = ksuApp) {
             outcome = AutoBackupPolicy.classify(local, cloud),
             writtenCount = (local?.written?.size ?: 0) + (cloud?.written?.size ?: 0),
             failures = local?.failures.orEmpty() + cloud?.failures.orEmpty(),
+            // 内容没变的那几个也记下来：装同一个版本的模块时写入数是 0，不写清"没有新东西可存"，
+            // 界面上那句"成功 · 写入 0 项"看着像什么都没干。
+            skippedCount = (local?.skipped?.size ?: 0) + (cloud?.skipped?.size ?: 0),
         )
         settings.backupAutoLastRecord = AutoBackupRecordJson.render(record)
         record

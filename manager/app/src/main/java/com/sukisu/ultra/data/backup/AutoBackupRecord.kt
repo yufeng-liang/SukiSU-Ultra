@@ -14,12 +14,17 @@ enum class AutoBackupOutcome { OK, PARTIAL, FAILED }
  *
  * [writtenCount] 是本地 + 云端写入的总数；[failures] 带着各自的 storage，UI 靠它区分
  * "本地失败"和"云端失败"（见 [AutoBackupOutcome.PARTIAL]）。
+ *
+ * [skippedCount] 是"内容没变、没再存一份"的条目数。装的是同一个版本的模块时它会等于模块总数，
+ * 而 [writtenCount] 是 0——只报"写入 0 项"看着像什么都没干，得说清是"没有新东西可存"。
  */
 data class AutoBackupRecord(
     val atEpochMs: Long,
     val outcome: AutoBackupOutcome,
     val writtenCount: Int,
     val failures: List<BackupFailure>,
+    /** 老记录里没有这一项，解析时缺省 0。 */
+    val skippedCount: Int = 0,
 )
 
 /**
@@ -39,6 +44,7 @@ object AutoBackupRecordJson {
         put("atEpochMs", record.atEpochMs)
         put("outcome", record.outcome.name)
         put("writtenCount", record.writtenCount)
+        put("skippedCount", record.skippedCount)
         put(
             "failures",
             JSONArray().apply {
@@ -75,6 +81,7 @@ object AutoBackupRecordJson {
                 atEpochMs = root.optLong("atEpochMs"),
                 outcome = outcome,
                 writtenCount = root.optInt("writtenCount"),
+                skippedCount = root.optInt("skippedCount"),
                 failures = failures,
             )
         }.getOrNull()
@@ -110,6 +117,7 @@ object AutoBackupRecordJson {
             is BackupReason.BootFlashFailed -> put("type", "boot_flash_failed").putExternal(reason.external)
             BackupReason.FileUnreadable -> put("type", "file_unreadable")
             BackupReason.FileNameUnresolved -> put("type", "file_name_unresolved")
+            is BackupReason.DuplicateContent -> put("type", "duplicate_content").put("existing", reason.existing)
             is BackupReason.External -> put("type", "external").put("text", reason.text)
         }
     }
@@ -152,6 +160,7 @@ object AutoBackupRecordJson {
             "boot_flash_failed" -> BackupReason.BootFlashFailed(json.externalOrNull())
             "file_unreadable" -> BackupReason.FileUnreadable
             "file_name_unresolved" -> BackupReason.FileNameUnresolved
+            "duplicate_content" -> BackupReason.DuplicateContent(json.optString("existing"))
             "external" -> BackupReason.External(json.optString("text"))
             // 认不出来的类型（更旧的记录、或将来加了新原因又回退版本）：退化成原文，
             // 至少让用户看到"有这么一条"，而不是让整页解析失败。

@@ -281,8 +281,18 @@ class BackupEngine(
             .ifBlank { ArchiveNaming.IMPORTED_FALLBACK_NAME }
         val adopted = sources[kind]?.metaForImport(open, size)
         val resolvedMeta = metaJson ?: adopted?.metaJson
+        // 先算校验和，再进索引锁：同一个文件被导两次只该收一份，而"是不是同一份内容"只能靠它
+        // 判断（文件名可以改、大小可以一样）。哈希要整读一遍文件，不该占着锁——模块安装后的
+        // 自动备份也等这把锁。算不出来就整次拒绝：留个空 sha 等于让恢复全程不做内容校验。
+        val sha256 = open().use { it.sha256Hex() }
         withIndexLock(storage.id) {
             val index = readIndex(storage).getOrThrow()
+            // 回滚点不参与去重，和 [backup] 里那条规矩一致：内容只以回滚点形式存在时，导入的
+            // 这一份才是能被用户自己指着的那份，而回滚点会被按"同一项留 1 份"裁掉。
+            val business = index.filterNot { RollbackPolicy.isRollback(it) }
+            DuplicatePolicy.findDuplicate(business, kind, sha256)?.let { existing ->
+                throw BackupReasonException(BackupReason.DuplicateContent(existing.fileName))
+            }
             val taken = index.filterNot { it.fileName == requested }.mapTo(mutableSetOf()) { it.fileName }
             val finalName = ArchiveNaming.uniqueName(requested, taken)
             storage.put(finalName, size, open = open).getOrThrow()
@@ -300,8 +310,7 @@ class BackupEngine(
                 fileName = finalName,
                 metaFileName = metaName,
                 sizeBytes = size,
-                // 算不出校验和就不要登记：留个空 sha 等于让恢复全程不做内容校验。
-                sha256 = open().use { it.sha256Hex() },
+                sha256 = sha256,
                 createdAt = clock().toString(),
             )
             storage.writeText(

@@ -70,6 +70,7 @@ object BackupText {
         is BackupReason.BootFlashFailed -> ReasonText(R.string.backup_reason_boot_flash_failed)
         BackupReason.FileUnreadable -> ReasonText(R.string.backup_reason_file_unreadable)
         BackupReason.FileNameUnresolved -> ReasonText(R.string.backup_reason_file_name)
+        is BackupReason.DuplicateContent -> ReasonText(R.string.backup_reason_duplicate_content, listOf(reason.existing))
         is BackupReason.External -> ReasonText(R.string.backup_reason_external, listOf(Redaction.redactMessage(reason.text)))
     }
 
@@ -126,10 +127,25 @@ object BackupText {
      * 就把后面那行连同失败原因整段截掉，所以这里省掉"跳过 0 项"——跳过为 0 是正常情况，
      * 写出来只占宽度。非 0 时照旧显示，那才是用户要知道的。
      */
-    fun summary(context: Context, result: BackupRunResult, location: String? = null, compact: Boolean = false): String =
-        summaryParts(result, location, compact).joinToString(BackupListFormatter.SEPARATOR) { part ->
-            render(context, part)
-        }
+    fun summary(context: Context, result: BackupRunResult, location: String? = null, compact: Boolean = false): String {
+        val parts = summaryParts(result, location, compact).map { part -> render(context, part) }
+        // 失败原因必须跟着摘要一起出来：只报"已写入 0 项"而不说为什么，用户只看到"没成功"，
+        // 分不清是凭据错了、网断了还是盘满了。
+        val failures = failureLines(result).map { failure(context, it) }
+        return (parts + failures).joinToString(BackupListFormatter.SEPARATOR)
+    }
+
+    /**
+     * 摘要里要列出的失败。
+     *
+     * 同一个位置、同一个文件、同一个原因只留一条：凭据被拒时每一个文件都会给出同一句话
+     * （原因里没有文件名），重复 11 遍就把结果框变成一堵墙。**不同文件**的失败不能并掉——
+     * 那是"这两个文件没传上去"，用户得知道是哪两个。
+     *
+     * 拆成纯函数是为了能断言这条规矩：`Context.getString` 在单测里跑不了。
+     */
+    fun failureLines(result: BackupRunResult): List<BackupFailure> =
+        result.failures.distinctBy { failure -> Triple(failure.storage, failure.path, failure.reason) }
 
     /**
      * [summary] 的纯形式：资源 id + 参数，取字符串交给 [render]。
@@ -138,6 +154,11 @@ object BackupText {
      * "什么时候该出现哪一段"（跳过为 0 要不要写、没写进去要不要报位置）。
      */
     fun summaryParts(result: BackupRunResult, location: String? = null, compact: Boolean = false): List<ReasonText> {
+        // 一项都没写、但都跳过了：这不是"写了 0 项"（那像是失败），是"这些内容和已有的备份一样"。
+        // 用户刚按下「立即备份」，得让他知道这次没白按——确实没有新东西可存，也没浪费流量。
+        if (result.written.isEmpty() && result.skipped.isNotEmpty() && result.failures.isEmpty()) {
+            return listOf(ReasonText(R.string.backup_summary_all_skipped, listOf(result.skipped.size)))
+        }
         val parts = mutableListOf(ReasonText(R.string.backup_summary_written, listOf(result.written.size)))
         if (result.skipped.isNotEmpty() || !compact) {
             parts += ReasonText(R.string.backup_summary_skipped, listOf(result.skipped.size))
@@ -164,7 +185,12 @@ object BackupText {
             else -> {
                 val when_ = formatTime(context, record.atEpochMs)
                 val result = when (record.outcome) {
-                    AutoBackupOutcome.OK -> context.getString(R.string.backup_auto_result_ok, record.writtenCount)
+                    // 写入 0 项、跳过若干项 = 内容全没变：说"成功 · 写入 0 项"看着像没干活。
+                    AutoBackupOutcome.OK -> if (record.writtenCount == 0 && record.skippedCount > 0) {
+                        context.getString(R.string.backup_auto_result_unchanged, record.skippedCount)
+                    } else {
+                        context.getString(R.string.backup_auto_result_ok, record.writtenCount)
+                    }
                     AutoBackupOutcome.PARTIAL -> context.getString(R.string.backup_auto_result_partial)
                     AutoBackupOutcome.FAILED -> context.getString(R.string.backup_auto_result_failed)
                 }

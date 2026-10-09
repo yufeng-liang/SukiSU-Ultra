@@ -84,6 +84,17 @@ sealed interface BackupReason {
     /** 拿不到用户选中文件的文件名。 */
     data object FileNameUnresolved : BackupReason
 
+    /**
+     * 要收进来的内容和已有的备份一模一样。
+     *
+     * 导入是唯一"用户能对着同一个文件重复按"的入口：点两次的第二次只是把同一份内容再传一遍、
+     * 列表里多一行。备份那条路不会走到这里——那边是跳过（[BackupRunResult.skipped]），因为一次
+     * 备份打包了 11 个模块，其中几个没变是常态，整次拒绝等于什么都没备。
+     *
+     * [existing] 是已经存着的那份归档名，用户拿它去列表里对得上。
+     */
+    data class DuplicateContent(val existing: String) : BackupReason
+
     /** 第三方原文（ksud 输出、IO 异常）。UI 只能加一句本地化的前缀。 */
     data class External(val text: String) : BackupReason
 }

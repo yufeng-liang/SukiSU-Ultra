@@ -732,6 +732,7 @@
          that help a bug report (status codes, truncated hashes, file names) stay, in brackets. -->
     <string name="backup_summary_written">%1$d written</string>
     <string name="backup_summary_skipped">%1$d skipped</string>
+    <string name="backup_summary_all_skipped">these %1$d items match backups you already have — nothing new to store</string>
     <string name="backup_failure_line">%1$s: %2$s</string>
     <string name="backup_storage_local">Local</string>
     <string name="backup_storage_cloud">Cloud</string>
@@ -760,6 +761,7 @@
     <string name="backup_reason_boot_flash_failed">Restoring the stock image failed.</string>
     <string name="backup_reason_file_unreadable">The selected file could not be opened.</string>
     <string name="backup_reason_file_name">The name of the selected file could not be determined.</string>
+    <string name="backup_reason_duplicate_content">This file matches a backup you already have (%1$s) — nothing to import.</string>
     <string name="backup_reason_external">Unexpected failure: %1$s</string>
 
     <string name="backup_auto_title">Automatic backup</string>
@@ -769,6 +771,7 @@
     <string name="backup_auto_off">off</string>
     <string name="backup_auto_dest_none">Neither destination is checked, so automatic backup will not run.</string>
     <string name="backup_auto_result_ok">succeeded, %1$d written</string>
+    <string name="backup_auto_result_unchanged">succeeded, %1$d items unchanged — nothing new to store</string>
     <string name="backup_auto_result_partial">partly failed</string>
     <string name="backup_auto_result_failed">failed</string>
     <string name="backup_channel_name">Backup</string>

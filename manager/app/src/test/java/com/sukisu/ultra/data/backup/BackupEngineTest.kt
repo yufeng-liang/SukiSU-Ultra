@@ -587,6 +587,86 @@ class BackupEngineTest {
     }
 
     @Test
+    fun `importFrom refuses content that is already stored`() {
+        runBlocking {
+            val storage = FakeStorage("local")
+            val body = "foreign".toByteArray()
+            val engine = engine(listOf(storage), moduleSource())
+
+            engine.importFrom(
+                storage = storage,
+                kind = BackupKind.MODULE,
+                fileName = "module_imported_1_20261008_130000.zip",
+                metaFileName = null,
+                size = body.size.toLong(),
+                open = { body.inputStream() },
+                metaJson = null,
+            ).getOrThrow()
+
+            // 同一个文件再导一次：内容一样，名字换了也一样该被拒——不然列表里多出一行、
+            // 云端还要为同一份内容再传一遍。
+            val second = engine.importFrom(
+                storage = storage,
+                kind = BackupKind.MODULE,
+                fileName = "module_imported_1_20261008_140000.zip",
+                metaFileName = null,
+                size = body.size.toLong(),
+                open = { body.inputStream() },
+                metaJson = null,
+            )
+
+            val reason = reasonOf(second.exceptionOrNull() ?: error("第二次导入应当被拒绝"))
+            assertTrue(reason is BackupReason.DuplicateContent)
+            assertEquals(
+                "module_imported_1_20261008_130000.zip",
+                (reason as BackupReason.DuplicateContent).existing,
+            )
+            // 第二份没落盘，索引里也还是那一条。
+            assertFalse(storage.files.containsKey("module_imported_1_20261008_140000.zip"))
+            assertEquals(
+                1,
+                BackupManifest.parseEntries(storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString()).size,
+            )
+        }
+    }
+
+    @Test
+    fun `importFrom still accepts content that only exists as a rollback point`() {
+        runBlocking {
+            val storage = FakeStorage("local")
+            val body = "foreign".toByteArray()
+            val sha = body.inputStream().use { it.sha256Hex() }
+            // 回滚点会被按"同一项留 1 份"裁掉，所以"内容只以回滚点存在"时，导入的这一份才是
+            // 用户自己能指着的那份——和 backup 里那条"回滚点不参与去重"的规矩一致。
+            storage.files[ArchiveNaming.INDEX_FILE] = BackupManifest.renderEntries(
+                listOf(
+                    BackupEntry(
+                        kind = BackupKind.MODULE,
+                        entryId = "imported",
+                        fileName = "${RollbackPolicy.PREFIX}module_imported_1_20261008_120000.zip",
+                        metaFileName = null,
+                        sizeBytes = body.size.toLong(),
+                        sha256 = sha,
+                        createdAt = "2026-10-08T12:00:00Z",
+                    ),
+                ),
+            ).encodeToByteArray()
+
+            engine(listOf(storage), moduleSource()).importFrom(
+                storage = storage,
+                kind = BackupKind.MODULE,
+                fileName = "module_imported_1_20261008_130000.zip",
+                metaFileName = null,
+                size = body.size.toLong(),
+                open = { body.inputStream() },
+                metaJson = null,
+            ).getOrThrow()
+
+            assertTrue(storage.files.containsKey("module_imported_1_20261008_130000.zip"))
+        }
+    }
+
+    @Test
     fun `importFrom flattens a hostile file name`() {
         runBlocking {
             val storage = FakeStorage("local")
