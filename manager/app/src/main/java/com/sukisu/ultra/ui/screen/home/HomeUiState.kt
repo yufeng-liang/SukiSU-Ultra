@@ -14,7 +14,6 @@ data class HomeUiState(
     val isLkmBundled: Boolean,
     val isManager: Boolean,
     val isManagerPrBuild: Boolean,
-    val isKernelPrBuild: Boolean,
     val requiresNewKernel: Boolean,
     val requiresNewManager: Boolean,
     val isRootAvailable: Boolean,
@@ -48,9 +47,6 @@ data class HomeUiState(
 
     val showManagerPrBuildWarning: Boolean
         get() = isManager && isManagerPrBuild
-
-    val showKernelPrBuildWarning: Boolean
-        get() = isManager && !isManagerPrBuild && isKernelPrBuild
 
     val hasUpdate: Boolean
         get() = latestVersionInfo.versionCode > currentManagerVersionCode

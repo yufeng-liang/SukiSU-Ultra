@@ -101,8 +101,6 @@ fun HomePagerMaterial(
             }
             if (state.showManagerPrBuildWarning && state.showFullStatus) {
                 WarningCard(stringResource(id = R.string.home_pr_build_warning), level = WarningLevel.Notice)
-            } else if (state.showKernelPrBuildWarning && state.showFullStatus) {
-                WarningCard(stringResource(id = R.string.home_pr_kernel_warning), level = WarningLevel.Notice)
             }
             if (state.requiresNewKernel && state.showFullStatus) {
                 WarningCard(
@@ -641,7 +639,6 @@ private fun previewHomeScreenState(
     isLkmBundled = lkmMode == true,
     isManager = true,
     isManagerPrBuild = false,
-    isKernelPrBuild = false,
     requiresNewKernel = false,
     requiresNewManager = false,
     isRootAvailable = ksuVersion != null,

@@ -71,7 +71,6 @@ class HomeViewModel(
             isLkmBundled = lkmMode == true && Natives.isLkmBundled,
             isManager = isManager,
             isManagerPrBuild = BuildConfig.IS_PR_BUILD,
-            isKernelPrBuild = Natives.isPrBuild,
             requiresNewKernel = isManager && Natives.managerUAPIVersion > Natives.kernelUAPIVersion,
             requiresNewManager = isManager && Natives.managerUAPIVersion < Natives.kernelUAPIVersion,
             kernelUAPIVersion = kernelUAPIVersion,
