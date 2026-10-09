@@ -39,6 +39,15 @@ interface SettingsRepository {
     var webDavPassword: String
     var backupCloudEnabled: Boolean
     var backupAutoAfterInstall: Boolean
+
+    /**
+     * 自动备份写到哪几处。与「备份位置」那对勾选是两回事：那边管手动备份这一次，这边管
+     * 无人值守的那一次——用户可能愿意手动传云端，但不想让后台悄悄上传。
+     *
+     * 默认都为真，正好是加这对开关之前的行为（本地必写，云端配了就写）。
+     */
+    var backupAutoLocal: Boolean
+    var backupAutoCloud: Boolean
     var backupRetention: Int
 
     /**

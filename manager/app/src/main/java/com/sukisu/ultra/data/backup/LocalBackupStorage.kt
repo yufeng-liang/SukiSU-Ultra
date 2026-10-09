@@ -27,7 +27,14 @@ class LocalBackupStorage(
         ensureRoot()
     }
 
-    override suspend fun put(relativePath: String, size: Long, open: () -> InputStream): Result<Unit> =
+    // 不报进度：拷到目标那一步是 `cp`，没有回调可用，字节数由引擎包在源流上数
+    // （见 BackupStorage.reportsTransferProgress）。
+    override suspend fun put(
+        relativePath: String,
+        size: Long,
+        onProgress: (Long) -> Unit,
+        open: () -> InputStream,
+    ): Result<Unit> =
         runCatching {
             staging.cleanupStale()
             ensureRoot()

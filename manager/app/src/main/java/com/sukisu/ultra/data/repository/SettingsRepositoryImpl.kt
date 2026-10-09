@@ -203,6 +203,14 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = prefs.getBoolean("backup_auto_after_install", true)
         set(value) = prefs.edit { putBoolean("backup_auto_after_install", value) }
 
+    override var backupAutoLocal: Boolean
+        get() = prefs.getBoolean("backup_auto_local", true)
+        set(value) = prefs.edit { putBoolean("backup_auto_local", value) }
+
+    override var backupAutoCloud: Boolean
+        get() = prefs.getBoolean("backup_auto_cloud", true)
+        set(value) = prefs.edit { putBoolean("backup_auto_cloud", value) }
+
     override var backupRetention: Int
         get() = prefs.getInt("backup_retention", BackupDefaults.RETENTION)
         set(value) = prefs.edit { putInt("backup_retention", value) }

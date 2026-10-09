@@ -216,6 +216,10 @@ class BackupRepository(private val context: Context = ksuApp) {
     /**
      * 模块安装成功后调用。未开启自动备份时返回 null。
      *
+     * 写本地还是写云端由设置里的两个开关决定，与页面上那对「备份位置」勾选无关——那边管
+     * 手动备份这一次，这边管无人值守的那一次。两处都没勾时什么都不做，也返回 null，
+     * 界面会说明原因（`backup_auto_dest_none`）。
+     *
      * 结果**落盘**：调用方（刷入流程）跑完就散，用户看不到任何东西，这条记录是事后唯一
      * 能回答"那次备上了没有"的地方。
      */
@@ -223,14 +227,20 @@ class BackupRepository(private val context: Context = ksuApp) {
         if (!AutoBackupPolicy.shouldRun(settings.backupAutoAfterInstall, BackupKind.MODULE)) {
             return@withContext null
         }
-        val local = engine.backup(BackupKind.MODULE)
+        val targets = AutoBackupPolicy.targets(
+            local = settings.backupAutoLocal,
+            cloud = settings.backupAutoCloud,
+            cloudConfigured = cloudConfigured(),
+        )
+        if (!targets.any) return@withContext null
+        val local = if (targets.local) engine.backup(BackupKind.MODULE) else null
         // 云端失败也要报出来，否则自动上传一直失败而用户什么都看不到。
-        val cloud = if (cloudConfigured()) cloudEngine().backup(BackupKind.MODULE) else null
+        val cloud = if (targets.cloud) cloudEngine().backup(BackupKind.MODULE) else null
         val record = AutoBackupRecord(
             atEpochMs = System.currentTimeMillis(),
             outcome = AutoBackupPolicy.classify(local, cloud),
-            writtenCount = local.written.size + (cloud?.written?.size ?: 0),
-            failures = local.failures + cloud?.failures.orEmpty(),
+            writtenCount = (local?.written?.size ?: 0) + (cloud?.written?.size ?: 0),
+            failures = local?.failures.orEmpty() + cloud?.failures.orEmpty(),
         )
         settings.backupAutoLastRecord = AutoBackupRecordJson.render(record)
         record

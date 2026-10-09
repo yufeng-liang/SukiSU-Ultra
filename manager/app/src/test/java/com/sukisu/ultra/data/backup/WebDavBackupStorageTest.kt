@@ -104,6 +104,30 @@ class WebDavBackupStorageTest {
     }
 
     @Test
+    fun `put reports the bytes it actually sends`() {
+        runBlocking {
+            val body = ByteArray(200 * 1024) { (it % 251).toByte() }
+            val seen = mutableListOf<Long>()
+
+            val result = storage().put(
+                relativePath = "SukiSU/backup/big.zip",
+                size = body.size.toLong(),
+                open = { body.inputStream() },
+                onProgress = { seen += it },
+            )
+
+            assertTrue(result.isSuccess)
+            assertTrue("expected progress reports", seen.isNotEmpty())
+            // 进度必须单调：往回跳的进度条比没有进度条更糟。
+            assertEquals(seen.sorted(), seen)
+            // 最后一次是整个文件的字节数——进度条要走到底，平均速度也按这个数算。
+            assertEquals(body.size.toLong(), seen.last())
+            // 引擎靠这个标志决定"要不要自己在源流上数"，报错了就会双份计数。
+            assertTrue(storage().reportsTransferProgress)
+        }
+    }
+
+    @Test
     fun `text round trip`() {
         runBlocking {
             val store = storage()

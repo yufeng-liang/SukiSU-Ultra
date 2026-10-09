@@ -745,10 +745,12 @@
     <string name="backup_reason_external">未预期的失败：%1$s</string>
 
     <string name="backup_auto_title">自动备份</string>
-    <string name="backup_auto_summary">安装模块成功后自动备份一次模块。</string>
+    <string name="backup_auto_summary">安装模块成功后自动备份一次模块，写到下面勾选的位置。</string>
     <string name="backup_auto_last">上次自动备份：%1$s</string>
     <string name="backup_auto_never">还没跑过</string>
     <string name="backup_auto_off">已关闭</string>
+    <string name="backup_auto_dest_none">本机和云端都没勾，自动备份不会执行。</string>
+    <string name="backup_auto_cloud_unset">还没配置云端地址，保存后才会生效。</string>
     <string name="backup_auto_result_ok">成功，已写入 %1$d 项</string>
     <string name="backup_auto_result_partial">部分失败</string>
     <string name="backup_auto_result_failed">失败</string>
@@ -777,5 +779,6 @@
     <string name="backup_progress_title">正在备份</string>
     <string name="backup_progress_target">第 %1$d/%2$d 个 · %3$s %4$s</string>
     <string name="backup_result_title">备份完成</string>
+    <string name="backup_result_average_speed">平均 %1$s/s</string>
     <string name="backup_done">完成</string>
 </resources>

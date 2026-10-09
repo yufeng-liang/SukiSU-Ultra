@@ -429,6 +429,37 @@ private fun LazyListScope.backupTabItems(
                 checked = state.autoBackupEnabled,
                 onCheckedChange = actions.onSetAutoBackup,
             )
+            // 目的地是自动备份的子选项：总开关关着时它们没有意义，灰掉而不是藏起来——
+            // 藏起来用户就不知道"自动备份还能挑地方"，灰着至少看得见，也知道要先开总开关。
+            SegmentedColumn {
+                item {
+                    SegmentedCheckboxItem(
+                        title = stringResource(R.string.backup_origin_local),
+                        checked = state.autoBackupLocal,
+                        enabled = state.autoBackupEnabled,
+                        onCheckedChange = actions.onSetAutoBackupLocal,
+                    )
+                }
+                item {
+                    // 这里**不**像「备份位置」那样锁死：勾的是"以后配好了就传"，与是否配置做与
+                    // 运算，勾了也不会写出去。先备好设置、以后再填地址是很正常的顺序。
+                    SegmentedCheckboxItem(
+                        title = stringResource(R.string.backup_origin_cloud),
+                        summary = if (state.cloudConfigured) null else stringResource(R.string.backup_auto_cloud_unset),
+                        checked = state.autoBackupCloud,
+                        enabled = state.autoBackupEnabled,
+                        onCheckedChange = actions.onSetAutoBackupCloud,
+                    )
+                }
+            }
+            if (state.autoBackupEnabled && !state.autoBackupLocal && !state.autoBackupCloud) {
+                Text(
+                    text = stringResource(R.string.backup_auto_dest_none),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+                )
+            }
             Text(
                 text = BackupText.autoBackupLine(context, state.autoBackupRecord, state.autoBackupEnabled),
                 style = MaterialTheme.typography.bodySmall,

@@ -762,10 +762,12 @@
     <string name="backup_reason_external">Unexpected failure: %1$s</string>
 
     <string name="backup_auto_title">Automatic backup</string>
-    <string name="backup_auto_summary">Back up modules once after a module is installed successfully.</string>
+    <string name="backup_auto_summary">Back up modules once after a module is installed successfully, to the destinations checked below.</string>
     <string name="backup_auto_last">Last automatic backup: %1$s</string>
     <string name="backup_auto_never">never run</string>
     <string name="backup_auto_off">off</string>
+    <string name="backup_auto_dest_none">Neither destination is checked, so automatic backup will not run.</string>
+    <string name="backup_auto_cloud_unset">No cloud address saved yet; this takes effect once you save one.</string>
     <string name="backup_auto_result_ok">succeeded, %1$d written</string>
     <string name="backup_auto_result_partial">partly failed</string>
     <string name="backup_auto_result_failed">failed</string>
@@ -795,5 +797,6 @@
     <string name="backup_progress_title">Backing up</string>
     <string name="backup_progress_target">%1$d of %2$d · %3$s %4$s</string>
     <string name="backup_result_title">Backup finished</string>
+    <string name="backup_result_average_speed">Average %1$s/s</string>
     <string name="backup_done">Done</string>
 </resources>

@@ -15,14 +15,23 @@ private class FakeStorage(
     private val failWrites: Boolean = false,
     private val failIndexRead: Boolean = false,
     private val failDeletes: Boolean = false,
+    override val reportsTransferProgress: Boolean = false,
 ) : BackupStorage {
     val files = mutableMapOf<String, ByteArray>()
 
     override suspend fun test(): Result<Unit> = Result.success(Unit)
 
-    override suspend fun put(relativePath: String, size: Long, open: () -> InputStream): Result<Unit> {
+    override suspend fun put(
+        relativePath: String,
+        size: Long,
+        onProgress: (Long) -> Unit,
+        open: () -> InputStream,
+    ): Result<Unit> {
         if (failWrites) return Result.failure(IllegalStateException("$id is down"))
-        files[relativePath] = open().use { it.readBytes() }
+        val bytes = open().use { it.readBytes() }
+        files[relativePath] = bytes
+        // 会自己报进度的后端（WebDAV 那一类）：按"真的写出去多少"报，引擎不该再包一层源流。
+        if (reportsTransferProgress) onProgress(bytes.size.toLong())
         return Result.success(Unit)
     }
 
@@ -201,6 +210,38 @@ class BackupEngineTest {
             val total = a.sizeBytes + b.sizeBytes
             assertEquals(total, seen.last().sentBytes)
             assertEquals(total, seen.last().totalBytes)
+        }
+    }
+
+    @Test
+    fun `a storage that reports progress itself is not counted twice`() {
+        runBlocking {
+            val a = artifact("a", "sha-a")
+            val b = artifact("b", "sha-b")
+            val seen = mutableListOf<TransferProgress>()
+
+            engine(listOf(FakeStorage("webdav", reportsTransferProgress = true)), moduleSource(a, b))
+                .backup(BackupKind.MODULE, onProgress = { seen += it })
+
+            // 每个文件只该有一条上报（来自后端自己），累计值正好落在"这个文件写完"的位置。
+            // 引擎若在源流上又包一层，每个文件会多出一条，累计值也就不是这两个点了。
+            assertEquals(listOf(a.sizeBytes, a.sizeBytes + b.sizeBytes), seen.map { it.sentBytes })
+            assertEquals(a.sizeBytes + b.sizeBytes, seen.last().totalBytes)
+        }
+    }
+
+    @Test
+    fun `the last chunk of a big file is reported too`() {
+        runBlocking {
+            // 大文件会被切成很多块，节流会把最后一块吞掉——不补那一次，进度条就停在 99%。
+            val big = artifact("a", "sha-a", body = "x".repeat(200 * 1024))
+            val seen = mutableListOf<TransferProgress>()
+
+            engine(listOf(FakeStorage("local")), moduleSource(big))
+                .backup(BackupKind.MODULE, onProgress = { seen += it })
+
+            assertEquals(big.sizeBytes, seen.last().sentBytes)
+            assertEquals(big.sizeBytes, seen.last().totalBytes)
         }
     }
 

@@ -56,6 +56,15 @@ fun BackupProgressDialogMiuix(state: BackupUiState, onDismiss: () -> Unit) {
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 8.dp),
                     )
+                    // 跑完之后瞬时速度就没意义了，用户想知道的是"这一份到底传了多久、平均多快"。
+                    averageLine(run)?.let { average ->
+                        Text(
+                            text = average,
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                 } else {
                     Text(
                         text = stringResource(

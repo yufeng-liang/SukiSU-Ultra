@@ -67,20 +67,35 @@ object AutoBackupPolicy {
     fun shouldRun(enabled: Boolean, kind: BackupKind): Boolean = enabled && kind == BackupKind.MODULE
 
     /**
+     * 这一次自动备份要写哪几处。
+     *
+     * 云端那一项是**与**不是**或**：勾了但地址没配好，写不了就是写不了，这里直接折掉，
+     * 免得调用方还得自己再判断一遍。两处都不写时 [any] 为假，自动备份整体跳过——
+     * 界面会说明原因（见 `backup_auto_dest_none`），不然开关开着却什么都没发生。
+     */
+    data class AutoBackupTargets(val local: Boolean, val cloud: Boolean) {
+        val any: Boolean get() = local || cloud
+    }
+
+    fun targets(local: Boolean, cloud: Boolean, cloudConfigured: Boolean): AutoBackupTargets =
+        AutoBackupTargets(local = local, cloud = cloud && cloudConfigured)
+
+    /**
      * 本地与云端两次备份合起来算成功还是失败。
      *
      * 一边成功一边失败是 [AutoBackupOutcome.PARTIAL]，不是 FAILED：成功的那一份已经是可用的
      * 安全网，报"失败"会让用户以为什么都没备上；但另一份确实没有，也不能说成功。
-     * 没配云端时只有本地一次，那就只看本地。
+     * 只写了其中一处时（另一处没勾、或没配云端）就只看那一处。
      */
-    fun classify(local: BackupRunResult, cloud: BackupRunResult?): AutoBackupOutcome {
-        val localOk = local.failures.isEmpty()
-        if (cloud == null) return if (localOk) AutoBackupOutcome.OK else AutoBackupOutcome.FAILED
-        val cloudOk = cloud.failures.isEmpty()
+    fun classify(local: BackupRunResult?, cloud: BackupRunResult?): AutoBackupOutcome {
+        val runs = listOfNotNull(local, cloud)
+        val ok = runs.count { it.failures.isEmpty() }
         return when {
-            localOk && cloudOk -> AutoBackupOutcome.OK
-            localOk || cloudOk -> AutoBackupOutcome.PARTIAL
-            else -> AutoBackupOutcome.FAILED
+            // 调用方应当先问 targets.any；真跑到这里说明一个目标都没写，只能算失败。
+            runs.isEmpty() -> AutoBackupOutcome.FAILED
+            ok == runs.size -> AutoBackupOutcome.OK
+            ok == 0 -> AutoBackupOutcome.FAILED
+            else -> AutoBackupOutcome.PARTIAL
         }
     }
 }

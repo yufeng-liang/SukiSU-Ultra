@@ -8,7 +8,6 @@ import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.File
@@ -40,6 +39,11 @@ class WebDavBackupStorage(
 
     override val id: String = ID
 
+    /**
+     * 上传进度由请求体自己报，理由见 [BackupStorage.reportsTransferProgress]。
+     */
+    override val reportsTransferProgress: Boolean = true
+
     private val auth = Credentials.basic(username, password)
 
     private fun url(relativePath: String) = WebDavPaths.joinBase(baseUrl, relativePath)
@@ -52,13 +56,18 @@ class WebDavBackupStorage(
         ensureCollections("")
     }
 
-    override suspend fun put(relativePath: String, size: Long, open: () -> InputStream): Result<Unit> = runCatching {
+    override suspend fun put(
+        relativePath: String,
+        size: Long,
+        onProgress: (Long) -> Unit,
+        open: () -> InputStream,
+    ): Result<Unit> = runCatching {
         ensureCollections(relativePath)
         staging.cleanupStale()
         val staged = staging.file(relativePath)
         try {
             open().use { input -> staged.outputStream().use { staging.copyCancellable(input, it) } }
-            val body = staged.asRequestBody(OCTET_STREAM)
+            val body = CountingRequestBody(staged, OCTET_STREAM, onProgress)
             client.newCall(request(relativePath).put(body).build()).await().use { response ->
                 checkSuccess(response, HttpOperation.UPLOAD, relativePath)
             }

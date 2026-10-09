@@ -128,6 +128,15 @@ data class BackupUiState(
     val emptyText: String? = null,
     /** 安装模块成功后是否自动备份一次。默认开。 */
     val autoBackupEnabled: Boolean = true,
+    /** 自动备份是否写本机。与手动备份的「备份位置」是两套选择。 */
+    val autoBackupLocal: Boolean = true,
+    /**
+     * 自动备份是否写云端。
+     *
+     * 没配云端时这一项勾着也没用（写不了），界面上会缀一句说明，但**不**强制改回未勾选：
+     * 用户先在设置里备好、以后再填地址是很正常的顺序，悄悄把他的选择抹掉更糟。
+     */
+    val autoBackupCloud: Boolean = true,
     /**
      * 上一次自动备份的结果。
      *
@@ -182,6 +191,13 @@ data class BackupRunState(
     /** 这次目标的归档总字节数；0 表示还不知道（没有可传的东西）。 */
     val totalBytes: Long = 0,
     val speedBytesPerSecond: Long = 0,
+    /**
+     * 跑完之后这次目标的平均速度（总字节 ÷ 耗时）。
+     *
+     * 和 [speedBytesPerSecond] 分开：那个是瞬时值，上传掉速或卡住时才是要看的东西；跑完还留着
+     * 一个"最后的瞬时速度"没意义，用户想知道的是"这份 96MB 的镜像到底传了多久、平均多快"。
+     */
+    val averageBytesPerSecond: Long = 0,
     /** 已经跑完，[result] 里是结果。 */
     val done: Boolean = false,
     val result: String? = null,
@@ -224,6 +240,9 @@ data class BackupActions(
     val onDismissBackupRun: () -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
+    /** 自动备份写到哪：本机 / 云端各一个。 */
+    val onSetAutoBackupLocal: (Boolean) -> Unit,
+    val onSetAutoBackupCloud: (Boolean) -> Unit,
     val onToggleCloud: () -> Unit,
     val onToggleModules: () -> Unit,
     val onToggleModule: (String) -> Unit,

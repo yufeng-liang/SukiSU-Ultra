@@ -42,6 +42,15 @@ fun BackupProgressDialogMaterial(state: BackupUiState, onDismiss: () -> Unit) {
             Column {
                 if (run.done) {
                     Text(run.result.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                    // 跑完之后瞬时速度就没意义了，用户想知道的是"这一份到底传了多久、平均多快"。
+                    averageLine(run)?.let { average ->
+                        Text(
+                            text = average,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                 } else {
                     Text(
                         text = stringResource(
@@ -80,3 +89,20 @@ internal fun transferLine(run: BackupRunState): String {
     if (run.speedBytesPerSecond <= 0L) return transferred
     return transferred + BackupListFormatter.SEPARATOR + BackupListFormatter.humanSize(run.speedBytesPerSecond) + "/s"
 }
+
+/**
+ * 跑完之后那行平均速度（总字节 ÷ 这次目标的耗时）。
+ *
+ * 没推过东西时返回 null：一次全跳过的备份算出 0 B/s 只是噪音，而"没有可备份的镜像"那种情况
+ * 连耗时都不代表传输。
+ */
+@Composable
+internal fun averageLine(run: BackupRunState): String? =
+    if (run.averageBytesPerSecond <= 0L) {
+        null
+    } else {
+        stringResource(
+            R.string.backup_result_average_speed,
+            BackupListFormatter.humanSize(run.averageBytesPerSecond),
+        )
+    }

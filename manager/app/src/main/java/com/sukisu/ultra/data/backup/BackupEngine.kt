@@ -76,14 +76,22 @@ class BackupEngine(
                         val fileName = ArchiveNaming.uniqueName(artifact.fileName, usedNames)
                         usedNames += fileName
                         val bytesBefore = sentBefore
-                        storage.put(fileName, artifact.sizeBytes) {
-                            CountingInputStream(
-                                delegate = artifact.openContent(),
-                                onProgress = { inFile ->
-                                    onProgress(TransferProgress(fileName, bytesBefore + inFile, totalBytes))
-                                },
-                            )
+                        val report: (Long) -> Unit = { inFile ->
+                            onProgress(TransferProgress(fileName, bytesBefore + inFile, totalBytes))
                         }
+                        // 后端自己会报（WebDAV）时不要在源流上再包一层：它先把源流落到 staging、
+                        // 再上传 staging 文件，包在源流上数到的是那段本地拷贝，而真上传时后端又
+                        // 会按 socket 写出的字节数报一次——两条流混在一起，进度会先冲到底再冻住。
+                        storage.put(
+                            relativePath = fileName,
+                            size = artifact.sizeBytes,
+                            open = if (storage.reportsTransferProgress) {
+                                artifact.openContent
+                            } else {
+                                { CountingInputStream(delegate = artifact.openContent(), onProgress = report) }
+                            },
+                            onProgress = report,
+                        )
                             .onFailure { failures += BackupFailure(fileName, storage.id, reasonOf(it)) }
                             .onSuccess {
                                 written += fileName
@@ -210,7 +218,7 @@ class BackupEngine(
                     RollbackPolicy.rollbackNameFor(entry, ArchiveNaming.timestamp(clock())),
                     usedNames,
                 )
-                if (rollbackStorage.put(name, artifact.sizeBytes, artifact.openContent).isFailure) return@withIndexLock
+                if (rollbackStorage.put(name, artifact.sizeBytes, open = artifact.openContent).isFailure) return@withIndexLock
 
                 // 边车 meta 要一起留：少了它，用回滚点救回来的模块会丢掉禁用状态。
                 val metaName = artifact.metaFileName?.let { ArchiveNaming.metaFileNameFor(name) }
@@ -268,7 +276,7 @@ class BackupEngine(
             val index = readIndex(storage).getOrThrow()
             val taken = index.filterNot { it.fileName == requested }.mapTo(mutableSetOf()) { it.fileName }
             val finalName = ArchiveNaming.uniqueName(requested, taken)
-            storage.put(finalName, size, open).getOrThrow()
+            storage.put(finalName, size, open = open).getOrThrow()
 
             val metaName = if (resolvedMeta != null) ArchiveNaming.metaFileNameFor(finalName) else metaFileName
             if (metaName != null && resolvedMeta != null) storage.writeText(metaName, resolvedMeta).getOrThrow()

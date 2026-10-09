@@ -137,6 +137,8 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         },
         onImport = { importLauncher.launch(arrayOf("*/*")) },
         onSetAutoBackup = viewModel::setAutoBackup,
+        onSetAutoBackupLocal = viewModel::setAutoBackupLocal,
+        onSetAutoBackupCloud = viewModel::setAutoBackupCloud,
         onToggleCloud = viewModel::toggleCloud,
         onToggleModules = viewModel::toggleModules,
         onToggleModule = viewModel::toggleModule,

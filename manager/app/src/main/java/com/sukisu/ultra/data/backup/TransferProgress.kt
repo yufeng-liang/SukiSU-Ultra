@@ -1,5 +1,11 @@
 package com.sukisu.ultra.data.backup
 
+import okhttp3.MediaType
+import okhttp3.RequestBody
+import okio.Buffer
+import okio.BufferedSink
+import okio.source
+import java.io.File
 import java.io.FilterInputStream
 import java.io.InputStream
 
@@ -17,8 +23,8 @@ data class TransferProgress(
 /**
  * 数着读过去的字节，顺带按时间节流上报。
  *
- * 包在**源流**上而不是改后端：后端把流读出去多少，就是这次传输推出去多少——本地是拷、云端是
- * 上传，两边都成立，而 [BackupStorage] 的签名不用为进度动一次（它有六个实现和一堆测试）。
+ * 包在**源流**上，给"把源流读掉就等于推出去"的后端用（本地：拷到目标）。WebDAV 不能这么数——
+ * 它先把源流整份落到 staging 再上传，包在源流上只能数到那段本地拷贝，见 [CountingRequestBody]。
  *
  * 节流是必要的：一个 96MB 的镜像按 8KB 一块读就是上万次回调，每次都往 StateFlow 里写一次
  * 会让界面比上传本身还忙。
@@ -38,6 +44,8 @@ internal class CountingInputStream(
         if (value >= 0) {
             read += 1
             report()
+        } else {
+            report(force = true)
         }
         return value
     }
@@ -47,14 +55,67 @@ internal class CountingInputStream(
         if (count > 0) {
             read += count
             report()
+        } else if (count < 0) {
+            report(force = true)
         }
         return count
     }
 
-    private fun report() {
+    /** 读到末尾时补一次：节流会把最后一块吞掉，进度条就停在 99% 不动了。 */
+    private fun report(force: Boolean = false) {
         val now = clock()
-        if (now - lastReportAt < throttleMs) return
+        if (!force && now - lastReportAt < throttleMs) return
         lastReportAt = now
         onProgress(read)
+    }
+}
+
+/**
+ * 边发边数：把文件写进请求体时上报已写字节。
+ *
+ * 进度必须在这一侧数。WebDAV 的上传是"先把源流整份落到本地 staging、再把 staging 文件发出去"，
+ * 引擎包在源流上的那层计数数的是那段本地拷贝（96MB 也就几十毫秒），真正的上传期间一个字节都不
+ * 会动。而这里写进 socket 的字节数就是用户想看的那个数——OkHttp 的 sink 带缓冲，网络慢下来时
+ * 写操作就阻塞在 socket 上，节流后的上报自然跟着网络节奏走。
+ *
+ * 每次 [writeTo] 自己重开文件流，所以不是 one-shot：服务端要求重发（401 挑战、重定向）时
+ * OkHttp 能再读一遍。
+ */
+internal class CountingRequestBody(
+    private val file: File,
+    private val contentType: MediaType?,
+    private val onProgress: (Long) -> Unit,
+    private val throttleMs: Long = 100,
+    private val clock: () -> Long = System::currentTimeMillis,
+) : RequestBody() {
+
+    override fun contentType(): MediaType? = contentType
+
+    override fun contentLength(): Long = file.length()
+
+    override fun writeTo(sink: BufferedSink) {
+        var written = 0L
+        var lastReportAt = 0L
+        file.source().use { source ->
+            val buffer = Buffer()
+            while (true) {
+                val count = source.read(buffer, CHUNK_BYTES)
+                if (count == -1L) break
+                sink.write(buffer, count)
+                written += count
+                val now = clock()
+                if (now - lastReportAt >= throttleMs) {
+                    lastReportAt = now
+                    onProgress(written)
+                }
+            }
+        }
+        // 同上：最后一块不能被节流吞掉，否则进度条停在 99%。
+        onProgress(written)
+    }
+
+    private companion object {
+        /** 8KB，和 OkHttp 自己的分段大小一致；更小只是把回调次数变多。 */
+        const val CHUNK_BYTES = 8L * 1024L
     }
 }

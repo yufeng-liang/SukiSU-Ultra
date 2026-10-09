@@ -57,6 +57,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             // 上次存的就是某个模板时，把那个预设的高亮恢复回来。
             selectedPreset = WebDavPresets.match(settings.webDavUrl),
             autoBackupEnabled = settings.backupAutoAfterInstall,
+            autoBackupLocal = settings.backupAutoLocal,
+            autoBackupCloud = settings.backupAutoCloud,
             autoBackupRecord = repository.lastAutoBackup(),
         )
     )
@@ -144,6 +146,23 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     fun setAutoBackup(enabled: Boolean) {
         settings.backupAutoAfterInstall = enabled
         _uiState.update { it.copy(autoBackupEnabled = enabled) }
+    }
+
+    /** 自动备份写到本机。与手动备份的「备份位置」互不影响。 */
+    fun setAutoBackupLocal(enabled: Boolean) {
+        settings.backupAutoLocal = enabled
+        _uiState.update { it.copy(autoBackupLocal = enabled) }
+    }
+
+    /**
+     * 自动备份写到云端。
+     *
+     * 云端没配好也允许勾：勾的是"以后配好了就传"，读的时候由
+     * `AutoBackupPolicy.targets` 与是否配置做与运算，勾了也不会写出去。
+     */
+    fun setAutoBackupCloud(enabled: Boolean) {
+        settings.backupAutoCloud = enabled
+        _uiState.update { it.copy(autoBackupCloud = enabled) }
     }
 
     /**
@@ -427,6 +446,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             // 每个目标重新起算进度与速度：上一个目标的速度跟这一个没关系。
             lastSampleAt = 0L
             lastSampleBytes = 0L
+            val startedAt = System.currentTimeMillis()
+            var sentBytes = 0L
             _uiState.update {
                 it.copy(
                     backupRun = BackupRunState(
@@ -443,6 +464,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 selected = if (kind == BackupKind.MODULE) selectedModules else null,
             ) { progress ->
                 val speed = sampleSpeed(progress.sentBytes)
+                sentBytes = progress.sentBytes
                 _uiState.update { current ->
                     current.copy(
                         backupRun = current.backupRun?.copy(
@@ -452,6 +474,13 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                         ),
                     )
                 }
+            }
+            // 平均速度只在真的推过东西时算：一次什么都没写的备份（全跳过/没有可备份的）算出
+            // 0 B/s 是噪音，而且除以 0 会把耗时那一项也变成假的。
+            val elapsedMs = System.currentTimeMillis() - startedAt
+            val average = if (sentBytes > 0L && elapsedMs > 0L) sentBytes * 1000L / elapsedMs else 0L
+            _uiState.update { current ->
+                current.copy(backupRun = current.backupRun?.copy(averageBytesPerSecond = average))
             }
             results += BackupTargetResult(origin, kind, result)
         }
