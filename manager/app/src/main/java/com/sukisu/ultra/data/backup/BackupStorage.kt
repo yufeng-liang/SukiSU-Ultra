@@ -7,9 +7,10 @@ import java.io.InputStream
  * 凭据被服务端拒绝（401 / 403）。
  *
  * 单独一个类型是为了让 UI 能把它翻译成"请检查是不是用了应用密码"，
- * 而不是把 `MKCOL -> HTTP 401` 这种原始信息丢给用户。
+ * 而不是把 `MKCOL -> HTTP 401` 这种原始信息丢给用户。[code] 留着是因为 401 和 403
+ * 对用户意味着不同的事，而提示文案里要带上它。
  */
-class BackupAuthException(message: String) : IOException(message)
+class BackupAuthException(val code: Int, message: String) : IOException(message)
 
 /**
  * 备份归档的持久化后端。路径都是相对后端根目录的路径。

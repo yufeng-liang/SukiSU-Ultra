@@ -47,7 +47,11 @@ class ModuleBackupSource(
         modules.forEach { module ->
             val archived = archiver.archive(module).getOrElse { error ->
                 // 打包失败要报出来：静默跳过会让用户看到"written N"却不知道有模块没备上。
-                failures += BackupFailure("archive", module.id, "source", describe(error))
+                failures += BackupFailure(
+                    path = module.id,
+                    storage = SOURCE_STORAGE,
+                    reason = BackupReason.ArchiveFailed(module.id, externalTextOrNull(error)),
+                )
                 return@forEach
             }
             val fileName = ArchiveNaming.moduleArchiveName(module.id, module.versionCode, timestamp)
@@ -89,7 +93,7 @@ class ModuleBackupSource(
             restorer.install(staged).getOrElse { error ->
                 return@runCatching RestoreOutcome(
                     false,
-                    "${entry.entryId}: ${error.message ?: error.javaClass.simpleName}",
+                    BackupReason.ModuleInstallFailed(entry.entryId, externalTextOrNull(error)),
                 )
             }
             val meta = metaJson?.let { runCatching { BackupManifest.parseModuleMeta(it) }.getOrNull() }
@@ -97,16 +101,18 @@ class ModuleBackupSource(
                 restorer.setDisabled(entry.entryId, true).getOrElse { error ->
                     return@runCatching RestoreOutcome(
                         false,
-                        "${entry.entryId}: installed but disabling failed: ${error.message}",
+                        BackupReason.ModuleDisableFailed(entry.entryId, externalTextOrNull(error)),
                     )
                 }
             }
-            RestoreOutcome(true, entry.entryId)
+            RestoreOutcome(true)
         } finally {
             staged.delete()
         }
     }
 
-    private fun describe(error: Throwable): String =
-        Redaction.redactMessage(error.message).ifBlank { error.javaClass.simpleName }
+    private companion object {
+        /** 源侧失败的 storage 标记：UI 只在本地/云端之间需要区分，这个不翻译成"备份位置"。 */
+        const val SOURCE_STORAGE = "source"
+    }
 }

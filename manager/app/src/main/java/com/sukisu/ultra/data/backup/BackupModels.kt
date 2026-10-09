@@ -55,14 +55,20 @@ data class ExportOutcome(
 /** 归档存放的位置。回滚点例外：它始终落在 [LOCAL]，即使被恢复的那一项在云端。 */
 enum class BackupOrigin { LOCAL, CLOUD }
 
+/**
+ * 一条失败记录。
+ *
+ * [reason] 是结构化原因，不是已经拼好的字符串：同一个失败要在列表摘要、恢复提示、
+ * 系统通知里出现，各自需要的详细程度和语言都不同，翻译归 UI 层。
+ */
 data class BackupFailure(
-    val operation: String,
     val path: String,
     val storage: String,
-    val cause: String,
-    /** 服务端拒绝凭据（401/403）。UI 靠它把"请用应用密码"的提示送到用户面前。 */
-    val authFailed: Boolean = false,
-)
+    val reason: BackupReason,
+) {
+    /** 服务端拒绝凭据。UI 靠它把"请用应用密码"的提示送到用户面前。 */
+    val authFailed: Boolean get() = reason is BackupReason.CloudCredentialsRejected
+}
 
 data class BackupRunResult(
     val kind: BackupKind,
@@ -75,4 +81,5 @@ data class BackupRunResult(
     val isFailure: Boolean get() = failures.isNotEmpty() && written.isEmpty()
 }
 
-data class RestoreOutcome(val success: Boolean, val detail: String)
+/** [reason] 只在失败时有值：成功时没什么可说的，恢复到了哪一项由调用方自己知道。 */
+data class RestoreOutcome(val success: Boolean, val reason: BackupReason? = null)

@@ -5,18 +5,18 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sukisu.ultra.R
-import com.sukisu.ultra.data.backup.BackupAuthException
 import com.sukisu.ultra.data.backup.BackupEntry
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.BackupRepository
 import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
-import com.sukisu.ultra.data.backup.Redaction
 import com.sukisu.ultra.data.backup.RestoreOutcome
+import com.sukisu.ultra.data.backup.reasonOf
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
+import com.sukisu.ultra.ui.util.BackupText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -230,31 +230,28 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun summary(result: BackupRunResult): String {
-        val text = BackupListFormatter.summary(result)
-        return if (BackupListFormatter.needsAppPasswordHint(result)) {
-            string(R.string.backup_cloud_unauthorized) + BackupListFormatter.SEPARATOR + text
-        } else {
-            text
-        }
-    }
+    /**
+     * 一次备份的摘要：计数 + 去重后的失败原因。
+     *
+     * "请用应用密码"那类提示不再单独拼在前面——它已经是凭据被拒这条原因的正文，
+     * 拼一遍就变成同一句话出现两次。
+     */
+    private fun summary(result: BackupRunResult): String = BackupText.summary(context(), result)
 
     /**
-     * 失败原因要脱敏后才能进 UI：OkHttp 在建 Request 阶段抛的消息会把用户填进 URL 的
-     * 内容原样带出来，而备份页是全 app 唯一会把原始异常文本显示给用户的地方。
+     * 失败原因走数据层的结构化原因再翻译：异常文本只作为第三方细节出现在括号里，
+     * 且已经过脱敏（OkHttp 在建 Request 阶段抛的消息会把用户填进 URL 的内容原样带出来）。
      */
-    private fun describe(error: Throwable): String = when (error) {
-        is BackupAuthException -> string(R.string.backup_cloud_unauthorized)
-        else -> Redaction.redactMessage(error.message).ifBlank { error.javaClass.simpleName }
-    }
+    private fun describe(error: Throwable): String = BackupText.reason(context(), reasonOf(error))
 
-    /** 恢复结果进 message 前同样要脱敏；detail 为空时兜一句人话，别让 snackbar 弹出一片空白。 */
     private fun outcomeMessage(outcome: RestoreOutcome, entry: BackupEntry): String =
         if (outcome.success) {
             string(R.string.backup_restored, entry.entryId)
         } else {
-            Redaction.redactMessage(outcome.detail).ifBlank { string(R.string.backup_restore_failed) }
+            BackupText.restoreFailure(context(), outcome.reason)
         }
+
+    private fun context(): Application = getApplication()
 
     private fun string(resId: Int, vararg formatArgs: Any): String =
         getApplication<Application>().getString(resId, *formatArgs)

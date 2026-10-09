@@ -13,11 +13,13 @@ class KsuModuleRestorer : ModuleRestorer {
 
     override suspend fun install(zip: File): Result<Unit> = runCatching {
         val result = flashModule(Uri.fromFile(zip), onStdout = {}, onStderr = {})
-        check(result.code == 0) { result.err.ifBlank { "ksud module install failed with code ${result.code}" } }
+        // ksud 的 stderr 就是最有用的原因；它可能是空的，那就让上层只说"安装失败"，
+        // 不要把 `IllegalStateException` 这种类名或者一句英文塞给用户。
+        if (result.code != 0) throw IllegalStateException(result.err)
     }
 
     override suspend fun setDisabled(id: String, disabled: Boolean): Result<Unit> = runCatching {
         val verb = if (disabled) "disable" else "enable"
-        check(execKsud("module $verb $id")) { "ksud module $verb $id failed" }
+        if (!execKsud("module $verb $id")) throw IllegalStateException()
     }
 }

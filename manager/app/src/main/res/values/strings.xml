@@ -681,11 +681,57 @@
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
     <string name="backup_cloud_required">Configure the WebDAV server below and save it first.</string>
-    <string name="backup_cloud_unauthorized">The server rejected the credentials. Most providers need an app-specific password rather than your login password.</string>
     <string name="backup_cloud_test_ok">Connection OK</string>
     <string name="backup_restored">Restored %s</string>
     <string name="backup_exported">Exported %s</string>
     <string name="backup_imported">Imported</string>
     <string name="backup_rollback_badge">Restore point</string>
     <string name="backup_restore_failed">Restore failed</string>
+
+    <!-- Backup summaries and diagnostics. Every string here is shown to the user, so no
+         internal vocabulary (PUT/MKCOL/index-read) and no bare counters. Technical details
+         that help a bug report (status codes, truncated hashes, file names) stay, in brackets. -->
+    <string name="backup_summary_written">%1$d written</string>
+    <string name="backup_summary_skipped">%1$d skipped</string>
+    <string name="backup_failure_line">%1$s: %2$s</string>
+    <string name="backup_storage_local">Local</string>
+    <string name="backup_storage_cloud">Cloud</string>
+    <string name="backup_reason_with_detail">%1$s (%2$s)</string>
+    <string name="backup_reason_cloud_not_configured">Cloud backup is not set up. Fill in the server address below and save it.</string>
+    <string name="backup_reason_cloud_credentials">The server rejected the credentials (HTTP %1$d). Most providers need an app-specific password rather than your login password.</string>
+    <string name="backup_reason_http_mkcol">Could not create the folder %1$s on the server (HTTP %2$d).</string>
+    <string name="backup_reason_http_upload">Uploading %1$s failed (HTTP %2$d).</string>
+    <string name="backup_reason_http_download">Downloading %1$s failed (HTTP %2$d).</string>
+    <string name="backup_reason_http_delete">Deleting %1$s failed (HTTP %2$d).</string>
+    <string name="backup_reason_index_unreadable">The list of backups could not be read, so nothing was written back to avoid wiping it. Back up once more, or check the folder by hand.</string>
+    <string name="backup_reason_read_failed">Could not read %1$s.</string>
+    <string name="backup_reason_write_failed">Could not write %1$s.</string>
+    <string name="backup_reason_delete_failed">Could not delete %1$s, so it stays on disk and stays listed.</string>
+    <string name="backup_reason_dir_not_writable">The backup folder %1$s is not writable.</string>
+    <string name="backup_reason_corrupted">%1$s is damaged, so it was not restored (sha256 %2$s vs %3$s).</string>
+    <string name="backup_reason_archive_failed">Could not package %1$s.</string>
+    <string name="backup_reason_module_install_failed">Installing %1$s failed.</string>
+    <string name="backup_reason_module_disable_failed">%1$s was installed, but its disabled state could not be restored.</string>
+    <string name="backup_reason_no_source">There is no backup source for this kind of item.</string>
+    <string name="backup_reason_boot_no_meta">This boot backup has no description file, so it cannot be restored safely.</string>
+    <string name="backup_reason_boot_foreign">This boot backup belongs to a different stock image (sha1 %1$s vs %2$s), so it cannot be used on this device.</string>
+    <string name="backup_reason_boot_no_checksum">This boot backup has no checksum, so it cannot be restored safely.</string>
+    <string name="backup_reason_boot_missing">This device has no stock image with sha1 %1$s, so this backup cannot be restored here. It probably came from another device.</string>
+    <string name="backup_reason_boot_identity">The content of this boot backup does not match the identity it claims (sha1 %1$s), so it was not flashed.</string>
+    <string name="backup_reason_boot_flash_failed">Restoring the stock image failed.</string>
+    <string name="backup_reason_file_unreadable">The selected file could not be opened.</string>
+    <string name="backup_reason_file_name">The name of the selected file could not be determined.</string>
+    <string name="backup_reason_external">Unexpected failure: %1$s</string>
+
+    <string name="backup_auto_title">Automatic backup</string>
+    <string name="backup_auto_summary">Back up modules once after a module is installed successfully.</string>
+    <string name="backup_auto_last">Last automatic backup: %1$s</string>
+    <string name="backup_auto_never">never run</string>
+    <string name="backup_auto_off">off</string>
+    <string name="backup_auto_result_ok">succeeded, %1$d written</string>
+    <string name="backup_auto_result_partial">partly failed</string>
+    <string name="backup_auto_result_failed">failed</string>
+    <string name="backup_channel_name">Backup</string>
+    <string name="backup_auto_notify_title">Automatic backup did not finish</string>
+    <string name="backup_auto_notify_partial">Local backup done, cloud failed: %1$s</string>
 </resources>

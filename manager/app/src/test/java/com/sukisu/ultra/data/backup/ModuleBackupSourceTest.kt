@@ -92,7 +92,7 @@ class ModuleBackupSourceTest {
             assertEquals(listOf("b"), outcome.artifacts.map { it.entryId })
             // 静默跳过会让用户看到"written 1"却不知道有模块根本没备上。
             assertEquals("a", outcome.failures.single().path)
-            assertEquals("archive", outcome.failures.single().operation)
+            assertTrue(outcome.failures.single().reason is BackupReason.ArchiveFailed)
         }
     }
 
@@ -163,7 +163,9 @@ class ModuleBackupSourceTest {
             val outcome = source(emptyList(), restorer).restore(entry, null, "zip".byteInputStream()).getOrThrow()
 
             assertFalse(outcome.success)
-            assertTrue(outcome.detail.contains("ksud said no"))
+            val reason = outcome.reason
+            assertTrue(reason is BackupReason.ModuleInstallFailed)
+            assertEquals("ksud said no", (reason as BackupReason.ModuleInstallFailed).external)
         }
     }
 

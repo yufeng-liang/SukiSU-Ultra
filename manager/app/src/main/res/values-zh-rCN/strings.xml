@@ -666,11 +666,56 @@
     <string name="backup_origin_local">本地</string>
     <string name="backup_origin_cloud">云端</string>
     <string name="backup_cloud_required">请先在下方配置 WebDAV 服务器并保存。</string>
-    <string name="backup_cloud_unauthorized">服务端拒绝了凭据。多数服务商需要填「应用密码」，而不是登录密码。</string>
     <string name="backup_cloud_test_ok">连接正常</string>
     <string name="backup_restored">已恢复 %s</string>
     <string name="backup_exported">已导出 %s</string>
     <string name="backup_imported">已导入</string>
     <string name="backup_rollback_badge">恢复点</string>
     <string name="backup_restore_failed">恢复失败</string>
+
+    <!-- 备份摘要与诊断。这里每一句都会显示给用户：不出现内部术语（PUT/MKCOL/index-read），
+         不出现裸露的计数器；但对排查有用的技术细节保留在括号里（HTTP 状态码、截断的哈希、文件名）。 -->
+    <string name="backup_summary_written">已写入 %1$d 项</string>
+    <string name="backup_summary_skipped">跳过 %1$d 项</string>
+    <string name="backup_failure_line">%1$s：%2$s</string>
+    <string name="backup_storage_local">本地</string>
+    <string name="backup_storage_cloud">云端</string>
+    <string name="backup_reason_with_detail">%1$s（%2$s）</string>
+    <string name="backup_reason_cloud_not_configured">云端备份还没配置。请先在下方填写服务器地址并保存。</string>
+    <string name="backup_reason_cloud_credentials">服务端拒绝了凭据（HTTP %1$d）。多数服务商需要填「应用密码」，而不是登录密码。</string>
+    <string name="backup_reason_http_mkcol">无法在服务器上创建目录 %1$s（HTTP %2$d）。</string>
+    <string name="backup_reason_http_upload">上传 %1$s 失败（HTTP %2$d）。</string>
+    <string name="backup_reason_http_download">下载 %1$s 失败（HTTP %2$d）。</string>
+    <string name="backup_reason_http_delete">删除 %1$s 失败（HTTP %2$d）。</string>
+    <string name="backup_reason_index_unreadable">备份列表读不出来，为避免把它清空，本次没有回写。请再备份一次，或手动检查该目录。</string>
+    <string name="backup_reason_read_failed">无法读取 %1$s。</string>
+    <string name="backup_reason_write_failed">无法写入 %1$s。</string>
+    <string name="backup_reason_delete_failed">无法删除 %1$s，它会继续留在磁盘上、也留在列表里。</string>
+    <string name="backup_reason_dir_not_writable">备份目录 %1$s 不可写。</string>
+    <string name="backup_reason_corrupted">%1$s 内容损坏，已拒绝恢复（sha256 %2$s ≠ %3$s）。</string>
+    <string name="backup_reason_archive_failed">打包 %1$s 失败。</string>
+    <string name="backup_reason_module_install_failed">安装 %1$s 失败。</string>
+    <string name="backup_reason_module_disable_failed">%1$s 已安装，但没能恢复它的禁用状态。</string>
+    <string name="backup_reason_no_source">这个版本没有该类内容的备份源。</string>
+    <string name="backup_reason_boot_no_meta">这份 boot 备份缺少描述文件，无法安全恢复。</string>
+    <string name="backup_reason_boot_foreign">这份 boot 备份属于另一张原厂镜像（sha1 %1$s ≠ %2$s），本机用不了它。</string>
+    <string name="backup_reason_boot_no_checksum">这份 boot 备份没有校验和，无法安全恢复。</string>
+    <string name="backup_reason_boot_missing">本机没有 sha1 为 %1$s 的原厂镜像，无法在这里恢复这份备份。它可能来自另一台设备。</string>
+    <string name="backup_reason_boot_identity">这份 boot 备份的内容与它自称的身份不符（sha1 %1$s），已拒绝刷入。</string>
+    <string name="backup_reason_boot_flash_failed">恢复原厂镜像失败。</string>
+    <string name="backup_reason_file_unreadable">打不开所选的文件。</string>
+    <string name="backup_reason_file_name">拿不到所选文件的文件名。</string>
+    <string name="backup_reason_external">未预期的失败：%1$s</string>
+
+    <string name="backup_auto_title">自动备份</string>
+    <string name="backup_auto_summary">安装模块成功后自动备份一次模块。</string>
+    <string name="backup_auto_last">上次自动备份：%1$s</string>
+    <string name="backup_auto_never">还没跑过</string>
+    <string name="backup_auto_off">已关闭</string>
+    <string name="backup_auto_result_ok">成功，已写入 %1$d 项</string>
+    <string name="backup_auto_result_partial">部分失败</string>
+    <string name="backup_auto_result_failed">失败</string>
+    <string name="backup_channel_name">备份</string>
+    <string name="backup_auto_notify_title">自动备份未完成</string>
+    <string name="backup_auto_notify_partial">本地已备份，云端失败：%1$s</string>
 </resources>

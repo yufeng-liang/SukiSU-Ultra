@@ -62,7 +62,7 @@ class VerifyingInputStream(
         verified = true
         val actual = digest.hex()
         if (!actual.equals(expectedSha256, ignoreCase = true)) {
-            throw IOException("$label is corrupted: sha256 $actual, expected $expectedSha256")
+            throw BackupReasonException(BackupReason.Corrupted(label, expectedSha256, actual))
         }
     }
 }

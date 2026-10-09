@@ -1,6 +1,7 @@
 package com.sukisu.ultra.data.backup
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import org.junit.Test
@@ -45,7 +46,11 @@ class Sha256Test {
         val error = runCatching { stream.use { it.readBytes() } }.exceptionOrNull()
 
         // 截断或改写的归档必须在这里失败，而不是被装回设备。
-        assertEquals(IOException::class.java, error?.javaClass)
-        assertEquals(true, error?.message?.contains("corrupted"))
+        // 仍然是 IOException 子类，既有 catch 分支不会漏掉它。
+        assertTrue(error is IOException)
+        assertEquals(
+            BackupReason.Corrupted("a.zip", "deadbeef", bytes.sha256Hex()),
+            (error as BackupReasonException).reason,
+        )
     }
 }

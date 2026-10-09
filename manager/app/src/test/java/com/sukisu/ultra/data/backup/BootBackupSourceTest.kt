@@ -130,7 +130,7 @@ class BootBackupSourceTest {
                 .restore(bootEntry().copy(entryId = id), meta(id, body), body.inputStream())
                 .getOrThrow()
 
-            assertTrue(outcome.detail, outcome.success)
+            assertTrue(outcome.reason?.toString(), outcome.success)
             assertEquals("/data/adb/ksu/ksu_backup_$id", root.restored.single())
             assertEquals(1, restoredCalls)
         }
@@ -159,7 +159,7 @@ class BootBackupSourceTest {
             val outcome = source(root).restore(bootEntry(), meta(other, body), body.inputStream()).getOrThrow()
 
             assertFalse(outcome.success)
-            assertTrue(outcome.detail.contains("different stock image"))
+            assertTrue(outcome.reason is BackupReason.BootForeignStockImage)
             assertTrue(root.restored.isEmpty())
         }
     }
@@ -177,7 +177,7 @@ class BootBackupSourceTest {
                 .getOrThrow()
 
             assertFalse(outcome.success)
-            assertTrue(outcome.detail.contains("no stock image"))
+            assertTrue(outcome.reason is BackupReason.BootStockImageMissing)
         }
     }
 
@@ -195,7 +195,7 @@ class BootBackupSourceTest {
                 .getOrThrow()
 
             assertFalse(outcome.success)
-            assertTrue(outcome.detail.contains("identity"))
+            assertTrue(outcome.reason is BackupReason.BootIdentityMismatch)
             assertTrue(root.restored.isEmpty())
         }
     }
@@ -217,7 +217,7 @@ class BootBackupSourceTest {
                 .getOrThrow()
 
             assertFalse(outcome.success)
-            assertTrue(outcome.detail.contains("corrupted"))
+            assertTrue(outcome.reason is BackupReason.Corrupted)
             assertTrue(root.restored.isEmpty())
         }
     }
@@ -235,7 +235,10 @@ class BootBackupSourceTest {
                 .getOrThrow()
 
             assertFalse(outcome.success)
-            assertTrue(outcome.detail.contains("no matching backup"))
+            // ksud 的 stderr 就是失败原因，原样带出来当第三方细节。
+            val reason = outcome.reason
+            assertTrue(reason is BackupReason.BootFlashFailed)
+            assertEquals("no matching backup", (reason as BackupReason.BootFlashFailed).external)
             assertEquals(listOf("/data/adb/ksu/ksu_backup_$id"), root.deleted)
         }
     }

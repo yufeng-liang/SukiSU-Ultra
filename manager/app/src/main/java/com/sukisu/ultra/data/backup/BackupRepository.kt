@@ -64,8 +64,11 @@ class BackupRepository(private val context: Context = ksuApp) {
             restorer = {
                 runCatching {
                     val result = restoreBoot({}, {})
-                    check(result.code == 0) {
-                        result.err.ifBlank { "ksud boot-restore failed with code ${result.code}" }
+                    if (result.code != 0) {
+                        // ksud 的 stderr 才是真正的原因；它可能是空的，那就让 UI 只说"恢复失败"。
+                        throw BackupReasonException(
+                            BackupReason.BootFlashFailed(result.err.takeIf { it.isNotBlank() }),
+                        )
                     }
                 }
             },
@@ -124,7 +127,13 @@ class BackupRepository(private val context: Context = ksuApp) {
         if (origin == BackupOrigin.CLOUD && !cloudConfigured()) {
             return@withContext BackupRunResult(
                 kind,
-                failures = listOf(BackupFailure("config", "", "webdav", "cloud backup is not configured")),
+                failures = listOf(
+                    BackupFailure(
+                        path = "",
+                        storage = WebDavBackupStorage.ID,
+                        reason = BackupReason.CloudNotConfigured,
+                    ),
+                ),
             )
         }
         engineFor(origin).backup(kind)
@@ -145,7 +154,7 @@ class BackupRepository(private val context: Context = ksuApp) {
     suspend fun exportToSaf(origin: BackupOrigin, entry: BackupEntry, uri: Uri): Result<Unit> =
         withContext(Dispatchers.IO) {
             val sink = context.contentResolver.openOutputStream(uri, "w")
-                ?: return@withContext Result.failure(IllegalStateException("cannot open $uri"))
+                ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileUnreadable))
             engineFor(origin).exportTo(storageFor(origin), entry, sink)
         }
 
@@ -175,13 +184,13 @@ class BackupRepository(private val context: Context = ksuApp) {
     suspend fun importFromSaf(uri: Uri, kind: BackupKind): Result<Unit> = withContext(Dispatchers.IO) {
         // document provider 的 lastPathSegment 是内部段（primary:Download/x.zip），不是文件名。
         val name = uri.getFileName(context)
-            ?: return@withContext Result.failure(IllegalStateException("cannot resolve file name for $uri"))
+            ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileNameUnresolved))
         workStaging.cleanupStale()
         val staged = workStaging.newFile("import-", ".bin")
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 staged.outputStream().use { input.copyTo(it) }
-            } ?: return@withContext Result.failure(IllegalStateException("cannot open $uri"))
+            } ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileUnreadable))
             engine.importFrom(
                 storage = localStorage,
                 kind = kind,

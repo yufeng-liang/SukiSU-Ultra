@@ -28,9 +28,12 @@ class BackupEngine(
 
     suspend fun backup(kind: BackupKind): BackupRunResult {
         val source = sources[kind]
-            ?: return BackupRunResult(kind, failures = listOf(BackupFailure("source", "", "engine", "no source for $kind")))
+            ?: return BackupRunResult(
+                kind,
+                failures = listOf(BackupFailure("", ENGINE_STORAGE, BackupReason.NoSource(kind))),
+            )
         val outcome = source.export().getOrElse { error ->
-            return BackupRunResult(kind, failures = listOf(describe("export", "", "source", error)))
+            return BackupRunResult(kind, failures = listOf(BackupFailure("", SOURCE_STORAGE, reasonOf(error))))
         }
         val written = mutableListOf<String>()
         val skipped = mutableListOf<String>()
@@ -42,7 +45,7 @@ class BackupEngine(
                 withIndexLock(storage.id) {
                     // 索引读不出来就不回写：把"读失败"当成"空索引"会把已有 manifest 整体清掉。
                     val index = readIndex(storage).getOrElse { error ->
-                        failures += describe("index-read", ArchiveNaming.INDEX_FILE, storage.id, error)
+                        failures += BackupFailure(ArchiveNaming.INDEX_FILE, storage.id, reasonOf(error))
                         return@withIndexLock
                     }
                     val pending = mutableListOf<BackupEntry>()
@@ -59,13 +62,13 @@ class BackupEngine(
                         val fileName = ArchiveNaming.uniqueName(artifact.fileName, usedNames)
                         usedNames += fileName
                         storage.put(fileName, artifact.sizeBytes, artifact.openContent)
-                            .onFailure { failures += describe("put", fileName, storage.id, it) }
+                            .onFailure { failures += BackupFailure(fileName, storage.id, reasonOf(it)) }
                             .onSuccess {
                                 written += fileName
                                 val metaName = artifact.metaFileName?.let { ArchiveNaming.metaFileNameFor(fileName) }
                                 if (metaName != null && artifact.metaJson != null) {
                                     storage.writeText(metaName, artifact.metaJson)
-                                        .onFailure { failures += describe("put", metaName, storage.id, it) }
+                                        .onFailure { failures += BackupFailure(metaName, storage.id, reasonOf(it)) }
                                 }
                                 pending += BackupEntry(
                                     kind = kind,
@@ -81,13 +84,22 @@ class BackupEngine(
 
                     val updated = index + pending
                     val expired = RetentionPolicy.expired(updated, kind, RetentionPolicy.keepFor(kind, retention, bootRetention))
+                    // 删不掉的条目留在索引里：从索引里摘掉却把文件留在盘上，那份归档就再也没人
+                    // 指向它了，下一次备份也不会再试着删——用户看不到、也清不掉的孤儿。
+                    val deleted = mutableSetOf<BackupEntry>()
                     expired.forEach { entry ->
-                        storage.delete(entry.fileName)
-                        entry.metaFileName?.let { storage.delete(it) }
+                        val archive = storage.delete(entry.fileName)
+                        val meta = entry.metaFileName?.let { storage.delete(it) } ?: Result.success(Unit)
+                        if (archive.isSuccess && meta.isSuccess) {
+                            deleted += entry
+                        } else {
+                            val error = archive.exceptionOrNull() ?: meta.exceptionOrNull()!!
+                            failures += BackupFailure(entry.fileName, storage.id, reasonOf(error))
+                        }
                     }
-                    val remaining = updated - expired.toSet()
+                    val remaining = updated - deleted
                     storage.writeText(ArchiveNaming.INDEX_FILE, BackupManifest.renderEntries(remaining))
-                        .onFailure { failures += describe("index", ArchiveNaming.INDEX_FILE, storage.id, it) }
+                        .onFailure { failures += BackupFailure(ArchiveNaming.INDEX_FILE, storage.id, reasonOf(it)) }
                 }
             }
         } finally {
@@ -244,17 +256,14 @@ class BackupEngine(
     private suspend fun <T> withIndexLock(storageId: String, block: suspend () -> T): T =
         indexLocks.computeIfAbsent(storageId) { Mutex() }.withLock { block() }
 
-    /** 失败原因会一路显示到 UI，先把 URL 里的凭据抹掉。 */
-    private fun describe(operation: String, path: String, storageId: String, error: Throwable) = BackupFailure(
-        operation = operation,
-        path = path,
-        storage = storageId,
-        cause = Redaction.redactMessage(error.message).ifBlank { error.javaClass.simpleName },
-        authFailed = error is BackupAuthException,
-    )
-
     private companion object {
         /** 进程级：同一个后端 id 的索引读-改-写串行化，跨 BackupRepository 实例生效。 */
         val indexLocks = ConcurrentHashMap<String, Mutex>()
+
+        /** 源侧失败的 storage 标记，UI 不把它当成"备份位置"来显示。 */
+        const val SOURCE_STORAGE = "source"
+
+        /** 引擎自身的失败（比如没有这个 kind 的源）。 */
+        const val ENGINE_STORAGE = "engine"
     }
 }

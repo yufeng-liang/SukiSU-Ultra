@@ -48,7 +48,11 @@ class BootBackupSource(
             val staged = staging.newFile("boot-export-", ".img")
             if (!rootFiles.copyFrom(file.path, staged)) {
                 staged.delete()
-                failures += BackupFailure("export", file.path, "source", "cannot stage ${file.path}")
+                failures += BackupFailure(
+                    path = file.path,
+                    storage = SOURCE_STORAGE,
+                    reason = BackupReason.ReadFailed(file.path, null),
+                )
                 return@forEach
             }
             val sha256 = staged.inputStream().use { it.sha256Hex() }
@@ -96,26 +100,23 @@ class BootBackupSource(
         content: InputStream,
     ): Result<RestoreOutcome> = runCatching {
         val meta = metaJson?.let { runCatching { JSONObject(it) }.getOrNull() }
-            ?: return@runCatching RestoreOutcome(
-                false,
-                "boot archive ${entry.fileName} has no sidecar meta; refusing to flash",
-            )
+            ?: return@runCatching RestoreOutcome(false, BackupReason.BootNoSidecarMeta)
         val sha1 = meta.optString("sha1")
         val expectedSha256 = meta.optString("sha256")
         if (sha1.isBlank() || sha1 != entry.entryId || !SHA1_HEX.matches(entry.entryId)) {
             return@runCatching RestoreOutcome(
                 false,
-                "boot archive belongs to a different stock image (sha1 $sha1 != ${entry.entryId}); refusing to flash",
+                BackupReason.BootForeignStockImage(sha1, entry.entryId),
             )
         }
         if (expectedSha256.isBlank()) {
-            return@runCatching RestoreOutcome(false, "boot archive has no checksum; refusing to flash")
+            return@runCatching RestoreOutcome(false, BackupReason.BootNoChecksum)
         }
         // ksud 找不到匹配文件时会静默 rebuild 并退出 0，所以这个前置条件必须由我们拒绝。
         if (entry.entryId !in stockImageFiles().map { sha1Of(it) }.toSet()) {
             return@runCatching RestoreOutcome(
                 false,
-                "no stock image with sha1 ${entry.entryId} on this device; refusing to flash",
+                BackupReason.BootStockImageMissing(entry.entryId),
             )
         }
 
@@ -127,7 +128,7 @@ class BootBackupSource(
             if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
                 return@runCatching RestoreOutcome(
                     false,
-                    "boot archive is corrupted (sha256 mismatch); refusing to flash",
+                    BackupReason.Corrupted(entry.fileName, expectedSha256, actualSha256),
                 )
             }
             // 把内容与身份绑死：伪造 meta + index 无法让一份任意镜像通过。
@@ -135,19 +136,22 @@ class BootBackupSource(
             if (actualSha1 != entry.entryId) {
                 return@runCatching RestoreOutcome(
                     false,
-                    "boot archive content does not match its recorded identity; refusing to flash",
+                    BackupReason.BootIdentityMismatch(entry.entryId),
                 )
             }
             val target = "$backupDir/ksu_backup_${entry.entryId}"
             if (!rootFiles.copyTo(staged, target)) {
-                return@runCatching RestoreOutcome(false, "cannot write $target")
+                return@runCatching RestoreOutcome(false, BackupReason.WriteFailed(target, null))
             }
             restorer.restoreStockImage().getOrElse { error ->
                 // 刷失败就把刚放回去的文件清掉，别在 ksud 的备份目录里留一份没用的镜像。
                 rootFiles.delete(target)
-                return@runCatching RestoreOutcome(false, error.message ?: error.javaClass.simpleName)
+                return@runCatching RestoreOutcome(
+                    false,
+                    BackupReason.BootFlashFailed(externalTextOrNull(error)),
+                )
             }
-            RestoreOutcome(true, entry.entryId)
+            RestoreOutcome(true)
         } finally {
             staged.delete()
         }
@@ -167,5 +171,8 @@ class BootBackupSource(
     private companion object {
         /** entryId 会拼进以 root 身份执行的 `cp`/`rm` 目标路径，所以只接受规整的 sha1。 */
         val SHA1_HEX = Regex("^[0-9a-f]{40}$")
+
+        /** 源侧失败的 storage 标记，与 [ModuleBackupSource] 一致：UI 不把它当成"备份位置"。 */
+        const val SOURCE_STORAGE = "source"
     }
 }

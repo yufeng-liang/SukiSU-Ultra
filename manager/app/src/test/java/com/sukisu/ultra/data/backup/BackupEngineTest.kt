@@ -34,7 +34,7 @@ private class FakeStorage(
     /** 与真实后端一致：文件不存在等于空文本，读不到才是失败。 */
     override suspend fun readText(relativePath: String): Result<String> {
         if (failIndexRead && relativePath == ArchiveNaming.INDEX_FILE) {
-            return Result.failure(IllegalStateException("$id index unreadable"))
+            return Result.failure(BackupReasonException(BackupReason.ReadFailed(relativePath, "$id is down")))
         }
         return Result.success(files[relativePath]?.decodeToString() ?: "")
     }
@@ -62,7 +62,7 @@ private class FakeSource(
         calls += "restore"
         // 真实源都会把内容读到底（落盘再交给 ksud），校验也发生在读到末尾时。
         content.use { it.readBytes() }
-        return Result.success(RestoreOutcome(true, entry.entryId))
+        return Result.success(RestoreOutcome(true))
     }
 }
 
@@ -165,10 +165,28 @@ class BackupEngineTest {
 
             val result = engine(listOf(storage), moduleSource(artifact("a", "sha-a"))).backup(BackupKind.MODULE)
 
-            assertTrue(result.failures.any { it.operation == "index-read" })
+            assertTrue(result.failures.any { it.reason is BackupReason.ReadFailed })
             assertEquals(
                 "a failed index read must not wipe the manifest",
                 existing,
+                storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString(),
+            )
+        }
+    }
+
+    @Test
+    fun `an index that cannot be parsed is reported and never overwritten`() {
+        runBlocking {
+            val garbage = "{ this is not a manifest"
+            val storage = FakeStorage("local")
+            storage.files[ArchiveNaming.INDEX_FILE] = garbage.toByteArray()
+
+            val result = engine(listOf(storage), moduleSource(artifact("a", "sha-a"))).backup(BackupKind.MODULE)
+
+            assertTrue(result.failures.any { it.reason is BackupReason.IndexUnreadable })
+            assertEquals(
+                "treating a broken manifest as empty would clear the user's list",
+                garbage,
                 storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString(),
             )
         }
@@ -181,7 +199,7 @@ class BackupEngineTest {
             val source = FakeSource(
                 BackupKind.MODULE,
                 listOf(artifact("b", "sha-b")),
-                failures = listOf(BackupFailure("archive", "a", "source", "boom")),
+                failures = listOf(BackupFailure(path = "a", storage = "source", reason = BackupReason.ArchiveFailed("a", "boom"))),
             )
 
             val result = engine(listOf(storage), source).backup(BackupKind.MODULE)
@@ -391,7 +409,8 @@ class BackupEngineTest {
                 .restore(storage, entry(sha256 = "expected-sha"))
 
             assertTrue(result.isFailure)
-            assertTrue(result.exceptionOrNull()!!.message!!.contains("corrupted"))
+            val reason = reasonOf(result.exceptionOrNull()!!)
+            assertEquals(BackupReason.Corrupted("module_a_1_20261008_120000.zip", "expected-sha", "tampered".toByteArray().sha256Hex()), reason)
         }
     }
 

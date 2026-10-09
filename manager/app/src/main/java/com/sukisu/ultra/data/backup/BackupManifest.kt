@@ -38,9 +38,10 @@ object BackupManifest {
      * 等于把用户的备份列表清空（归档还在盘上，但列表、去重、保留策略都看不到它们）。
      */
     fun parseEntriesOrThrow(json: String): List<BackupEntry> {
-        val root = JSONObject(json)
+        val root = runCatching { JSONObject(json) }
+            .getOrElse { error -> throw BackupReasonException(BackupReason.IndexUnreadable(error.message)) }
         val array = root.optJSONArray("entries")
-            ?: throw IllegalArgumentException("manifest has no entries array")
+            ?: throw BackupReasonException(BackupReason.IndexUnreadable(null))
         return (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
             val kind = BackupKind.entries.firstOrNull { it.wireName == item.optString("kind") }

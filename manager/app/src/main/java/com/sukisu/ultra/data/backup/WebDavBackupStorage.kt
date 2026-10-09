@@ -38,7 +38,7 @@ class WebDavBackupStorage(
     ),
 ) : BackupStorage {
 
-    override val id: String = "webdav"
+    override val id: String = ID
 
     private val auth = Credentials.basic(username, password)
 
@@ -60,7 +60,7 @@ class WebDavBackupStorage(
             open().use { input -> staged.outputStream().use { staging.copyCancellable(input, it) } }
             val body = staged.asRequestBody(OCTET_STREAM)
             client.newCall(request(relativePath).put(body).build()).await().use { response ->
-                checkSuccess(response, "PUT", relativePath)
+                checkSuccess(response, HttpOperation.UPLOAD, relativePath)
             }
         } finally {
             staged.delete()
@@ -72,7 +72,7 @@ class WebDavBackupStorage(
         val staged = staging.newFile("stage-", ".tmp")
         try {
             client.newCall(request(relativePath).get().build()).await().use { response ->
-                checkSuccess(response, "GET", relativePath)
+                checkSuccess(response, HttpOperation.DOWNLOAD, relativePath)
                 response.body.byteStream().use { input -> staged.outputStream().use { staging.copyCancellable(input, it) } }
             }
             // 关流即删：只读路径不该在 cache 里留下整份归档副本。
@@ -87,9 +87,11 @@ class WebDavBackupStorage(
     override suspend fun delete(relativePath: String): Result<Unit> = runCatching {
         client.newCall(request(relativePath).delete().build()).execute().use { response ->
             if (response.code == 401 || response.code == 403) {
-                throw BackupAuthException("DELETE $relativePath -> HTTP ${response.code}")
+                throw BackupAuthException(response.code, "DELETE $relativePath -> HTTP ${response.code}")
             }
-            check(response.isSuccessful || response.code == 404) { "DELETE $relativePath -> HTTP ${response.code}" }
+            if (!response.isSuccessful && response.code != 404) {
+                throw BackupReasonException(BackupReason.HttpFailed(HttpOperation.DELETE, relativePath, response.code))
+            }
         }
     }
 
@@ -98,7 +100,7 @@ class WebDavBackupStorage(
         staging.cleanupStale()
         client.newCall(request(relativePath).get().build()).await().use { response ->
             if (response.code == 404) return@runCatching ""
-            checkSuccess(response, "GET", relativePath)
+            checkSuccess(response, HttpOperation.DOWNLOAD, relativePath)
             response.body.string()
         }
     }
@@ -112,11 +114,13 @@ class WebDavBackupStorage(
      * 401 / 403 单独抛 [BackupAuthException]：绝大多数 WebDAV 服务商要求用应用密码，
      * 直接把 `MKCOL -> HTTP 401` 丢给用户，他不知道该改什么。
      */
-    private fun checkSuccess(response: Response, operation: String, path: String) {
+    private fun checkSuccess(response: Response, operation: HttpOperation, path: String) {
         if (response.code == 401 || response.code == 403) {
-            throw BackupAuthException("$operation $path -> HTTP ${response.code}")
+            throw BackupAuthException(response.code, "$operation $path -> HTTP ${response.code}")
         }
-        check(response.isSuccessful) { "$operation $path -> HTTP ${response.code}" }
+        if (!response.isSuccessful) {
+            throw BackupReasonException(BackupReason.HttpFailed(operation, path, response.code))
+        }
     }
 
     /** OkHttp 的 execute() 是阻塞的，协程取消时把 Call 一起取消，中断 socket。 */
@@ -150,15 +154,20 @@ class WebDavBackupStorage(
         val body = ByteArray(0).toRequestBody(OCTET_STREAM)
         client.newCall(request(relativeDir).method("MKCOL", body).build()).execute().use { response ->
             if (response.code == 401 || response.code == 403) {
-                throw BackupAuthException("MKCOL $relativeDir -> HTTP ${response.code}")
+                throw BackupAuthException(response.code, "MKCOL $relativeDir -> HTTP ${response.code}")
             }
-            check(response.isSuccessful || response.code == 405 || response.code == 301) {
-                "MKCOL $relativeDir -> HTTP ${response.code}"
+            if (!response.isSuccessful && response.code != 405 && response.code != 301) {
+                throw BackupReasonException(
+                    BackupReason.HttpFailed(HttpOperation.CREATE_DIRECTORY, relativeDir.ifBlank { "/" }, response.code),
+                )
             }
         }
     }
 
-    private companion object {
-        val OCTET_STREAM: MediaType = "application/octet-stream".toMediaType()
+    companion object {
+        /** 后端 id。UI 靠它把失败区分成"本地"和"云端"，所以别在多处写字面量。 */
+        const val ID = "webdav"
+
+        private val OCTET_STREAM: MediaType = "application/octet-stream".toMediaType()
     }
 }

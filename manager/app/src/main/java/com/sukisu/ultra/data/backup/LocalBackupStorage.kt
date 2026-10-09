@@ -14,7 +14,7 @@ class LocalBackupStorage(
     private val rootFiles: RootFiles,
 ) : BackupStorage {
 
-    override val id: String = "local"
+    override val id: String = ID
 
     /**
      * 文件名先压成单层：这个字符串会被拼进以 root 身份执行的 shell 命令，
@@ -24,17 +24,20 @@ class LocalBackupStorage(
 
     override suspend fun test(): Result<Unit> = runCatching {
         staging.cleanupStale()
-        check(rootFiles.mkdirs(rootDir)) { "backup directory is not writable: $rootDir" }
+        ensureRoot()
     }
 
     override suspend fun put(relativePath: String, size: Long, open: () -> InputStream): Result<Unit> =
         runCatching {
             staging.cleanupStale()
-            check(rootFiles.mkdirs(rootDir)) { "backup directory is not writable: $rootDir" }
+            ensureRoot()
             val staged = staging.file(relativePath)
             try {
                 open().use { input -> staged.outputStream().use { staging.copyCancellable(input, it) } }
-                check(rootFiles.copyTo(staged, target(relativePath))) { "cannot write ${target(relativePath)}" }
+                val target = target(relativePath)
+                if (!rootFiles.copyTo(staged, target)) {
+                    throw BackupReasonException(BackupReason.WriteFailed(target, null))
+                }
             } finally {
                 staged.delete()
             }
@@ -43,13 +46,18 @@ class LocalBackupStorage(
     override suspend fun get(relativePath: String): Result<InputStream> = runCatching {
         staging.cleanupStale()
         val staged = staging.newFile("stage-", ".tmp")
-        check(rootFiles.copyFrom(target(relativePath), staged)) { "cannot read ${target(relativePath)}" }
+        val target = target(relativePath)
+        if (!rootFiles.copyFrom(target, staged)) {
+            staged.delete()
+            throw BackupReasonException(BackupReason.ReadFailed(target, null))
+        }
         // 关流即删：只读路径（列表 → 恢复/导出/读 meta）不该在 cache 里叠出整份归档副本。
         staging.openAndDelete(staged)
     }
 
     override suspend fun delete(relativePath: String): Result<Unit> = runCatching {
-        check(rootFiles.delete(target(relativePath))) { "cannot delete ${target(relativePath)}" }
+        val target = target(relativePath)
+        if (!rootFiles.delete(target)) throw BackupReasonException(BackupReason.DeleteFailed(target, null))
     }
 
     /**
@@ -70,5 +78,15 @@ class LocalBackupStorage(
     override suspend fun writeText(relativePath: String, text: String): Result<Unit> {
         val bytes = text.toByteArray()
         return put(relativePath, bytes.size.toLong()) { bytes.inputStream() }
+    }
+
+    /** 目录建不出来就没法读也没法写，先在这里把原因说清楚。 */
+    private fun ensureRoot() {
+        if (!rootFiles.mkdirs(rootDir)) throw BackupReasonException(BackupReason.DirectoryNotWritable(rootDir, null))
+    }
+
+    companion object {
+        /** 后端 id。UI 靠它把失败区分成"本地"和"云端"，所以别在多处写字面量。 */
+        const val ID = "local"
     }
 }
