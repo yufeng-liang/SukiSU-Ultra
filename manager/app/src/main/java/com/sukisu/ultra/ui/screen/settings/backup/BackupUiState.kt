@@ -59,6 +59,13 @@ data class BackupUiState(
      */
     val openGroupSelected: Set<String> = emptySet(),
     /**
+     * 多选模式下勾中的分组 id。
+     *
+     * 存 id 而不是分组对象：列表刷新（恢复、删除、云端那份在别处被删）会换出一批新的分组
+     * 对象，按对象比会把勾选丢光。勾选里的 id 在列表里找不到就自然不算数（见 [selectedGroups]）。
+     */
+    val selectedGroupIds: Set<String> = emptySet(),
+    /**
      * 已经打包好、等着交给分享面板的文件。
      *
      * 状态里带一个文件是因为界面要拿它拼 Intent：消息通道只有一条字符串，塞不下文件。
@@ -180,6 +187,25 @@ data class BackupUiState(
     /** 正打开着的那一组；刷新后这一组没了（被保留策略淘汰）就退回列表。 */
     val openGroup: BackupGroup? get() = groups.firstOrNull { it.id == openGroupId }
 
+    /**
+     * 列表是否处在多选模式。
+     *
+     * 就是"勾了至少一份"，不另设一个开关：长按进来时那一行已经勾上，取消掉最后一份就自然退出。
+     * 两个字段各说各话的话，迟早会停在一个"已选 0 份"的操作栏上。
+     */
+    val selecting: Boolean get() = selectedGroupIds.isNotEmpty()
+
+    /**
+     * 多选模式下勾中的那几份，顺序跟着列表走。
+     *
+     * 从 [groups] 里筛而不是直接拿勾选集合：列表刷新后已经不存在的 id 会被自动排除掉，
+     * 不会出现"删一份已经不在列表里的备份"。
+     */
+    val selectedGroups: List<BackupGroup> get() = groups.filter { it.id in selectedGroupIds }
+
+    /** 勾中的那几份一共几条（确认弹窗和结果消息要说"几项"）。 */
+    val selectedEntryCount: Int get() = selectedGroups.sumOf { it.rows.size }
+
     /** 详情页里勾中的那些条目。 */
     val openGroupSelection: List<BackupRow>
         get() = openGroup?.rows.orEmpty().filter { it.id in openGroupSelected }
@@ -191,6 +217,16 @@ data class BackupUiState(
             return rows.isNotEmpty() && openGroupSelected.size == rows.size
         }
 }
+
+/**
+ * 刷新后勾选里还作数的那些 id。
+ *
+ * 列表一刷新就换出一批新的分组（云端那份在别处被删了、旧的一份被保留策略淘汰了），勾选里会
+ * 留下已经不存在的 id。留着不会删错东西——[BackupUiState.selectedGroups] 只在当前列表里找——
+ * 但"已选 3 份"会和屏幕上勾中的行数对不上，所以每次刷新都剪一遍。
+ */
+internal fun pruneSelection(selected: Set<String>, groups: List<BackupGroup>): Set<String> =
+    selected intersect groups.mapTo(mutableSetOf()) { it.id }
 
 /**
  * 备份弹窗的状态：正在跑哪个目标、推了多少字节、多快，跑完则是结果。
@@ -252,6 +288,14 @@ data class BackupActions(
     val onShareSelected: () -> Unit,
     /** 删掉这一整组备份。界面先问一次。 */
     val onDeleteGroup: () -> Unit,
+    /** 长按一行进入多选模式，并把这一行勾上。 */
+    val onStartSelection: (BackupGroup) -> Unit,
+    /** 多选模式下点一行：勾上 / 取消。 */
+    val onToggleGroupSelection: (BackupGroup) -> Unit,
+    /** 退出多选模式（一份都不删）。 */
+    val onClearSelection: () -> Unit,
+    /** 删掉勾中的那几份备份。界面先问一次。 */
+    val onDeleteSelected: () -> Unit,
     /** 分享文件已经交给系统了。 */
     val onShareConsumed: () -> Unit,
     /** 关掉备份进度/结果弹窗。 */

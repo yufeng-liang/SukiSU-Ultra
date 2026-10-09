@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,7 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
+import com.sukisu.ultra.ui.util.blockTaps
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -74,17 +76,21 @@ fun BackupDetailMiuix(
 
     Scaffold(
         topBar = {
-            BlurredBar(backdrop) {
-                TopAppBar(
-                    color = barColor,
-                    title = group.label,
-                    scrollBehavior = scrollBehavior,
-                    navigationIcon = {
-                        IconButton(onClick = actions.onCloseGroup) {
-                            Icon(imageVector = MiuixIcons.Back, contentDescription = null)
+            // 和备份页同一个道理：顶栏半透明、列表从它下面滚过去，所以顶栏自己得接住点击，
+            // 否则点在这行的空白处会穿到下面那一条上去。见 blockTaps。
+            Box(Modifier.blockTaps()) {
+                BlurredBar(backdrop) {
+                    TopAppBar(
+                        color = barColor,
+                        title = group.label,
+                        scrollBehavior = scrollBehavior,
+                        navigationIcon = {
+                            IconButton(onClick = actions.onCloseGroup) {
+                                Icon(imageVector = MiuixIcons.Back, contentDescription = null)
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         },
         popupHost = { },

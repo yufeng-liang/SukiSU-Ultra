@@ -793,6 +793,12 @@
     <string name="backup_deleted">deleted %1$d items</string>
     <string name="backup_delete_confirm_title">Delete this backup?</string>
     <string name="backup_delete_confirm_body">Removes these %2$d items from %1$s. It cannot be undone.</string>
+    <string name="backup_selection_title">%1$d selected</string>
+    <string name="backup_selection_delete">Delete</string>
+    <string name="backup_selection_hint">Long-press a row to select several</string>
+    <string name="backup_delete_selected_confirm_title">Delete the selected backups?</string>
+    <string name="backup_delete_selected_confirm_body">Removes %1$d backups (%2$d items), both the local and the cloud copies. It cannot be undone.</string>
+    <string name="backup_deleted_groups">deleted %1$d backups</string>
     <string name="backup_share_chooser">Share backup</string>
     <string name="backup_progress_title">Backing up</string>
     <string name="backup_progress_target">Target %1$d of %2$d · %3$s %4$s</string>

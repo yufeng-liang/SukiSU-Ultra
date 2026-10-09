@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,8 +22,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -46,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,20 +86,50 @@ fun BackupMaterial(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
+                // 多选时顶栏换成"正在多选"的操作栏：标题说勾了几份，左边是取消、右边是删除。
+                // 列表行上的勾选框已经在说"选了什么"，这里补上"选了多少、能干什么"。
                 TopAppBar(
-                    title = { Text(stringResource(R.string.backup_title)) },
+                    title = {
+                        Text(
+                            if (state.selecting) {
+                                stringResource(R.string.backup_selection_title, state.selectedGroups.size)
+                            } else {
+                                stringResource(R.string.backup_title)
+                            },
+                        )
+                    },
                     navigationIcon = {
-                        IconButton(onClick = actions.onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        if (state.selecting) {
+                            IconButton(onClick = actions.onClearSelection) {
+                                Icon(Icons.Filled.Close, contentDescription = null)
+                            }
+                        } else {
+                            IconButton(onClick = actions.onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                            }
+                        }
+                    },
+                    actions = {
+                        if (state.selecting) {
+                            IconButton(
+                                onClick = actions.onDeleteSelected,
+                                enabled = state.selectedGroups.isNotEmpty() && !state.loading,
+                            ) {
+                                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.backup_selection_delete))
+                            }
                         }
                     },
                 )
                 // 分页紧贴顶栏，跟着内容一起滚的话翻到下面想换页还得先滑回顶上。
-                ExpressiveTabRow(
-                    selectedTabIndex = state.tab.ordinal,
-                    tabs = BackupTab.entries.map { tabLabel(it, state.groups.size) },
-                    onTabClick = { actions.onSelectTab(BackupTab.entries[it]) },
-                )
+                // 多选时收起：勾的是恢复页那份清单，把"备份/恢复"留在上面等于给了一个会把
+                // 勾选清掉的按钮。
+                if (!state.selecting) {
+                    ExpressiveTabRow(
+                        selectedTabIndex = state.tab.ordinal,
+                        tabs = BackupTab.entries.map { tabLabel(it, state.groups.size) },
+                        onTabClick = { actions.onSelectTab(BackupTab.entries[it]) },
+                    )
+                }
             }
         },
     ) { innerPadding ->
@@ -265,18 +300,30 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
 /**
  * 「本地」/「云端」的小标签。
  *
- * 恢复之前最该确认的就是"这一份在哪一侧"，所以它得比旁边那行元信息显眼一点：主色底 + 主色字。
- * 两侧同一个样式——它们是对等的两个位置，不该有主次。
+ * 恢复之前最该确认的就是"这一份在哪一侧"，所以它得比旁边那行元信息显眼一点。两侧的颜色必须
+ * 不一样：同样一块蓝色小牌子写着两个不同的词，扫一眼只会看成"两个标签"，而这两侧点下去一个
+ * 动本机文件、一个走网络——配色本身就是提示（本机=主题主色，云端=主题第三色，深浅主题各一套）。
  */
 @Composable
 private fun OriginTagMaterial(origin: BackupOrigin) {
+    val cloud = origin == BackupOrigin.CLOUD
     Text(
         text = stringResource(BackupLabels.origin(origin)),
         style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onPrimaryContainer,
+        color = if (cloud) {
+            MaterialTheme.colorScheme.onTertiaryContainer
+        } else {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        },
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer)
+            .background(
+                if (cloud) {
+                    MaterialTheme.colorScheme.tertiaryContainer
+                } else {
+                    MaterialTheme.colorScheme.primaryContainer
+                }
+            )
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
@@ -542,12 +589,44 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
     // 每行自带「本地」/「云端」标签：以前靠分段标题（只在两侧都勾时才出现），于是只勾一侧时
     // 根本看不出这份备份在哪——而"这份在云端、那份在本机"正是恢复前最该确认的事。
     // 有了行内标签，分段标题就成了重复信息，去掉。
+    //
+    // 长按进多选：删除是"整份抹掉"，和"点进去看看"共用一个手势迟早会出事，所以多选另起一个
+    // 手势。多选时点行是勾选，右边的箭头换成勾选框——那时候"进去看"已经不是这一页在做的事。
+    if (state.groups.isNotEmpty() && !state.selecting) {
+        item {
+            Text(
+                text = stringResource(R.string.backup_selection_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
     items(state.groups, key = { it.id }) { group ->
+        val selected = group.id in state.selectedGroupIds
         SegmentedColumn {
             item {
                 SegmentedListItem(
-                    onClick = { actions.onOpenGroup(group) },
+                    onClick = {
+                        if (state.selecting) {
+                            actions.onToggleGroupSelection(group)
+                        } else {
+                            actions.onOpenGroup(group)
+                        }
+                    },
+                    // 已经在多选里了再长按另一行不该把勾选清空重来，那时候长按没有别的意思。
+                    onLongClick = { if (!state.selecting) actions.onStartSelection(group) },
                     enabled = !state.loading,
+                    leadingContent = if (state.selecting) {
+                        {
+                            Checkbox(
+                                checked = selected,
+                                onCheckedChange = null,
+                                modifier = Modifier.padding(end = 12.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
                     headlineContent = { Text(group.label) },
                     supportingContent = {
                         Row(
@@ -559,10 +638,12 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
                         }
                     },
                     trailingContent = {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                        )
+                        if (!state.selecting) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                            )
+                        }
                     },
                 )
             }

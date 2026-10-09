@@ -28,6 +28,7 @@ import com.sukisu.ultra.ui.screen.settings.backup.BackupRunState
 import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
 import com.sukisu.ultra.ui.screen.settings.backup.OriginEntry
+import com.sukisu.ultra.ui.screen.settings.backup.pruneSelection
 import com.sukisu.ultra.ui.util.BackupText
 import com.sukisu.ultra.ui.util.formatSessionTime
 import com.sukisu.ultra.ui.util.isoToEpochMillis
@@ -112,10 +113,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 切分页。
      *
      * 顺手把云端表单和模块列表收起来：这两块都是"点开才看"的，换页再回来时留着一堆展开的
-     * 表单，刚配好的选项又被顶出屏幕了。
+     * 表单，刚配好的选项又被顶出屏幕了。多选也跟着退出：勾的是恢复页那份清单，换到备份页
+     * 还留着一条"已选 N 份"的操作栏，只会让人以为刚才点错了。
      */
     fun selectTab(tab: BackupTab) = _uiState.update {
-        it.copy(tab = tab, cloudExpanded = false, modulesExpanded = false)
+        it.copy(
+            tab = tab,
+            cloudExpanded = false,
+            modulesExpanded = false,
+            selectedGroupIds = emptySet(),
+        )
     }
 
     fun toggleModule(id: String) = _uiState.update { state ->
@@ -240,6 +247,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     rows = emptyList(),
                     groups = emptyList(),
                     openGroupId = null,
+                    // 列表都被清空了，勾选跟着清掉：留着也只会是一条点了没反应的操作栏。
+                    selectedGroupIds = emptySet(),
                     emptyText = string(R.string.backup_pick_a_target),
                 )
             }
@@ -281,12 +290,17 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             collectedMetas,
             rowLabels(),
         )
-        _uiState.update {
-            it.copy(
+        // 列表按"哪一次备份"分堆：一次备份 11 个模块不该是 11 行。
+        val groups = BackupGrouping.group(rows) { iso -> formatSessionTime(context(), iso) }
+        _uiState.update { current ->
+            // 多选期间列表变了（云端那份在别处被删、保留策略淘汰了旧的一份）：把勾选里已经
+            // 不存在的 id 剪掉，一个都不剩就退出多选，别停在一条点了没反应的"已选 0 份"上。
+            val stillSelected = pruneSelection(current.selectedGroupIds, groups)
+            current.copy(
                 loading = false,
                 rows = rows,
-                // 列表按"哪一次备份"分堆：一次备份 11 个模块不该是 11 行。
-                groups = BackupGrouping.group(rows) { iso -> formatSessionTime(context(), iso) },
+                groups = groups,
+                selectedGroupIds = stillSelected,
                 // 空列表要说清"为什么空"：模块是"还没备份过"，boot 是"本机根本没有原厂镜像"。
                 // 读取失败时不给空状态文案——那句"还没有备份"会把"没读到"说成"没有"。
                 emptyText = if (collected.isEmpty() && !listingFailed) {
@@ -311,6 +325,57 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun closeGroup() = _uiState.update { it.copy(openGroupId = null, openGroupSelected = emptySet()) }
+
+    /** 长按一行进多选：进来的那一行就是第一个勾中的，手指已经落在它上面了。 */
+    fun startSelection(group: BackupGroup) = _uiState.update {
+        it.copy(selectedGroupIds = setOf(group.id))
+    }
+
+    fun toggleGroupSelection(group: BackupGroup) = _uiState.update { state ->
+        val next = if (group.id in state.selectedGroupIds) {
+            state.selectedGroupIds - group.id
+        } else {
+            state.selectedGroupIds + group.id
+        }
+        // 取消掉最后一个就不再是多选状态（见 BackupUiState.selecting）：留一条"已选 0 份"的
+        // 操作栏，除了再点一次取消没别的用。
+        state.copy(selectedGroupIds = next)
+    }
+
+    /** 退出多选，一份都不删。 */
+    fun clearSelection() = _uiState.update { it.copy(selectedGroupIds = emptySet()) }
+
+    /**
+     * 删掉多选模式下勾中的那几份。
+     *
+     * 一份一份删、逐份记结果：勾中的可能横跨本机和云端（列表是把两侧合起来列的），所以删除要
+     * 按每一份自己的来源走，也不能因为其中一份失败就把已经删掉的说成没删——和恢复同一套规矩。
+     */
+    fun deleteSelected() = viewModelScope.launch {
+        val selected = _uiState.value.selectedGroups
+        if (selected.isEmpty()) return@launch
+        _uiState.update { it.copy(loading = true, message = null) }
+        var deleted = 0
+        val failures = mutableListOf<String>()
+        selected.forEach { group ->
+            val entries = group.rows.mapNotNull { entryOf(it) }
+            repository.delete(group.origin, entries).fold(
+                onSuccess = { deleted++ },
+                onFailure = { error -> failures += describe(error) },
+            )
+        }
+        _uiState.update {
+            it.copy(
+                loading = false,
+                selectedGroupIds = emptySet(),
+                message = (listOfNotNull(
+                    deleted.takeIf { it > 0 }?.let { count -> string(R.string.backup_deleted_groups, count) },
+                ) + failures.distinct()).joinToString(BackupListFormatter.SEPARATOR),
+            )
+        }
+        // 删掉的可能是"恢复前自动留的那一份"，列表要跟着更新。
+        refresh()
+    }
 
     fun toggleGroupEntry(rowId: String) = _uiState.update { state ->
         state.copy(

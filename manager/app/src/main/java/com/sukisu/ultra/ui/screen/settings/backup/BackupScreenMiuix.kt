@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -37,6 +38,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -50,6 +52,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -62,10 +65,12 @@ import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BackupText
 import com.sukisu.ultra.ui.util.BlurredBar
+import com.sukisu.ultra.ui.util.blockTaps
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -81,6 +86,7 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -110,31 +116,62 @@ fun BackupMiuix(
 
     Scaffold(
         topBar = {
-            BlurredBar(backdrop) {
-                TopAppBar(
-                    color = barColor,
-                    title = stringResource(R.string.backup_title),
-                    scrollBehavior = scrollBehavior,
-                    navigationIcon = {
-                        IconButton(onClick = actions.onBack) {
-                            Icon(imageVector = MiuixIcons.Back, contentDescription = null)
-                        }
-                    },
-                    bottomContent = {
-                        Column(
-                            modifier = Modifier
-                                .padding(horizontal = 12.dp)
-                                .padding(bottom = 6.dp),
-                        ) {
-                            TabRow(
-                                tabs = BackupTab.entries.map { tabLabel(it, state.groups.size) },
-                                selectedTabIndex = state.tab.ordinal,
-                                onTabSelected = { actions.onSelectTab(BackupTab.entries[it]) },
-                                colors = TabRowDefaults.tabRowColors(backgroundColor = barColor),
-                            )
-                        }
-                    },
-                )
+            // 顶栏是半透明的、列表从它下面滚过去（Miuix 那套模糊栏就是这么用的），所以这一层
+            // 必须自己接住点击：不然点在两个分页标签中间会穿到下面那一行上（实测会把
+            // 「选择要备份的模块」折叠掉）。见 blockTaps。
+            Box(Modifier.blockTaps()) {
+                BlurredBar(backdrop) {
+                    TopAppBar(
+                        color = barColor,
+                        // 多选时顶栏换成"正在多选"的操作栏：标题说勾了几份，左边是取消、
+                        // 右边是删除。列表行上的勾选框已经在说"选了什么"，这里补上"选了多少、
+                        // 能干什么"。
+                        title = if (state.selecting) {
+                            stringResource(R.string.backup_selection_title, state.selectedGroups.size)
+                        } else {
+                            stringResource(R.string.backup_title)
+                        },
+                        scrollBehavior = scrollBehavior,
+                        navigationIcon = {
+                            if (state.selecting) {
+                                IconButton(onClick = actions.onClearSelection) {
+                                    Icon(imageVector = MiuixIcons.Close, contentDescription = null)
+                                }
+                            } else {
+                                IconButton(onClick = actions.onBack) {
+                                    Icon(imageVector = MiuixIcons.Back, contentDescription = null)
+                                }
+                            }
+                        },
+                        actions = {
+                            if (state.selecting) {
+                                TextButton(
+                                    text = stringResource(R.string.backup_selection_delete),
+                                    enabled = state.selectedGroups.isNotEmpty() && !state.loading,
+                                    onClick = actions.onDeleteSelected,
+                                )
+                            }
+                        },
+                        bottomContent = {
+                            // 多选时收起分页标签：勾的是恢复页那份清单，把"备份/恢复"留在上面
+                            // 等于给了一个会把勾选清掉的按钮。
+                            if (!state.selecting) {
+                                Column(
+                                    modifier = Modifier
+                                        .padding(horizontal = 12.dp)
+                                        .padding(bottom = 6.dp),
+                                ) {
+                                    TabRow(
+                                        tabs = BackupTab.entries.map { tabLabel(it, state.groups.size) },
+                                        selectedTabIndex = state.tab.ordinal,
+                                        onTabSelected = { actions.onSelectTab(BackupTab.entries[it]) },
+                                        colors = TabRowDefaults.tabRowColors(backgroundColor = barColor),
+                                    )
+                                }
+                            }
+                        },
+                    )
+                }
             }
         },
         popupHost = { },
@@ -355,18 +392,20 @@ private fun ExpandChevron(expanded: Boolean) {
 /**
  * 「本地」/「云端」的小标签。
  *
- * 恢复之前最该确认的就是"这一份在哪一侧"，所以它得比旁边那行元信息显眼一点：主色底 + 主色字。
- * 两侧同一个样式——它们是对等的两个位置，不该有主次。
+ * 恢复之前最该确认的就是"这一份在哪一侧"，所以它得比旁边那行元信息显眼一点。两侧的颜色必须
+ * 不一样：同样一块蓝色小牌子写着两个不同的词，扫一眼只会看成"两个标签"，而这两侧点下去一个
+ * 动本机文件、一个走网络——配色本身就是提示（本机=主题主色，云端=主题第三色，深浅主题各一套）。
  */
 @Composable
 private fun OriginTagMiuix(origin: BackupOrigin) {
+    val cloud = origin == BackupOrigin.CLOUD
     Text(
         text = stringResource(BackupLabels.origin(origin)),
         fontSize = 11.sp,
-        color = colorScheme.primary,
+        color = if (cloud) colorScheme.onTertiaryContainer else colorScheme.onPrimaryContainer,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(colorScheme.primary.copy(alpha = 0.12f))
+            .background(if (cloud) colorScheme.tertiaryContainer else colorScheme.primaryContainer)
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
@@ -625,15 +664,49 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
     // 每行自带「本地」/「云端」标签：以前靠分段标题（只在两侧都勾时才出现），于是只勾一侧时
     // 根本看不出这份备份在哪——而"这份在云端、那份在本机"正是恢复前最该确认的事。
     // 有了行内标签，分段标题就成了重复信息，去掉。
+    //
+    // 长按进多选：删除是"整份抹掉"，和"点进去看看"共用一个手势迟早会出事，所以多选另起一个
+    // 手势。多选时点行是勾选，右边的箭头换成勾选框——那时候"进去看"已经不是这一页在做的事。
+    if (state.groups.isNotEmpty() && !state.selecting) {
+        item {
+            Text(
+                text = stringResource(R.string.backup_selection_hint),
+                fontSize = 12.sp,
+                color = colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp),
+            )
+        }
+    }
     items(state.groups, key = { it.id }) { group ->
+        val selected = group.id in state.selectedGroupIds
         Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = !state.loading) { actions.onOpenGroup(group) }
+                    .combinedClickable(
+                        enabled = !state.loading,
+                        onClick = {
+                            if (state.selecting) {
+                                actions.onToggleGroupSelection(group)
+                            } else {
+                                actions.onOpenGroup(group)
+                            }
+                        },
+                        // 已经在多选里了再长按另一行不该把勾选清空重来，那时候长按没有别的意思。
+                        onLongClick = { if (!state.selecting) actions.onStartSelection(group) },
+                    )
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (state.selecting) {
+                    Checkbox(
+                        state = if (selected) ToggleableState.On else ToggleableState.Off,
+                        // 勾选框自己吃掉这一下：不然行和框各切一次，等于没点。
+                        onClick = { actions.onToggleGroupSelection(group) },
+                        enabled = !state.loading,
+                        modifier = Modifier.padding(end = 12.dp),
+                    )
+                }
                 Column(Modifier.weight(1f)) {
                     Text(text = group.label, fontSize = 16.sp)
                     Row(
@@ -649,10 +722,12 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
                         )
                     }
                 }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                )
+                if (!state.selecting) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                    )
+                }
             }
         }
     }

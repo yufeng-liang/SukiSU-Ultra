@@ -89,6 +89,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     val bootConfirmTitle = stringResource(R.string.backup_boot_restore_confirm_title)
     val bootConfirmBody = stringResource(R.string.backup_boot_restore_confirm_body)
     val deleteConfirmTitle = stringResource(R.string.backup_delete_confirm_title)
+    val deleteSelectedConfirmTitle = stringResource(R.string.backup_delete_selected_confirm_title)
 
     val actions = BackupActions(
         onBack = { navigator.pop() },
@@ -136,6 +137,27 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
             }
         },
         onImport = { importLauncher.launch(arrayOf("*/*")) },
+        onStartSelection = viewModel::startSelection,
+        onToggleGroupSelection = viewModel::toggleGroupSelection,
+        onClearSelection = viewModel::clearSelection,
+        onDeleteSelected = {
+            // 一次删好几份、两侧的文件都动，所以要把"几份、几条"都说出来——只说"删掉选中的"
+            // 用户没法判断自己是不是多勾了一份。
+            val groups = state.selectedGroups
+            if (groups.isNotEmpty()) {
+                confirmScope.launch {
+                    val confirmed = confirmDialog.awaitConfirm(
+                        title = deleteSelectedConfirmTitle,
+                        content = context.getString(
+                            R.string.backup_delete_selected_confirm_body,
+                            groups.size,
+                            groups.sumOf { it.rows.size },
+                        ),
+                    ) == ConfirmResult.Confirmed
+                    if (confirmed) viewModel.deleteSelected()
+                }
+            }
+        },
         onSetAutoBackup = viewModel::setAutoBackup,
         onSetAutoBackupLocal = viewModel::setAutoBackupLocal,
         onSetAutoBackupCloud = viewModel::setAutoBackupCloud,
@@ -155,6 +177,10 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     // 往回滑就直接离开了整个备份页。
     val openGroup = state.openGroup
     BackHandler(enabled = openGroup != null) { viewModel.closeGroup() }
+
+    // 多选是这一页里的另一层：返回键先退出多选，而不是把整页关掉——手上还勾着几份东西时
+    // 一下退出整页，那几步勾选就白做了。
+    BackHandler(enabled = state.selecting) { viewModel.clearSelection() }
 
     // 进/出详情走一次横向推入推出：硬切会让人以为刚才那下点空了。返回时列表滑回来的方向
     // 反过来，和系统返回手势的方向一致。
