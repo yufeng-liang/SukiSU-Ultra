@@ -1,0 +1,267 @@
+package com.sukisu.ultra.ui.viewmodel
+
+import android.app.Application
+import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.sukisu.ultra.R
+import com.sukisu.ultra.data.backup.BackupAuthException
+import com.sukisu.ultra.data.backup.BackupEntry
+import com.sukisu.ultra.data.backup.BackupKind
+import com.sukisu.ultra.data.backup.BackupOrigin
+import com.sukisu.ultra.data.backup.BackupRepository
+import com.sukisu.ultra.data.backup.BackupRunResult
+import com.sukisu.ultra.data.backup.ModuleBackupMeta
+import com.sukisu.ultra.data.backup.Redaction
+import com.sukisu.ultra.data.backup.RestoreOutcome
+import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
+import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
+import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/**
+ * 备份页的状态。本地与云端共用一个列表，由 [BackupUiState.origin] 决定读写哪个后端——
+ * 云端不能只是"配好地址"，得有真的入口，否则 [BackupRepository] 里的云端方法全是死代码。
+ */
+class BackupViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository = BackupRepository(application)
+    private val settings = SettingsRepositoryImpl()
+
+    private val _uiState = MutableStateFlow(
+        BackupUiState(
+            cloudUrl = settings.webDavUrl,
+            cloudUser = settings.webDavUser,
+            cloudPass = settings.webDavPassword,
+            cloudConfigured = repository.cloudConfigured(),
+        )
+    )
+    val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
+
+    private var entries: List<BackupEntry> = emptyList()
+    private var metas: Map<String, ModuleBackupMeta> = emptyMap()
+
+    init {
+        refresh()
+    }
+
+    fun selectOrigin(origin: BackupOrigin) {
+        // 用户主动换来源：上一次操作的结果已经过期，清掉，别让它和新的列表状态混在一起。
+        _uiState.update { it.copy(origin = origin, message = null) }
+        refresh()
+    }
+
+    fun selectKind(kind: BackupKind) {
+        _uiState.update { it.copy(kind = kind, message = null) }
+        refresh()
+    }
+
+    /**
+     * 重新列当前来源与类型。
+     *
+     * 注意这里**不碰 message**：操作的结果（备份摘要、失败原因）刚写进 message，紧接着就 refresh，
+     * 如果 refresh 顺手清掉它，用户在一次主线程 turn 里看不到任何提示——失败会被当成成功。
+     * message 只由 [clearMessage]（消费掉之后）、用户主动换来源/类型/服务器，或下一次操作覆盖。
+     */
+    fun refresh() = viewModelScope.launch {
+        val origin = _uiState.value.origin
+        val kind = _uiState.value.kind
+        _uiState.update { it.copy(loading = true) }
+        if (origin == BackupOrigin.CLOUD && !repository.cloudConfigured()) {
+            showEmpty(origin, kind, string(R.string.backup_cloud_required))
+            return@launch
+        }
+        val listed = repository.list(origin, kind).getOrElse { error ->
+            showEmpty(origin, kind, describe(error))
+            return@launch
+        }
+        // 慢的那次可能后落地：来源/类型已经变了就丢弃这份结果，别用它覆盖新来源的列表。
+        if (_uiState.value.origin != origin || _uiState.value.kind != kind) return@launch
+        entries = listed
+        metas = loadMetas(origin, listed)
+        _uiState.update { it.copy(loading = false, rows = BackupListFormatter.rows(listed, metas)) }
+    }
+
+    fun backupNow() = viewModelScope.launch {
+        val origin = _uiState.value.origin
+        val kind = _uiState.value.kind
+        _uiState.update { it.copy(loading = true, message = null) }
+        val result = repository.backup(origin, kind)
+        _uiState.update { it.copy(loading = false, message = summary(result)) }
+        refresh()
+    }
+
+    fun restore(fileName: String) = viewModelScope.launch {
+        val origin = _uiState.value.origin
+        val entry = entries.firstOrNull { it.fileName == fileName } ?: return@launch
+        _uiState.update { it.copy(loading = true, message = null) }
+        val outcome = repository.restore(origin, entry)
+        _uiState.update {
+            it.copy(
+                loading = false,
+                message = outcome.fold(
+                    onSuccess = { value -> outcomeMessage(value, entry) },
+                    onFailure = { error -> describe(error) },
+                ),
+            )
+        }
+        refresh()
+    }
+
+    fun exportTo(uri: Uri, fileName: String) = viewModelScope.launch {
+        val origin = _uiState.value.origin
+        val entry = entries.firstOrNull { it.fileName == fileName } ?: return@launch
+        _uiState.update { it.copy(loading = true, message = null) }
+        val result = repository.exportToSaf(origin, entry, uri)
+        _uiState.update {
+            it.copy(
+                loading = false,
+                message = result.fold(
+                    onSuccess = { string(R.string.backup_exported, entry.entryId) },
+                    onFailure = { error -> describe(error) },
+                ),
+            )
+        }
+    }
+
+    /**
+     * 导入的目标后端**永远是本地**（[BackupRepository.importFromSaf] 写死 localStorage），
+     * 所以在云端页点导入之后要切回本地页，否则用户看到"已导入"却在当前列表里找不到那一项。
+     * 失败也切：操作本身是本地操作，错误提示该出现在它真正动过的那个列表上。
+     */
+    fun importFrom(uri: Uri) = viewModelScope.launch {
+        // kind 也要跟着回写：导入是按这个 kind 落库的，中途用户换了类型页签的话，
+        // refresh() 会去列新类型，导入的那一项就"消失"了。
+        val kind = _uiState.value.kind
+        _uiState.update { it.copy(loading = true, message = null) }
+        val result = repository.importFromSaf(uri, kind)
+        _uiState.update {
+            it.copy(
+                loading = false,
+                origin = BackupOrigin.LOCAL,
+                kind = kind,
+                message = result.fold(
+                    onSuccess = { string(R.string.backup_imported) },
+                    onFailure = { error -> describe(error) },
+                ),
+            )
+        }
+        refresh()
+    }
+
+    fun saveCloud(url: String, user: String, pass: String) = viewModelScope.launch {
+        settings.webDavUrl = url.trim()
+        settings.webDavUser = user.trim()
+        settings.webDavPassword = pass
+        settings.backupCloudEnabled = url.isNotBlank()
+        _uiState.update {
+            it.copy(
+                cloudUrl = url.trim(),
+                cloudUser = user.trim(),
+                cloudPass = pass,
+                cloudConfigured = repository.cloudConfigured(),
+                // 换了服务器，之前那次操作的结果已经不对应当前配置了。
+                message = null,
+            )
+        }
+        if (_uiState.value.origin == BackupOrigin.CLOUD) refresh()
+    }
+
+    /** 输入框编辑态。三个字段各自更新，互不覆盖。 */
+    fun editCloud(url: String? = null, user: String? = null, pass: String? = null) = _uiState.update {
+        it.copy(
+            cloudUrl = url ?: it.cloudUrl,
+            cloudUser = user ?: it.cloudUser,
+            cloudPass = pass ?: it.cloudPass,
+        )
+    }
+
+    fun saveCloudFromState() = saveCloud(_uiState.value.cloudUrl, _uiState.value.cloudUser, _uiState.value.cloudPass)
+
+    /** 测的是输入框里当前的内容：改完地址直接点"测试连接"不该去测上一次保存的地址。 */
+    fun testCloud() = viewModelScope.launch {
+        _uiState.update { it.copy(loading = true, message = null) }
+        val state = _uiState.value
+        val result = repository.testCloud(state.cloudUrl, state.cloudUser, state.cloudPass)
+        _uiState.update {
+            it.copy(
+                loading = false,
+                message = result.fold(
+                    onSuccess = { string(R.string.backup_cloud_test_ok) },
+                    onFailure = { error -> describe(error) },
+                ),
+            )
+        }
+    }
+
+    /**
+     * 提示已经弹过了。
+     *
+     * 带上 [shown] 做条件清空：弹窗是挂起直到消失的，这期间用户可能又触发一次操作、把新的结果写进
+     * message。无条件清空会把那条新消息一起抹掉，而它还没被显示过——root 工具里丢掉一条失败提示
+     * 就等于让用户以为成功了。只有当前 message 还是自己消费掉的那条时才清。
+     */
+    fun clearMessage(shown: String) = _uiState.update {
+        if (it.message == shown) it.copy(message = null) else it
+    }
+
+    /**
+     * 列表读不出来（或云端没配好）。
+     *
+     * 这里**不覆盖**已有的 message，而是并在一起（见 [BackupListFormatter.mergeMessages]）：
+     * `backupNow()` 刚把"written 3 · 某个模块没打包成功"写进 message 就调 refresh()，
+     * 如果列表随后也失败，直接覆盖掉就等于告诉用户"什么都没发生"，而备份其实已经写进去了。
+     */
+    private fun showEmpty(origin: BackupOrigin, kind: BackupKind, text: String) {
+        // 慢的那次可能后落地：来源或类型已经变了就别动列表，否则会把当前类型的行清空、并挂上别的错误。
+        if (_uiState.value.origin != origin || _uiState.value.kind != kind) return
+        entries = emptyList()
+        metas = emptyMap()
+        _uiState.update {
+            it.copy(
+                loading = false,
+                rows = emptyList(),
+                message = BackupListFormatter.mergeMessages(it.message, text),
+            )
+        }
+    }
+
+    private fun summary(result: BackupRunResult): String {
+        val text = BackupListFormatter.summary(result)
+        return if (BackupListFormatter.needsAppPasswordHint(result)) {
+            string(R.string.backup_cloud_unauthorized) + BackupListFormatter.SEPARATOR + text
+        } else {
+            text
+        }
+    }
+
+    /**
+     * 失败原因要脱敏后才能进 UI：OkHttp 在建 Request 阶段抛的消息会把用户填进 URL 的
+     * 内容原样带出来，而备份页是全 app 唯一会把原始异常文本显示给用户的地方。
+     */
+    private fun describe(error: Throwable): String = when (error) {
+        is BackupAuthException -> string(R.string.backup_cloud_unauthorized)
+        else -> Redaction.redactMessage(error.message).ifBlank { error.javaClass.simpleName }
+    }
+
+    /** 恢复结果进 message 前同样要脱敏；detail 为空时兜一句人话，别让 snackbar 弹出一片空白。 */
+    private fun outcomeMessage(outcome: RestoreOutcome, entry: BackupEntry): String =
+        if (outcome.success) {
+            string(R.string.backup_restored, entry.entryId)
+        } else {
+            Redaction.redactMessage(outcome.detail).ifBlank { string(R.string.backup_restore_failed) }
+        }
+
+    private fun string(resId: Int, vararg formatArgs: Any): String =
+        getApplication<Application>().getString(resId, *formatArgs)
+
+    private suspend fun loadMetas(origin: BackupOrigin, list: List<BackupEntry>): Map<String, ModuleBackupMeta> =
+        list.mapNotNull { entry ->
+            val metaName = entry.metaFileName ?: return@mapNotNull null
+            repository.readMeta(origin, entry)?.let { metaName to it }
+        }.toMap()
+}

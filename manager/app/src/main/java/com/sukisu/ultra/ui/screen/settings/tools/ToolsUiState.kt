@@ -18,6 +18,7 @@ data class ToolsActions(
     val onBackupAllowlist: () -> Unit = {},
     val onRestoreAllowlist: () -> Unit = {},
     val onNavigateToUmountManager: () -> Unit = {},
+    val onOpenBackup: () -> Unit = {},
     val onOpenSpoofCpuDialog: () -> Unit = {},
     val onDismissSpoofCpuDialog: () -> Unit = {},
     val onApplySpoofCpu: (SpoofCpuParams) -> Unit = {},

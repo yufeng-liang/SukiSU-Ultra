@@ -109,6 +109,9 @@ fun ToolsScreen() {
         onNavigateToUmountManager = {
             navigator.push(Route.UmountManager)
         },
+        onOpenBackup = {
+            navigator.push(Route.Backup)
+        },
         onOpenSpoofCpuDialog = {
             spoofCpuDialogVisible = true
         },

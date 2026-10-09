@@ -84,6 +84,7 @@ import com.sukisu.ultra.ui.screen.module.ModulePager
 import com.sukisu.ultra.ui.screen.modulerepo.ModuleRepoDetailScreen
 import com.sukisu.ultra.ui.screen.modulerepo.ModuleRepoScreen
 import com.sukisu.ultra.ui.screen.settings.SettingPager
+import com.sukisu.ultra.ui.screen.settings.backup.BackupScreen
 import com.sukisu.ultra.ui.screen.settings.tools.ToolsScreen
 import com.sukisu.ultra.ui.screen.sulog.SulogScreen
 import com.sukisu.ultra.ui.screen.superuser.SuperUserPager
@@ -255,6 +256,7 @@ class MainActivity : ComponentActivity() {
                                     entry<Route.Kpm>(swipeDismiss = swipeDismiss)  { KpmScreen() }
                                     entry<Route.SuSFS>(swipeDismiss = swipeDismiss)  { SuSFSScreen() }
                                     entry<Route.Tool>(swipeDismiss = swipeDismiss)  { ToolsScreen() }
+                                    entry<Route.Backup>(swipeDismiss = swipeDismiss)  { BackupScreen() }
                                     entry<Route.UmountManager>(swipeDismiss = swipeDismiss)  { UmountManagerScreen() }
                             }
                         }
