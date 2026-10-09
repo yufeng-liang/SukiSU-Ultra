@@ -181,34 +181,34 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
         //
         // 整块（标题行 + 下面那行地址）一起当点击区：地址也是"这一栏现在是什么状态"的一部分，
         // 只让标题行能点的话，手指落在地址上会像点空了。
-        Column(
+        //
+        // 箭头挂在整块外面、跟两行文字垂直居中（和「模块」那一行同一个结构）：留在标题行里的话
+        // 它只对第一行居中，看着像往上跑了半行。
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = actions.onToggleCloud)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = stringResource(R.string.backup_cloud_title),
                     fontSize = 16.sp,
-                    modifier = Modifier.weight(1f),
                 )
-                ExpandChevron(expanded = state.cloudExpanded)
+                // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
+                Text(
+                    text = state.cloudUrl.ifBlank {
+                        stringResource(R.string.backup_cloud_summary_unset)
+                    },
+                    fontSize = 13.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
-            // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
-            Text(
-                text = state.cloudUrl.ifBlank {
-                    stringResource(R.string.backup_cloud_summary_unset)
-                },
-                fontSize = 13.sp,
-                color = colorScheme.onSurfaceVariantSummary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            ExpandChevron(expanded = state.cloudExpanded)
         }
         // 展开要有过程：硬切时表单在标题行下面"跳"出来，看着像点错了。
         AnimatedVisibility(
