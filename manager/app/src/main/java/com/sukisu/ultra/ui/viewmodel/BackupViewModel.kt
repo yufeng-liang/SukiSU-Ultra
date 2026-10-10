@@ -61,6 +61,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             autoBackupLocal = settings.backupAutoLocal,
             autoBackupCloud = settings.backupAutoCloud,
             autoBackupRecord = repository.lastAutoBackup(),
+            moduleRetention = settings.backupRetention,
+            bootRetention = settings.backupBootRetention,
+            rollbackRetention = settings.backupRollbackRetention,
         )
     )
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
@@ -171,6 +174,34 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         settings.backupAutoCloud = enabled
         _uiState.update { it.copy(autoBackupCloud = enabled) }
     }
+
+    /**
+     * 保留额度三件套。
+     *
+     * 存偏好时不另钳一次——`SettingsRepositoryImpl` 的 setter 已经钳了，而这里回写状态用的是
+     * **读回来的值**（getter 同样会钳）。两处各钳各的、状态里留原值，就会出现"界面显示 30、
+     * 实际按 20 执行"这种只对一半的谎言。
+     *
+     * 改额度不会去动已经躺在那儿的备份：超出新额度的那些由下一次备份顺带清掉。这里为此专门
+     * 跑一轮删除是替用户做决定——他只是调了个数字，没说"现在就把旧的抹了"。
+     */
+    fun setModuleRetention(value: Int) {
+        settings.backupRetention = value
+        _uiState.update { it.copy(moduleRetention = settings.backupRetention) }
+    }
+
+    fun setBootRetention(value: Int) {
+        settings.backupBootRetention = value
+        _uiState.update { it.copy(bootRetention = settings.backupBootRetention) }
+    }
+
+    fun setRollbackRetention(value: Int) {
+        settings.backupRollbackRetention = value
+        _uiState.update { it.copy(rollbackRetention = settings.backupRollbackRetention) }
+    }
+
+    /** 保留额度那一块的展开/收起。 */
+    fun toggleRetention() = _uiState.update { it.copy(retentionExpanded = !it.retentionExpanded) }
 
     /**
      * 勾选/取消一个来源。

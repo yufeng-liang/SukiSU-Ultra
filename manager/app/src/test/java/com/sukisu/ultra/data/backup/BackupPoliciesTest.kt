@@ -95,6 +95,33 @@ class BackupPoliciesTest {
     }
 
     @Test
+    fun `keep quota is clamped to the retention limits`() {
+        // 偏好项是从磁盘读出来的：手改过、从旧版本升上来都可能越界。额度 0 会让下一次备份
+        // 把刚写进去的那一份当场删掉，上限则是给磁盘一个说得清的边界。
+        assertEquals(1, RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 0, bootKeep = 2))
+        assertEquals(1, RetentionPolicy.keepFor(BackupKind.BOOT, moduleKeep = 5, bootKeep = -3))
+        assertEquals(
+            RetentionLimit.MAX,
+            RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 999, bootKeep = 2),
+        )
+        // boot 上限更紧：单张镜像 32–96MB，20 份就是近 2GB。
+        assertEquals(
+            RetentionLimit.MAX_BOOT,
+            RetentionPolicy.keepFor(BackupKind.BOOT, moduleKeep = 5, bootKeep = 999),
+        )
+    }
+
+    @Test
+    fun `retention limits clamp into range`() {
+        assertEquals(1, RetentionLimit.clampModule(0))
+        assertEquals(1, RetentionLimit.clampModule(-7))
+        assertEquals(RetentionLimit.MAX, RetentionLimit.clampModule(1000))
+        assertEquals(RetentionLimit.MAX_BOOT, RetentionLimit.clampBoot(1000))
+        assertEquals(RetentionLimit.MAX_ROLLBACK, RetentionLimit.clampRollback(1000))
+        assertEquals(5, RetentionLimit.clampModule(5))
+    }
+
+    @Test
     fun `rollback points are named, detected and capped at one`() {
         val original = entry("a", "1", "2026-10-08T12:00:00Z")
         val name = RollbackPolicy.rollbackNameFor(original, "20261008_120000")
@@ -108,7 +135,8 @@ class BackupPoliciesTest {
         assertEquals(
             listOf("2026-10-01T00:00:00Z"),
             RollbackPolicy.expiredRollbacks(
-                listOf(rollback("2026-10-01T00:00:00Z"), rollback("2026-10-02T00:00:00Z"), original)
+                listOf(rollback("2026-10-01T00:00:00Z"), rollback("2026-10-02T00:00:00Z"), original),
+                keep = 1,
             ).map { it.createdAt }
         )
         // 回滚点不吃业务额度
@@ -130,7 +158,7 @@ class BackupPoliciesTest {
             rollbackOf("b", "2026-10-01T00:00:00Z"),
         )
 
-        val expired = RollbackPolicy.expiredRollbacks(existing)
+        val expired = RollbackPolicy.expiredRollbacks(existing, keep = 1)
 
         // 只该淘汰 a 的旧那一份：恢复模块 b 不能把 a 的安全网一起删掉。
         assertEquals(listOf("2026-10-01T00:00:00Z_a"), expired.map { it.fileName.removePrefix(RollbackPolicy.PREFIX) })
@@ -147,7 +175,19 @@ class BackupPoliciesTest {
         // 只有 MODULE/a 的旧那一份该过期；BOOT/a 是另一项，不动。
         assertEquals(
             listOf(RollbackPolicy.PREFIX + "old_a"),
-            RollbackPolicy.expiredRollbacks(existing).map { it.fileName },
+            RollbackPolicy.expiredRollbacks(existing, keep = 1).map { it.fileName },
         )
+    }
+
+    @Test
+    fun `rollback quota follows the configured keep count`() {
+        val rollbackOf = { createdAt: String ->
+            BackupEntry(BackupKind.MODULE, "a", RollbackPolicy.PREFIX + createdAt, null, 1L, "s", createdAt)
+        }
+        val existing = (1..3).map { rollbackOf("2026-10-0${it}T00:00:00Z") }
+
+        // 额度调到 3 就一份都不淘汰——保留几份是用户说了算，不是写死的 1。
+        assertEquals(emptyList<String>(), RollbackPolicy.expiredRollbacks(existing, keep = 3).map { it.fileName })
+        assertEquals(2, RollbackPolicy.expiredRollbacks(existing, keep = 1).size)
     }
 }

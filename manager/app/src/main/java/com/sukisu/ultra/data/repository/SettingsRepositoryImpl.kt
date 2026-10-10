@@ -12,6 +12,7 @@ import com.sukisu.ultra.Natives
 import com.sukisu.ultra.data.backup.BackupDefaults
 import com.sukisu.ultra.data.backup.CredentialCipher
 import com.sukisu.ultra.data.backup.KeystoreKeyProvider
+import com.sukisu.ultra.data.backup.RetentionLimit
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.magica.BootCompletedReceiver
 import com.sukisu.ultra.ui.UiMode
@@ -228,8 +229,18 @@ class SettingsRepositoryImpl : SettingsRepository {
         set(value) = prefs.edit { putBoolean("backup_auto_cloud", value) }
 
     override var backupRetention: Int
-        get() = prefs.getInt("backup_retention", BackupDefaults.RETENTION)
-        set(value) = prefs.edit { putInt("backup_retention", value) }
+        get() = RetentionLimit.clampModule(prefs.getInt("backup_retention", BackupDefaults.RETENTION))
+        set(value) = prefs.edit { putInt("backup_retention", RetentionLimit.clampModule(value)) }
+
+    override var backupBootRetention: Int
+        get() = RetentionLimit.clampBoot(prefs.getInt("backup_boot_retention", BackupDefaults.BOOT_RETENTION))
+        set(value) = prefs.edit { putInt("backup_boot_retention", RetentionLimit.clampBoot(value)) }
+
+    override var backupRollbackRetention: Int
+        get() = RetentionLimit.clampRollback(
+            prefs.getInt("backup_rollback_retention", BackupDefaults.ROLLBACK_RETENTION)
+        )
+        set(value) = prefs.edit { putInt("backup_rollback_retention", RetentionLimit.clampRollback(value)) }
 
     override var backupAutoLastRecord: String
         get() = prefs.getString("backup_auto_last_record", "") ?: ""

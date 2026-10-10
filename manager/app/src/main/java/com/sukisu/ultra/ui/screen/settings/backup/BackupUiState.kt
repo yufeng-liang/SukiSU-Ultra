@@ -4,9 +4,11 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import com.sukisu.ultra.data.backup.AutoBackupPolicy
 import com.sukisu.ultra.data.backup.AutoBackupRecord
+import com.sukisu.ultra.data.backup.BackupDefaults
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.BackupRunResult
+import com.sukisu.ultra.data.backup.RetentionLimit
 import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.model.Module
@@ -153,6 +155,18 @@ data class BackupUiState(
      * 关闭开关后仍然显示——历史是事实，不该被一个开关抹掉。
      */
     val autoBackupRecord: AutoBackupRecord? = null,
+
+    /**
+     * 保留额度：模块留最近几次备份、boot 留几次、回滚点每个项目留几份。
+     *
+     * 以前这三个是代码里的常量，界面上看不见也改不了——用户只能从"我的第六份备份不见了"反推出
+     * 有这么个限制。默认值在 [BackupDefaults]，取值范围在 [RetentionLimit]。
+     */
+    val moduleRetention: Int = BackupDefaults.RETENTION,
+    val bootRetention: Int = BackupDefaults.BOOT_RETENTION,
+    val rollbackRetention: Int = BackupDefaults.ROLLBACK_RETENTION,
+    /** 保留额度那一块是否展开。它是"设一次就不管"的设置，摊开会把备份选项挤下去。 */
+    val retentionExpanded: Boolean = false,
 ) {
     /**
      * 现在按「立即备份」有没有意义。
@@ -305,6 +319,12 @@ data class BackupActions(
     /** 自动备份写到哪：本机 / 云端各一个。 */
     val onSetAutoBackupLocal: (Boolean) -> Unit,
     val onSetAutoBackupCloud: (Boolean) -> Unit,
+    /** 保留额度：模块 / boot / 回滚点各几次。值由数据层钳过，界面传原值即可。 */
+    val onSetModuleRetention: (Int) -> Unit,
+    val onSetBootRetention: (Int) -> Unit,
+    val onSetRollbackRetention: (Int) -> Unit,
+    /** 保留额度那一块的展开/收起。 */
+    val onToggleRetention: () -> Unit,
     val onToggleCloud: () -> Unit,
     val onToggleModules: () -> Unit,
     val onToggleModule: (String) -> Unit,

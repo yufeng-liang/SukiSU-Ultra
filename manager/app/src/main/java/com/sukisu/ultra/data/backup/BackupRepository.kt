@@ -23,6 +23,9 @@ object BackupDefaults {
 
     /** boot 单张原厂镜像 32–96MB，留 5 份就是几百 MB，默认只留 2 份。 */
     const val BOOT_RETENTION = 2
+
+    /** 回滚点默认每个项目留 1 份：它是"恢复到一半出问题"时的一次性退路，不是版本历史。 */
+    const val ROLLBACK_RETENTION = 1
 }
 
 /**
@@ -89,7 +92,8 @@ class BackupRepository(private val context: Context = ksuApp) {
             sources = engineSources,
             storages = listOf(localStorage),
             retention = settings.backupRetention,
-            bootRetention = BackupDefaults.BOOT_RETENTION,
+            bootRetention = settings.backupBootRetention,
+            rollbackRetention = settings.backupRollbackRetention,
         )
     }
 
@@ -117,7 +121,8 @@ class BackupRepository(private val context: Context = ksuApp) {
         sources = engineSources,
         storages = listOf(cloudStorage()),
         retention = settings.backupRetention,
-        bootRetention = BackupDefaults.BOOT_RETENTION,
+        bootRetention = settings.backupBootRetention,
+        rollbackRetention = settings.backupRollbackRetention,
     )
 
     private fun storageFor(origin: BackupOrigin): BackupStorage =

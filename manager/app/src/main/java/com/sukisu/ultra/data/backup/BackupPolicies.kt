@@ -28,9 +28,40 @@ object RetentionPolicy {
             .flatMap { it.value }
     }
 
-    /** 按 kind 取额度：模块默认 5 份，boot 默认 2 份（单张原厂镜像 32–96MB）。 */
+    /**
+     * 按 kind 取额度：模块、boot 各一份，取值都由 [RetentionLimit] 钳过。
+     *
+     * 钳位放在这里而不是只放在界面上：这些额度是从 SharedPreferences 读出来的，手改过、从旧
+     * 版本升上来、或被别的进程写过都有可能，而额度 0 意味着"下一次备份把自己的成果当场删光"。
+     */
     fun keepFor(kind: BackupKind, moduleKeep: Int, bootKeep: Int): Int =
-        if (kind == BackupKind.BOOT) bootKeep else moduleKeep
+        if (kind == BackupKind.BOOT) RetentionLimit.clampBoot(bootKeep) else RetentionLimit.clampModule(moduleKeep)
+}
+
+/**
+ * 保留额度的取值范围。
+ *
+ * 下限取 1 而不是 0：0 会让下一次备份把刚写进去的那一份当场删掉，用户看到的是"点了立即备份，
+ * 什么都没留下"，而界面上并没有任何一个地方写着"我设成了 0"。真想不留备份，关掉备份就是了，
+ * 不需要靠一个把结果自我删除的额度来表达。
+ */
+object RetentionLimit {
+    const val MIN = 1
+    const val MAX = 20
+
+    /** boot 单张镜像 32–96MB，留 20 份就是近 2GB，上限比模块更紧。 */
+    const val MAX_BOOT = 10
+
+    /** 回滚点是"恢复到一半出问题"时才用得上的安全网，几份就够，多了只是占空间。 */
+    const val MAX_ROLLBACK = 5
+
+    fun clamp(value: Int, max: Int = MAX): Int = value.coerceIn(MIN, max)
+
+    fun clampModule(value: Int): Int = clamp(value, MAX)
+
+    fun clampBoot(value: Int): Int = clamp(value, MAX_BOOT)
+
+    fun clampRollback(value: Int): Int = clamp(value, MAX_ROLLBACK)
 }
 
 /**
@@ -51,8 +82,10 @@ object RollbackPolicy {
      *
      * 不能全局只留 1 份——恢复完模块 A 再恢复模块 B，会把 A 的回滚点一起删掉，
      * 用户以为有安全网其实已经被静默丢弃了。
+     *
+     * [keep] 由调用方给：它是个用户可调的额度，而这里不该知道偏好项从哪来。
      */
-    fun expiredRollbacks(existing: List<BackupEntry>, keep: Int = 1): List<BackupEntry> {
+    fun expiredRollbacks(existing: List<BackupEntry>, keep: Int): List<BackupEntry> {
         val rollbacks = existing.filter { isRollback(it) }
         if (keep <= 0) return rollbacks
         return rollbacks

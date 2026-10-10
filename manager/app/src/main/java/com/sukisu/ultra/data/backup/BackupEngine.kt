@@ -23,6 +23,13 @@ class BackupEngine(
     private val storages: List<BackupStorage>,
     private val retention: Int = 5,
     private val bootRetention: Int = 2,
+    /**
+     * 回滚点额度（每个项目留几份）。
+     *
+     * 由装配方给而不是在这里写死 1：它是用户能调的一项设置，而引擎不该知道偏好项从哪来。
+     * 到用时才经 [RetentionLimit.clampRollback] 钳一次——装配方传进来的值同样可能来自磁盘。
+     */
+    private val rollbackRetention: Int = 1,
     private val clock: () -> Instant = { Instant.now() },
 ) {
 
@@ -244,7 +251,7 @@ class BackupEngine(
                     sha256 = artifact.sha256,
                     createdAt = clock().toString(),
                 )
-                val expired = RollbackPolicy.expiredRollbacks(updated)
+                val expired = RollbackPolicy.expiredRollbacks(updated, RetentionLimit.clampRollback(rollbackRetention))
                 expired.forEach { old ->
                     rollbackStorage.delete(old.fileName)
                     old.metaFileName?.let { rollbackStorage.delete(it) }

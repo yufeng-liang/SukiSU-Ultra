@@ -681,11 +681,11 @@
     <string name="backup_export">Export</string>
     <string name="backup_cloud_title">Cloud (WebDAV)</string>
     <string name="backup_cloud_summary_unset">Not set up</string>
-    <string name="backup_cloud_intro">No WebDAV server? A free Nutstore account works; for a netdisk, mount it with Alist.</string>
+    <string name="backup_cloud_intro">No WebDAV server? A free Nutstore account works; for a netdisk, mount it with Alist first.</string>
     <string name="backup_preset_hint_nutstore">Create an app password in Nutstore under Account info → Security → Third-party apps (free tier: 1 GB per month, uploads fail past it).</string>
     <string name="backup_preset_hint_synology">Enable WebDAV Server in Package Center, then replace your-nas with your NAS address.</string>
     <string name="backup_preset_hint_nextcloud">Replace USERNAME with your account name and use a new app password.</string>
-    <string name="backup_preset_hint_alist">Mount Aliyun Drive/Quark/Baidu in Alist first, then use the address Alist serves.</string>
+    <string name="backup_preset_hint_alist">Mount Aliyun Drive/Quark/Baidu in Alist first, then enter the address Alist serves.</string>
     <string name="backup_cloud_url">Server URL</string>
     <string name="backup_cloud_user">Username</string>
     <string name="backup_cloud_password">App password</string>
@@ -704,13 +704,13 @@
     <string name="backup_module_select_all">Select all</string>
     <string name="backup_module_none">No modules installed.</string>
     <string name="backup_module_unavailable">Module list unavailable; all modules will be backed up.</string>
-    <string name="backup_saved_to">saved to %1$s</string>
-    <string name="backup_location_local">Local backups are stored in %1$s</string>
-    <string name="backup_location_cloud">Cloud backups are stored in %1$s</string>
+    <string name="backup_saved_to">backed up to %1$s</string>
+    <string name="backup_location_local">Local backups are in %1$s</string>
+    <string name="backup_location_cloud">Cloud backups are in %1$s</string>
     <string name="backup_target_line">%1$s %2$s: %3$s</string>
     <string name="backup_pick_a_target">Pick at least one location and one kind of content.</string>
-    <string name="backup_empty_mixed">No backups in the selected locations yet. Back up now writes one.</string>
-    <string name="backup_origin_hint">With both checked, one backup writes two copies.</string>
+    <string name="backup_empty_mixed">No backups in the selected locations yet. Back up now creates one.</string>
+    <string name="backup_origin_hint">With both checked, one backup creates a copy in each location.</string>
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
     <string name="backup_cloud_required">Configure the WebDAV server above and save it first.</string>
@@ -730,9 +730,9 @@
     <!-- Backup summaries and diagnostics. Every string here is shown to the user, so no
          internal vocabulary (PUT/MKCOL/index-read) and no bare counters. Technical details
          that help a bug report (status codes, truncated hashes, file names) stay, in brackets. -->
-    <string name="backup_summary_written">%1$d written</string>
+    <string name="backup_summary_written">%1$d backed up</string>
     <string name="backup_summary_skipped">%1$d skipped</string>
-    <string name="backup_summary_all_skipped">these %1$d items match backups you already have — nothing new to store</string>
+    <string name="backup_summary_all_skipped">these %1$d items match backups you already have — nothing new to back up</string>
     <string name="backup_failure_line">%1$s: %2$s</string>
     <string name="backup_storage_local">Local</string>
     <string name="backup_storage_cloud">Cloud</string>
@@ -745,7 +745,7 @@
     <string name="backup_reason_http_delete">Deleting %1$s failed (HTTP %2$d).</string>
     <string name="backup_reason_index_unreadable">The list of backups could not be read, so nothing was written back to avoid wiping it. Back up once more, or check the folder by hand.</string>
     <string name="backup_reason_read_failed">Could not read %1$s.</string>
-    <string name="backup_reason_write_failed">Could not write %1$s.</string>
+    <string name="backup_reason_write_failed">Could not back up %1$s.</string>
     <string name="backup_reason_delete_failed">Could not delete %1$s, so it stays on disk and stays listed.</string>
     <string name="backup_reason_dir_not_writable">The backup folder %1$s is not writable.</string>
     <string name="backup_reason_corrupted">%1$s is damaged, so it was not restored (sha256 %2$s vs %3$s).</string>
@@ -767,11 +767,11 @@
     <string name="backup_auto_title">Automatic backup</string>
     <string name="backup_auto_summary">Back up modules once after a module is installed successfully, to the destinations checked below.</string>
     <string name="backup_auto_last">Last automatic backup: %1$s</string>
-    <string name="backup_auto_never">never run</string>
+    <string name="backup_auto_never">not run yet</string>
     <string name="backup_auto_off">off</string>
     <string name="backup_auto_dest_none">Neither destination is checked, so automatic backup will not run.</string>
-    <string name="backup_auto_result_ok">succeeded, %1$d written</string>
-    <string name="backup_auto_result_unchanged">succeeded, %1$d items unchanged — nothing new to store</string>
+    <string name="backup_auto_result_ok">succeeded, %1$d backed up</string>
+    <string name="backup_auto_result_unchanged">succeeded, %1$d items unchanged — nothing new to back up</string>
     <string name="backup_auto_result_partial">partly failed</string>
     <string name="backup_auto_result_failed">failed</string>
     <string name="backup_channel_name">Backup</string>
@@ -800,7 +800,7 @@
     <string name="backup_selection_delete">Delete</string>
     <string name="backup_selection_hint">Long-press a row to select several</string>
     <string name="backup_delete_selected_confirm_title">Delete the selected backups?</string>
-    <string name="backup_delete_selected_confirm_body">Removes %1$d backups (%2$d items), both the local and the cloud copies. It cannot be undone.</string>
+    <string name="backup_delete_selected_confirm_body">Removes %1$d backups (%2$d items), both the local and the cloud copies. This cannot be undone.</string>
     <string name="backup_deleted_groups">deleted %1$d backups</string>
     <string name="backup_share_chooser">Share backup</string>
     <string name="backup_progress_title">Backing up</string>
@@ -828,4 +828,15 @@
     <string name="module_contribution_unknown">Unable to confirm whether it was accepted</string>
     <string name="module_contribution_settings_title">Module contributions</string>
     <string name="module_contribution_settings_summary">When installing a local module, offer to share modules that are not yet listed</string>
+
+    <!-- Retention quotas. Each has its own range (modules 1–20, boot 1–10, restore points 1–5),
+         so the wording deliberately avoids naming the numbers. -->
+    <string name="backup_retention_title">How many backups to keep</string>
+    <string name="backup_retention_summary">Older backups beyond this are removed automatically on the next backup.</string>
+    <string name="backup_retention_module">Modules</string>
+    <string name="backup_retention_boot">Stock boot image</string>
+    <string name="backup_retention_rollback">Restore points (per item)</string>
+    <string name="backup_retention_rollback_summary">The current state is backed up before a restore; this is how many are kept per item.</string>
+    <string name="backup_retention_boot_summary">One image is 32–96 MB, so a high number takes a lot of space.</string>
+    <string name="backup_retention_count">%1$d</string>
 </resources>
