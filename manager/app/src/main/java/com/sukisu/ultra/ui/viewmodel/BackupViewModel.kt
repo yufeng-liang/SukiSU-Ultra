@@ -263,6 +263,20 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 如果 refresh 顺手清掉它，用户在一次主线程 turn 里看不到任何提示——失败会被当成成功。
      * message 只由 [clearMessage]（消费掉之后）、用户主动换来源/内容/服务器，或下一次操作覆盖。
      */
+    /**
+     * 上一次 [refresh] 的结果，供调用方在刷新**之后**再说话。
+     *
+     * 刷新是异步的（[refresh] 返回的是 Job），调用方得先 join 再看这里，否则读到的还是刷新前
+     * 的列表。刷新中途用户改了勾选时为 null——那份结果已经过期。
+     */
+    private var lastRefreshOutcome: RefreshOutcome? = null
+
+    private data class RefreshOutcome(
+        val origins: Set<BackupOrigin>,
+        val kinds: Set<BackupKind>,
+        val listingFailed: Boolean,
+    )
+
     fun refresh() = viewModelScope.launch {
         val origins = _uiState.value.origins
         val kinds = _uiState.value.kinds
@@ -312,7 +326,11 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         // 慢的那次可能后落地：勾选已经变了就丢弃这份结果，别用它覆盖新选择的列表。
-        if (_uiState.value.origins != origins || _uiState.value.kinds != kinds) return@launch
+        if (_uiState.value.origins != origins || _uiState.value.kinds != kinds) {
+            lastRefreshOutcome = null
+            return@launch
+        }
+        lastRefreshOutcome = RefreshOutcome(origins, kinds, listingFailed)
         entries = collected
         metas = collectedMetas
         // 两侧合起来列，最新的在最上面：来源不同不影响"我最近备了什么"这个问题。
@@ -667,8 +685,37 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         // 连不上或凭据不对时，这次刷新会把原因说出来——那正是填完地址最需要的反馈。
-        // （成功时它不动 message，所以上面那句"已保存"留得住。）
-        refresh()
+        // 必须 join：refresh 是异步的，不等它跑完就去数云端有几份，数的还是刷新前的列表。
+        refresh().join()
+        // 刷新完再补一句"上面有几份"：用户配云端就是为了知道那儿有没有能恢复的东西，而列表
+        // 和刚才那句"已保存"都不回答这个问题。刷新失败时上面那句原因还在，这里不能覆盖它。
+        announceCloudContents()
+    }
+
+    /**
+     * 刚配好的云端上有没有可恢复的东西，有就说出来。
+     *
+     * 刷新成功却一个字不说时，界面上只有"已保存"和一批突然出现的行——用户分不清那是他刚传上去
+     * 的还是本来就在那儿，也不知道那些行能不能恢复。说一句"云端有 N 次备份"就把这件事讲完了。
+     *
+     * 只在**确实读到了云端**时才说：读失败时 [refresh] 已经给出了原因，那句话比"有几份"重要，
+     * 不能被顶掉。云端一份都没有时也不说——那时候列表里的空状态文案正在讲同一件事。
+     */
+    private fun announceCloudContents() {
+        val outcome = lastRefreshOutcome ?: return
+        if (outcome.listingFailed || BackupOrigin.CLOUD !in outcome.origins) return
+        val cloudGroups = _uiState.value.groups.count { it.origin == BackupOrigin.CLOUD }
+        val cloudItems = _uiState.value.groups.filter { it.origin == BackupOrigin.CLOUD }
+            .sumOf { it.rows.size }
+        if (cloudGroups == 0 || cloudItems == 0) return
+        _uiState.update {
+            it.copy(
+                message = BackupListFormatter.mergeMessages(
+                    it.message,
+                    string(R.string.backup_cloud_found, cloudGroups, cloudItems),
+                )
+            )
+        }
     }
 
     /** 输入框编辑态。三个字段各自更新，互不覆盖。 */

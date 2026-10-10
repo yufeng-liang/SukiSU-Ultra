@@ -692,6 +692,7 @@
     <string name="backup_cloud_test">Test connection</string>
     <string name="backup_cloud_save">Save</string>
     <string name="backup_cloud_saved">Cloud settings saved</string>
+    <string name="backup_cloud_found">%1$d backups (%2$d items) found on the server, added to the list below.</string>
     <string name="backup_cloud_hint">Always the app password, never your login password.</string>
     <string name="backup_origin_group">Location</string>
     <string name="backup_kind_group">What to back up</string>
