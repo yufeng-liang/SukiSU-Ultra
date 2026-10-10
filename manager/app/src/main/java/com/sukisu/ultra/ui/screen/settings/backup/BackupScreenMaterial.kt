@@ -122,11 +122,17 @@ fun BackupMaterial(
                     },
                     actions = {
                         if (state.selecting) {
+                            // 红色：删除是这一栏唯一的操作、也是唯一不可逆的，该在做之前就看得
+                            // 出来，而不是等确认弹窗弹出来才说。
                             IconButton(
                                 onClick = actions.onDeleteSelected,
                                 enabled = state.selectedGroups.isNotEmpty() && !state.loading,
                             ) {
-                                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.backup_selection_delete))
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = stringResource(R.string.backup_selection_delete),
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
                             }
                         }
                     },

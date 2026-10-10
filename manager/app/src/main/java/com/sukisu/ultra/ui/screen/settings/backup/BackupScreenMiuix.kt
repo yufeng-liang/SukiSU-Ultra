@@ -99,6 +99,9 @@ import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlin.math.roundToInt
 
+/** 不可用的操作降到这个不透明度：还是那个颜色，但一眼看得出点不动。 */
+private const val DISABLED_ALPHA = 0.38f
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BackupMiuix(
@@ -148,10 +151,25 @@ fun BackupMiuix(
                         },
                         actions = {
                             if (state.selecting) {
-                                TextButton(
+                                // 删除是这一栏唯一的操作，也是唯一不可逆的：用误差色而不是默认
+                                // 的主题色，让"按下去东西就没了"这件事在做之前就看得出来。
+                                //
+                                // 自己画而不是用 TextButton：这个版本的 Miuix 只给了 Primary 那套
+                                // textButtonColors，没有 error 变体，所以这里拿 Text 直接染成误差色。
+                                Text(
                                     text = stringResource(R.string.backup_selection_delete),
-                                    enabled = state.selectedGroups.isNotEmpty() && !state.loading,
-                                    onClick = actions.onDeleteSelected,
+                                    fontSize = 16.sp,
+                                    color = if (state.selectedGroups.isNotEmpty() && !state.loading) {
+                                        colorScheme.error
+                                    } else {
+                                        colorScheme.error.copy(alpha = DISABLED_ALPHA)
+                                    },
+                                    modifier = Modifier
+                                        .padding(horizontal = 12.dp)
+                                        .clickable(
+                                            enabled = state.selectedGroups.isNotEmpty() && !state.loading,
+                                            onClick = actions.onDeleteSelected,
+                                        ),
                                 )
                             }
                         },
