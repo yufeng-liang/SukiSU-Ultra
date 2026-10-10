@@ -223,7 +223,11 @@ fun BackupMiuix(
         }
     }
 
-    BackupProgressDialogMiuix(state = state, onDismiss = actions.onDismissBackupRun)
+    BackupProgressDialogMiuix(
+        state = state,
+        onDismiss = actions.onDismissBackupRun,
+        onCancel = actions.onCancelBackupRun,
+    )
 }
 
 /**

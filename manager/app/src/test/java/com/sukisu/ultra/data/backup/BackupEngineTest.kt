@@ -1,5 +1,6 @@
 package com.sukisu.ultra.data.backup
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,6 +16,7 @@ private class FakeStorage(
     private val failWrites: Boolean = false,
     private val failIndexRead: Boolean = false,
     private val failDeletes: Boolean = false,
+    private val failMetaWrites: Boolean = false,
     override val reportsTransferProgress: Boolean = false,
 ) : BackupStorage {
     val files = mutableMapOf<String, ByteArray>()
@@ -53,8 +55,39 @@ private class FakeStorage(
         return Result.success(files[relativePath]?.decodeToString() ?: "")
     }
 
-    override suspend fun writeText(relativePath: String, text: String) =
-        Result.success(Unit).also { files[relativePath] = text.toByteArray() }
+    override suspend fun writeText(relativePath: String, text: String): Result<Unit> {
+        if (failMetaWrites && relativePath.endsWith(".meta.json")) {
+            // 真实后端（LocalBackupStorage / WebDavBackupStorage）写失败时抛的就是这个类型。
+            return Result.failure(
+                BackupReasonException(BackupReason.WriteFailed(relativePath, "$id cannot write sidecars")),
+            )
+        }
+        files[relativePath] = text.toByteArray()
+        return Result.success(Unit)
+    }
+}
+
+/** 传输途中被用户取消：put 直接把 CancellationException 抛出去，模拟协程取消。 */
+private class CancellingStorage : BackupStorage {
+    override val id = "cancelling"
+
+    override suspend fun test(): Result<Unit> = Result.success(Unit)
+
+    override suspend fun put(
+        relativePath: String,
+        size: Long,
+        onProgress: (Long) -> Unit,
+        open: () -> InputStream,
+    ): Result<Unit> = throw CancellationException("left the screen")
+
+    override suspend fun get(relativePath: String): Result<InputStream> =
+        Result.failure(NoSuchElementException(relativePath))
+
+    override suspend fun delete(relativePath: String): Result<Unit> = Result.success(Unit)
+
+    override suspend fun readText(relativePath: String): Result<String> = Result.success("")
+
+    override suspend fun writeText(relativePath: String, text: String): Result<Unit> = Result.success(Unit)
 }
 
 private class FakeSource(
@@ -578,6 +611,139 @@ class BackupEngineTest {
             ).getOrThrow()
 
             assertTrue(storage.files.containsKey("passwd"))
+        }
+    }
+
+    @Test
+    fun `a sidecar that cannot be written fails the entry and keeps it out of the index`() {
+        runBlocking {
+            // 归档写成功、meta 写失败时条目以前照样进索引：之后 restore 拿不到 meta，列表里
+            // 那一行点开就报错，保留策略还会把它当一份完整备份数。要么两个都在，要么都不算。
+            val storage = FakeStorage("local", failMetaWrites = true)
+
+            val result = engine(listOf(storage), moduleSource(artifact("a", "sha-a"))).backup(BackupKind.MODULE)
+
+            assertTrue(result.isFailure)
+            assertTrue(result.written.isEmpty())
+            val failure = result.failures.single()
+            val reason = failure.reason
+            assertEquals("module_a_1_20261008_120000.zip.meta.json", failure.path)
+            assertEquals("local", failure.storage)
+            assertTrue("expected WriteFailed but got $reason", reason is BackupReason.WriteFailed)
+            assertFalse(
+                "只剩归档没有 meta 的半份备份不该留在盘上",
+                storage.files.containsKey("module_a_1_20261008_120000.zip"),
+            )
+            assertEquals(
+                emptyList<String>(),
+                BackupManifest
+                    .parseEntries(storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString())
+                    .map { it.entryId },
+            )
+        }
+    }
+
+    @Test
+    fun `a sidecar failure also reports the archive that could not be cleaned up`() {
+        runBlocking {
+            // 归档删不掉也得说一声：索引里没有它，盘上却还占着地方，只报一句"meta 写失败"
+            // 会让用户以为什么都没留下。
+            val storage = FakeStorage("local", failDeletes = true, failMetaWrites = true)
+
+            val result = engine(listOf(storage), moduleSource(artifact("a", "sha-a"))).backup(BackupKind.MODULE)
+
+            assertEquals(2, result.failures.size)
+            assertTrue(
+                "expected the sidecar itself to be reported, got ${result.failures.map { it.path }}",
+                result.failures.any { it.path == "module_a_1_20261008_120000.zip.meta.json" },
+            )
+            assertTrue(
+                "expected the orphaned archive to be reported, got ${result.failures.map { it.path }}",
+                result.failures.any { it.path == "module_a_1_20261008_120000.zip" },
+            )
+        }
+    }
+
+    @Test
+    fun `a cancelled transfer is not folded into a failed result`() {
+        // 取消不是失败：吞掉协程的取消信号后，上层（退出页面、切换存储、换配置）再也收不到
+        // 取消，用户看到的却是列表里多出一条"备份失败"。
+        val subject = engine(listOf(CancellingStorage()), moduleSource(artifact("a", "sha-a")))
+        var result: BackupRunResult? = null
+        var cancelled = false
+
+        try {
+            runBlocking { result = subject.backup(BackupKind.MODULE) }
+        } catch (expected: CancellationException) {
+            cancelled = true
+        }
+
+        assertTrue("cancellation must reach the caller", cancelled)
+        assertNull(result)
+    }
+
+    @Test
+    fun `exportTo verifies the archive when a sha256 is recorded`() {
+        runBlocking {
+            val storage = FakeStorage("local")
+            val body = "payload".toByteArray()
+            storage.files["module_a_1_20261008_120000.zip"] = body
+            val sink = java.io.ByteArrayOutputStream()
+
+            engine(listOf(storage), moduleSource())
+                .exportTo(storage, entry(sha256 = body.sha256Hex(), size = body.size.toLong()), sink)
+                .getOrThrow()
+
+            assertEquals("payload", sink.toString())
+        }
+    }
+
+    @Test
+    fun `exportTo refuses an archive whose content does not match the recorded sha256`() {
+        runBlocking {
+            // 导出（分享、另存）曾经是唯一不过校验的出口：文件在盘上/传输路上坏了照样交给用户。
+            val storage = FakeStorage("local")
+            storage.files["module_a_1_20261008_120000.zip"] = "tampered".toByteArray()
+            val sink = java.io.ByteArrayOutputStream()
+
+            val result = engine(listOf(storage), moduleSource())
+                .exportTo(storage, entry(sha256 = "expected-sha"), sink)
+
+            assertTrue(result.isFailure)
+            assertEquals(
+                BackupReason.Corrupted(
+                    "module_a_1_20261008_120000.zip",
+                    "expected-sha",
+                    "tampered".toByteArray().sha256Hex(),
+                ),
+                reasonOf(result.exceptionOrNull()!!),
+            )
+        }
+    }
+
+    @Test
+    fun `copyTo verifies without closing the sink it was given`() {
+        runBlocking {
+            // 多选分享时几条归档要写进同一个 zip：谁都不许替调用方关流。
+            val storage = FakeStorage("local")
+            val body = "payload".toByteArray()
+            storage.files["module_a_1_20261008_120000.zip"] = body
+            var closed = false
+            val sink = object : java.io.OutputStream() {
+                private val out = java.io.ByteArrayOutputStream()
+                override fun write(b: Int) = out.write(b)
+                override fun close() {
+                    closed = true
+                }
+                override fun toString() = out.toString()
+            }
+
+            engine(listOf(storage), moduleSource())
+                .copyTo(storage, entry(sha256 = body.sha256Hex(), size = body.size.toLong()), sink)
+                .getOrThrow()
+
+            assertEquals("payload", sink.toString())
+            assertFalse("copyTo 不该关掉调用方的 sink", closed)
         }
     }
 

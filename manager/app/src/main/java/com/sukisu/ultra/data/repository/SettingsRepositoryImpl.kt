@@ -207,9 +207,15 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var webDavPassword: String
         get() = prefs.getString("backup_webdav_password", "")?.takeIf { it.isNotBlank() }
             ?.let { runCatching { CredentialCipher.decrypt(KeystoreKeyProvider.key(), it) }.getOrDefault("") } ?: ""
-        set(value) = prefs.edit {
-            if (value.isBlank()) remove("backup_webdav_password")
-            else putString("backup_webdav_password", CredentialCipher.encrypt(KeystoreKeyProvider.key(), value))
+        set(value) {
+            // 加密同样可能失败（系统密钥库不可用），而这是一次属性赋值：让它抛出去就是点"保存"
+            // 直接崩，密码还只留在内存里。存不进去就当没配密码——撤掉旧密文，让读回来的值和实际
+            // 能用的凭据一致，屏幕上的那句"密码没能存进去"才说得通。明文绝不落进 prefs。
+            val ciphertext = runCatching { CredentialCipher.encrypt(KeystoreKeyProvider.key(), value) }.getOrNull()
+            prefs.edit {
+                if (value.isBlank() || ciphertext == null) remove("backup_webdav_password")
+                else putString("backup_webdav_password", ciphertext)
+            }
         }
 
     override var backupCloudEnabled: Boolean

@@ -40,22 +40,45 @@ object BackupManifest {
     fun parseEntriesOrThrow(json: String): List<BackupEntry> {
         val root = runCatching { JSONObject(json) }
             .getOrElse { error -> throw BackupReasonException(BackupReason.IndexUnreadable(error.message)) }
-        val array = root.optJSONArray("entries")
-            ?: throw BackupReasonException(BackupReason.IndexUnreadable(null))
-        return (0 until array.length()).mapNotNull { index ->
-            val item = array.optJSONObject(index) ?: return@mapNotNull null
-            val kind = BackupKind.entries.firstOrNull { it.wireName == item.optString("kind") }
-                ?: return@mapNotNull null
-            BackupEntry(
-                kind = kind,
-                entryId = item.optString("entryId"),
-                fileName = item.optString("fileName"),
-                metaFileName = item.optString("metaFileName").takeIf { it.isNotBlank() && it != "null" },
-                sizeBytes = item.optLong("sizeBytes"),
-                sha256 = item.optString("sha256"),
-                createdAt = item.optString("createdAt"),
+        // 版本认不出就整个拒绝，不做"尽力解析"：这个索引是"读全量 → 改 → 整体回写"的，版本不认识
+        // 通常意味着有些字段我们读不懂，照旧解析会把读不懂的条目当成不存在，回写时从索引里抹掉
+        // （归档还在盘上/远端，但列表、去重、保留策略都再也看不到它们）。静默删数据远比报错难查。
+        val version = root.optInt("version", -1)
+        if (version != ArchiveNaming.MANIFEST_VERSION) {
+            throw BackupReasonException(
+                BackupReason.IndexUnreadable(
+                    "manifest version $version is not ${ArchiveNaming.MANIFEST_VERSION}",
+                ),
             )
         }
+        val array = root.optJSONArray("entries")
+            ?: throw BackupReasonException(BackupReason.IndexUnreadable(null))
+        return (0 until array.length()).map { index -> parseEntryOrThrow(array, index) }
+    }
+
+    /**
+     * 单条也严格：老写法用 `mapNotNull` 把认不出的条目静默跳过，整体回写时那几条就被从索引里
+     * 抹掉了。宁可整次拒绝，让用户看到"索引读不出来"，也不要看起来一切正常地少掉几条记录。
+     */
+    private fun parseEntryOrThrow(array: JSONArray, index: Int): BackupEntry {
+        val item = array.optJSONObject(index)
+            ?: throw BackupReasonException(BackupReason.IndexUnreadable("entry $index is not an object"))
+        val rawKind = item.optString("kind")
+        val kind = BackupKind.entries.firstOrNull { it.wireName == rawKind }
+            ?: throw BackupReasonException(BackupReason.IndexUnreadable("entry $index has unknown kind '$rawKind'"))
+        val fileName = item.optString("fileName")
+        if (fileName.isBlank()) {
+            throw BackupReasonException(BackupReason.IndexUnreadable("entry $index has no fileName"))
+        }
+        return BackupEntry(
+            kind = kind,
+            entryId = item.optString("entryId"),
+            fileName = fileName,
+            metaFileName = item.optString("metaFileName").takeIf { it.isNotBlank() && it != "null" },
+            sizeBytes = item.optLong("sizeBytes"),
+            sha256 = item.optString("sha256"),
+            createdAt = item.optString("createdAt"),
+        )
     }
 
     fun renderModuleMeta(meta: ModuleBackupMeta): String = JSONObject().apply {

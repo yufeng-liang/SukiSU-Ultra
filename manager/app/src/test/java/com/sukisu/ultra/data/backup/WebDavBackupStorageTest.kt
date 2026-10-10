@@ -12,6 +12,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.net.InetSocketAddress
+import java.net.URI
 import java.util.Base64
 
 class WebDavBackupStorageTest {
@@ -23,6 +24,19 @@ class WebDavBackupStorageTest {
     private val files = mutableMapOf<String, ByteArray>()
     private val collections = mutableSetOf<String>()
     private var requireAuth = true
+
+    /** 期望的 Authorization 头；非 ASCII 密码那条测试会把它换成 UTF-8 编码的那一份。 */
+    private var expectedAuth =
+        "Basic " + Base64.getEncoder().encodeToString("user:app-pass".toByteArray(Charsets.UTF_8))
+
+    /** 非 null 时 MKCOL 一律回 301 + 这个 Location，用来盯重定向的判定。 */
+    private var redirectCollectionsTo: String? = null
+
+    /** 有服务端禁用 MOVE；关掉它来验证上传会退回直接覆盖。 */
+    private var moveSupported = true
+
+    private val putPaths = mutableListOf<String>()
+    private val moves = mutableListOf<Pair<String, String>>()
 
     @Before
     fun start() {
@@ -36,14 +50,41 @@ class WebDavBackupStorageTest {
 
     private fun handle(exchange: HttpExchange) {
         val auth = exchange.requestHeaders.getFirst("Authorization")
-        val expected = "Basic " + Base64.getEncoder().encodeToString("user:app-pass".toByteArray())
-        if (requireAuth && auth != expected) {
+        if (requireAuth && auth != expectedAuth) {
             exchange.sendResponseHeaders(401, -1); exchange.close(); return
         }
         val path = exchange.requestURI.path.removePrefix("/dav")
         when (exchange.requestMethod) {
-            "MKCOL" -> { collections += path; exchange.sendResponseHeaders(201, -1) }
-            "PUT" -> { files[path] = exchange.requestBody.readBytes(); exchange.sendResponseHeaders(201, -1) }
+            "MKCOL" -> {
+                collections += path
+                val redirect = redirectCollectionsTo
+                if (redirect == null) {
+                    exchange.sendResponseHeaders(201, -1)
+                } else {
+                    exchange.responseHeaders.add("Location", redirect)
+                    exchange.sendResponseHeaders(301, -1)
+                }
+            }
+            "PUT" -> {
+                putPaths += path
+                files[path] = exchange.requestBody.readBytes()
+                exchange.sendResponseHeaders(201, -1)
+            }
+            "MOVE" -> {
+                if (!moveSupported) {
+                    exchange.sendResponseHeaders(405, -1)
+                } else {
+                    val destination = exchange.requestHeaders.getFirst("Destination").orEmpty()
+                    val target = URI.create(destination).path.removePrefix("/dav")
+                    moves += path to target
+                    val body = files.remove(path)
+                    if (body == null) exchange.sendResponseHeaders(404, -1)
+                    else {
+                        files[target] = body
+                        exchange.sendResponseHeaders(201, -1)
+                    }
+                }
+            }
             "GET" -> {
                 val body = files[path]
                 if (body == null) exchange.sendResponseHeaders(404, -1)
@@ -58,11 +99,15 @@ class WebDavBackupStorageTest {
         exchange.close()
     }
 
-    private fun storage() = WebDavBackupStorage(
-        client = OkHttpClient(),
+    private fun storage(
+        followRedirects: Boolean = true,
+        username: String = "user",
+        password: String = "app-pass",
+    ) = WebDavBackupStorage(
+        client = OkHttpClient.Builder().followRedirects(followRedirects).build(),
         baseUrl = "http://127.0.0.1:${server.address.port}/dav/sukisu",
-        username = "user",
-        password = "app-pass",
+        username = username,
+        password = password,
     )
 
     @Test
@@ -128,6 +173,43 @@ class WebDavBackupStorageTest {
     }
 
     @Test
+    fun `an upload replaces the target through a temporary object`() {
+        runBlocking {
+            val body = "index v2".toByteArray()
+            assertTrue(storage().put("index.json", body.size.toLong()) { body.inputStream() }.isSuccess)
+
+            // 索引指向全部备份：半截内容写进目标等于整个功能读不出东西，只能经临时对象换名。
+            assertEquals("index v2", files.getValue("/sukisu/index.json").decodeToString())
+            assertTrue("expected a PUT to a .part object, saw $putPaths", putPaths.any { it.endsWith(".part") })
+            assertTrue(
+                "expected a MOVE onto the target, saw $moves",
+                moves.contains("/sukisu/index.json.part" to "/sukisu/index.json"),
+            )
+            assertTrue("the temporary object must not be left behind", files.keys.none { it.endsWith(".part") })
+        }
+    }
+
+    @Test
+    fun `a server that rejects MOVE still gets the upload`() {
+        runBlocking {
+            moveSupported = false
+            val store = storage()
+
+            val first = "index v3".toByteArray()
+            assertTrue(store.put("index.json", first.size.toLong()) { first.inputStream() }.isSuccess)
+            // 能写进去但不原子，好过根本写不进去。
+            assertEquals("index v3", files.getValue("/sukisu/index.json").decodeToString())
+            assertTrue("the refused temporary object must be cleaned up", files.keys.none { it.endsWith(".part") })
+
+            // 只探测一次：支持与否是服务端的性质，不必每个文件都试。
+            val second = "index v4".toByteArray()
+            assertTrue(store.put("other.json", second.size.toLong()) { second.inputStream() }.isSuccess)
+            assertEquals("index v4", files.getValue("/sukisu/other.json").decodeToString())
+            assertEquals(1, putPaths.count { it.endsWith(".part") })
+        }
+    }
+
+    @Test
     fun `text round trip`() {
         runBlocking {
             val store = storage()
@@ -181,6 +263,52 @@ class WebDavBackupStorageTest {
             store.writeText("a.txt", "x")
             assertTrue(store.delete("a.txt").isSuccess)
             assertTrue(storage().get("a.txt").isFailure)
+        }
+    }
+
+    @Test
+    fun `credentials with non ascii characters are sent as utf-8`() {
+        runBlocking {
+            // 单参数的 Credentials.basic 按 ISO-8859-1 编码：非 ASCII 密码会被写成另一串字节，
+            // 于是"密码明明是对的却 401"，用户只会以为是密码错。服务端比对的是 UTF-8 那一份。
+            expectedAuth =
+                "Basic " + Base64.getEncoder().encodeToString("user:pässwörd".toByteArray(Charsets.UTF_8))
+
+            assertTrue(storage(password = "pässwörd").test().isSuccess)
+        }
+    }
+
+    @Test
+    fun `a collection that redirects to itself counts as already there`() {
+        runBlocking {
+            // nginx 对已存在的集合回 301 补尾斜杠，Location 指向的还是这个目录本身。
+            // 关掉自动跟随重定向，确保判定发生在我们的代码里。
+            redirectCollectionsTo = "http://127.0.0.1:${server.address.port}/dav/sukisu/"
+            val body = "hello dav".toByteArray()
+
+            val result = storage(followRedirects = false).put("a.txt", body.size.toLong()) { body.inputStream() }
+
+            assertTrue("expected the self redirect to be taken as 'already there'", result.isSuccess)
+            assertEquals("hello dav", files.getValue("/sukisu/a.txt").decodeToString())
+        }
+    }
+
+    @Test
+    fun `a redirection somewhere else is not taken for an existing collection`() {
+        runBlocking {
+            // 反代/门户把请求弹到登录页时也会回 301：那不是"集合已存在"，继续传只会把归档
+            // 丢在别的地方（或者悄悄没传）。
+            redirectCollectionsTo = "http://127.0.0.1:${server.address.port}/login"
+            val body = "hello dav".toByteArray()
+
+            val result = storage(followRedirects = false).put("a.txt", body.size.toLong()) { body.inputStream() }
+
+            assertTrue(result.isFailure)
+            val reason = reasonOf(result.exceptionOrNull()!!)
+            assertEquals(
+                BackupReason.HttpFailed(HttpOperation.CREATE_DIRECTORY, "/", 301),
+                reason,
+            )
         }
     }
 }

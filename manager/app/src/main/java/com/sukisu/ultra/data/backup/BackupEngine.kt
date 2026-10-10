@@ -88,7 +88,7 @@ class BackupEngine(
                         // 后端自己会报（WebDAV）时不要在源流上再包一层：它先把源流落到 staging、
                         // 再上传 staging 文件，包在源流上数到的是那段本地拷贝，而真上传时后端又
                         // 会按 socket 写出的字节数报一次——两条流混在一起，进度会先冲到底再冻住。
-                        storage.put(
+                        val put = storage.put(
                             relativePath = fileName,
                             size = artifact.sizeBytes,
                             open = if (storage.reportsTransferProgress) {
@@ -98,29 +98,49 @@ class BackupEngine(
                             },
                             onProgress = report,
                         )
-                            .onFailure { failures += BackupFailure(fileName, storage.id, reasonOf(it)) }
-                            .onSuccess {
-                                written += fileName
-                                sentBefore += artifact.sizeBytes
-                                val metaName = artifact.metaFileName?.let { ArchiveNaming.metaFileNameFor(fileName) }
-                                if (metaName != null && artifact.metaJson != null) {
-                                    storage.writeText(metaName, artifact.metaJson)
-                                        .onFailure { failures += BackupFailure(metaName, storage.id, reasonOf(it)) }
+                        val putFailure = put.exceptionOrNull()
+                        if (putFailure != null) {
+                            failures += BackupFailure(fileName, storage.id, reasonOf(putFailure))
+                            return@forEachIndexed
+                        }
+                        // 字节确实出去了，进度基准就往前走；失败的那次不动，与老行为一致。
+                        sentBefore += artifact.sizeBytes
+                        val metaName = artifact.metaFileName?.let { ArchiveNaming.metaFileNameFor(fileName) }
+                        if (metaName != null && artifact.metaJson != null) {
+                            val metaFailure = storage.writeText(metaName, artifact.metaJson).exceptionOrNull()
+                            if (metaFailure != null) {
+                                // 归档和边车 meta 是一份备份的两半：meta（模块名/版本、启动镜像的 sha1）
+                                // 写不进去，这条就整体算失败，绝不能登记进索引——登记了等于给用户一条
+                                // "已备份"却必然恢复失败的记录。归档已经写进去了，这里尽力删掉，删不掉
+                                // 也照实报出来；索引里不留半条，下次备份会用同名文件把它覆盖掉。
+                                failures += BackupFailure(metaName, storage.id, reasonOf(metaFailure))
+                                storage.delete(fileName).onFailure { cleanup ->
+                                    failures += BackupFailure(fileName, storage.id, reasonOf(cleanup))
                                 }
-                                pending += BackupEntry(
-                                    kind = kind,
-                                    entryId = artifact.entryId,
-                                    fileName = fileName,
-                                    metaFileName = metaName,
-                                    sizeBytes = artifact.sizeBytes,
-                                    sha256 = artifact.sha256,
-                                    createdAt = clock().toString(),
-                                )
+                                return@forEachIndexed
                             }
+                        }
+                        written += fileName
+                        pending += BackupEntry(
+                            kind = kind,
+                            entryId = artifact.entryId,
+                            fileName = fileName,
+                            metaFileName = metaName,
+                            sizeBytes = artifact.sizeBytes,
+                            sha256 = artifact.sha256,
+                            createdAt = clock().toString(),
+                        )
                     }
 
                     val updated = index + pending
-                    val expired = RetentionPolicy.expired(updated, kind, RetentionPolicy.keepFor(kind, retention, bootRetention))
+                    val expired = RetentionPolicy.expired(
+                        existing = updated,
+                        kind = kind,
+                        keep = RetentionPolicy.keepFor(kind, retention, bootRetention),
+                        // 刚写进去的这些不许被同一次调用删掉：设备时钟被调过时，"最近"会算到旧
+                        // 备份头上，那样这次备份就是删掉自己。
+                        keepEntries = pending.mapTo(mutableSetOf()) { it.fileName },
+                    )
                     // 删不掉的条目留在索引里：从索引里摘掉却把文件留在盘上，那份归档就再也没人
                     // 指向它了，下一次备份也不会再试着删——用户看不到、也清不掉的孤儿。
                     val deleted = mutableSetOf<BackupEntry>()
@@ -157,8 +177,8 @@ class BackupEngine(
      * 那份归档就再也没人指向它了，用户既看不到也清不掉。索引写不回去时把删掉的名字重新挂上，
      * 否则"文件没了但索引还写着"会让列表点开就是空的。
      */
-    suspend fun delete(storage: BackupStorage, entries: List<BackupEntry>): Result<Unit> = runCatching {
-        if (entries.isEmpty()) return@runCatching
+    suspend fun delete(storage: BackupStorage, entries: List<BackupEntry>): Result<Unit> = runCatchingCancellable {
+        if (entries.isEmpty()) return@runCatchingCancellable
         withIndexLock(storage.id) {
             val index = readIndex(storage).getOrThrow()
             val targets = index.filter { candidate -> entries.any { it.fileName == candidate.fileName } }
@@ -181,7 +201,7 @@ class BackupEngine(
     suspend fun restore(
         storage: BackupStorage,
         entry: BackupEntry,
-    ): Result<RestoreOutcome> = runCatching {
+    ): Result<RestoreOutcome> = runCatchingCancellable {
         val source = sources.getValue(entry.kind)
         val metaJson = entry.metaFileName
             ?.let { name -> storage.readText(name).getOrNull() }
@@ -197,12 +217,29 @@ class BackupEngine(
         else VerifyingInputStream(raw, entry.sha256, entry.fileName)
 
 
-    /** 导出到调用方给的流。sink 必须无论成败都被关闭，否则 SAF 选定的文档会留半截内容。 */
-    suspend fun exportTo(storage: BackupStorage, entry: BackupEntry, sink: OutputStream): Result<Unit> = runCatching {
-        sink.use { out ->
-            storage.get(entry.fileName).getOrThrow().use { content -> content.copyTo(out) }
+    /**
+     * 导出到调用方给的流。sink 必须无论成败都被关闭，否则 SAF 选定的文档会留半截内容。
+     *
+     * 和 [restore] 一样过 [verify]：导出去的东西会被分享到别的设备/别的工具手上，索引里记了
+     * sha256 就必须对得上——送出被截断的归档，对方要到安装或刷机时才炸，那时已经查不出源在哪。
+     */
+    suspend fun exportTo(storage: BackupStorage, entry: BackupEntry, sink: OutputStream): Result<Unit> =
+        runCatchingCancellable {
+            sink.use { out -> copyTo(storage, entry, out).getOrThrow() }
         }
-    }
+
+    /**
+     * 把 [entry] 的内容（校验通过后）写进 [sink]，**不关** sink。
+     *
+     * 分享多选是打包成一个 zip，流要跨多个条目复用，只有 [exportTo] 这种"一次性 sink"才该被关闭。
+     * 校验与 [exportTo] 完全一样，别绕过这里直接 `storage.get().copyTo(...)`——那条路没有校验。
+     */
+    suspend fun copyTo(storage: BackupStorage, entry: BackupEntry, sink: OutputStream): Result<Unit> =
+        runCatchingCancellable {
+            storage.get(entry.fileName).getOrThrow().use { content ->
+                verify(content, entry).copyTo(sink)
+            }
+        }
 
     /** 把外部来源（SAF 选中的文件）收编进 [storage] 并登记到索引，之后就能像本地备份一样恢复。 */
     suspend fun importFrom(
@@ -213,7 +250,7 @@ class BackupEngine(
         size: Long,
         open: () -> InputStream,
         metaJson: String?,
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> = runCatchingCancellable {
         val requested = ArchiveNaming.safeFileName(fileName)
             .ifBlank { ArchiveNaming.IMPORTED_FALLBACK_NAME }
         val adopted = sources[kind]?.metaForImport(open, size)
@@ -258,10 +295,14 @@ class BackupEngine(
      * 读索引。文件不存在（后端约定返回空文本）等于空索引；**读不到或解析不了**则返回失败，
      * 调用方必须据此拒绝回写——[readIndex] 的结果会被整体写回去，把失败当空表就是清空 manifest。
      */
-    private suspend fun readIndex(storage: BackupStorage): Result<List<BackupEntry>> =
-        storage.readText(ArchiveNaming.INDEX_FILE).mapCatching { text ->
-            if (text.isBlank()) emptyList() else BackupManifest.parseEntriesOrThrow(text)
-        }
+    private suspend fun readIndex(storage: BackupStorage): Result<List<BackupEntry>> {
+        val text = storage.readText(ArchiveNaming.INDEX_FILE)
+            .getOrElse { error -> return Result.failure(error) }
+        if (text.isBlank()) return Result.success(emptyList())
+        // 解析本身是纯同步的，仍走 runCatchingCancellable：mapCatching/runCatching 会把取消也收成
+        // "索引读失败"，而取消必须原样上抛（理由见 runCatchingCancellable）。
+        return runCatchingCancellable { BackupManifest.parseEntriesOrThrow(text) }
+    }
 
     private suspend fun <T> withIndexLock(storageId: String, block: suspend () -> T): T =
         indexLocks.computeIfAbsent(storageId) { Mutex() }.withLock { block() }

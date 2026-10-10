@@ -70,7 +70,8 @@ class BackupRepository(private val context: Context = ksuApp) {
             rootFiles = ShellRootFiles(),
             // ksud 只按当前 patched boot 里的 sha1 找文件、不校验内容，校验由 BootBackupSource 自己做
             restorer = {
-                runCatching {
+                // 同样要 runCatchingCancellable：刷机是个长任务，取消被吞掉会继续往下刷。
+                runCatchingCancellable {
                     val result = restoreBoot({}, {})
                     if (result.code != 0) {
                         // ksud 的 stderr 才是真正的原因；它可能是空的，那就让 UI 只说"恢复失败"。
@@ -85,12 +86,19 @@ class BackupRepository(private val context: Context = ksuApp) {
         ),
     )
 
-    private val engine by lazy {
-        BackupEngine(
+    /**
+     * 本地引擎：**每次调用现装配**。
+     *
+     * 保留额度是活设置（用户在设置页随时能改），`by lazy` 把引擎缓存下来等于把当时的额度也缓存了
+     * ——改完设置本次会话一直按旧数字裁。装配本身很轻：sources/storages 都是长命对象。
+     */
+    private fun localEngine(): BackupEngine {
+        val (moduleKeep, bootKeep) = backupRetentionNow({ settings.backupRetention }, { settings.backupBootRetention })
+        return BackupEngine(
             sources = engineSources,
             storages = listOf(localStorage),
-            retention = settings.backupRetention,
-            bootRetention = settings.backupBootRetention,
+            retention = moduleKeep,
+            bootRetention = bootKeep,
         )
     }
 
@@ -114,18 +122,21 @@ class BackupRepository(private val context: Context = ksuApp) {
         staging = StagingArea(File(context.cacheDir, "backup-staging/webdav")),
     )
 
-    private fun cloudEngine() = BackupEngine(
-        sources = engineSources,
-        storages = listOf(cloudStorage()),
-        retention = settings.backupRetention,
-        bootRetention = settings.backupBootRetention,
-    )
+    private fun cloudEngine(): BackupEngine {
+        val (moduleKeep, bootKeep) = backupRetentionNow({ settings.backupRetention }, { settings.backupBootRetention })
+        return BackupEngine(
+            sources = engineSources,
+            storages = listOf(cloudStorage()),
+            retention = moduleKeep,
+            bootRetention = bootKeep,
+        )
+    }
 
     private fun storageFor(origin: BackupOrigin): BackupStorage =
         if (origin == BackupOrigin.CLOUD) cloudStorage() else localStorage
 
     private fun engineFor(origin: BackupOrigin): BackupEngine =
-        if (origin == BackupOrigin.CLOUD) cloudEngine() else engine
+        if (origin == BackupOrigin.CLOUD) cloudEngine() else localEngine()
 
     /** 用输入框里当前的值测连接，而不是已保存的旧配置——否则用户改完地址不点保存就测了旧地址。 */
     suspend fun testCloud(url: String, user: String, pass: String): Result<Unit> =
@@ -180,7 +191,7 @@ class BackupRepository(private val context: Context = ksuApp) {
      */
     suspend fun packForShare(origin: BackupOrigin, entries: List<BackupEntry>): Result<File> =
         withContext(Dispatchers.IO) {
-            runCatching {
+            runCatchingCancellable {
                 require(entries.isNotEmpty()) { "nothing selected" }
                 val dir = File(context.cacheDir, SHARE_DIR)
                 dir.listFiles().orEmpty().forEach { it.delete() }
@@ -191,13 +202,15 @@ class BackupRepository(private val context: Context = ksuApp) {
                     val entry = entries.single()
                     val target = File(dir, entry.fileName.substringAfterLast('/'))
                     target.outputStream().use { sink -> engine.exportTo(storage, entry, sink).getOrThrow() }
-                    return@runCatching target
+                    return@runCatchingCancellable target
                 }
                 val target = File(dir, shareZipName(entries))
                 ZipOutputStream(target.outputStream().buffered()).use { zip ->
                     entries.forEach { entry ->
                         zip.putNextEntry(ZipEntry(entry.fileName.substringAfterLast('/')))
-                        storage.get(entry.fileName).getOrThrow().use { content -> content.copyTo(zip) }
+                        // 走 engine.copyTo 而不是直接 storage.get().copyTo：这条路径以前完全不过
+                        // sha256 校验（exportTo 有、这里没有），分享出去的多选包同样可能带截断内容。
+                        engine.copyTo(storage, entry, zip).getOrThrow()
                         zip.closeEntry()
                     }
                 }
@@ -231,7 +244,7 @@ class BackupRepository(private val context: Context = ksuApp) {
             cloudConfigured = cloudConfigured(),
         )
         if (!targets.any) return@withContext null
-        val local = if (targets.local) engine.backup(BackupKind.MODULE) else null
+        val local = if (targets.local) localEngine().backup(BackupKind.MODULE) else null
         // 云端失败也要报出来，否则自动上传一直失败而用户什么都看不到。
         val cloud = if (targets.cloud) cloudEngine().backup(BackupKind.MODULE) else null
         val record = AutoBackupRecord(
@@ -276,7 +289,8 @@ class BackupRepository(private val context: Context = ksuApp) {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 staged.outputStream().use { input.copyTo(it) }
             } ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileUnreadable))
-            engine.importFrom(
+            // 导入也按当时的设置现装配引擎（见 localEngine）。
+            localEngine().importFrom(
                 storage = localStorage,
                 kind = actualKind,
                 fileName = name,

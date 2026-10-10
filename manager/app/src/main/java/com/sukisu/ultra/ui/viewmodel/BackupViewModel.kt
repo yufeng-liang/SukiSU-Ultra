@@ -32,10 +32,12 @@ import com.sukisu.ultra.ui.screen.settings.backup.pruneSelection
 import com.sukisu.ultra.ui.util.BackupText
 import com.sukisu.ultra.ui.util.formatSessionTime
 import com.sukisu.ultra.ui.util.isoToEpochMillis
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -70,6 +72,14 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     /** 速度采样的上一次取值；每个目标重新起算。 */
     private var lastSampleAt = 0L
     private var lastSampleBytes = 0L
+
+    /**
+     * 正在跑的那次备份；【取消】靠它把这次传输真的掐断。
+     *
+     * 数据层已经把 [kotlinx.coroutines.CancellationException] 原样上抛（不再当成一次"失败"），
+     * 所以取消了就是取消，不会在结果里多出一条莫名其妙的错误。
+     */
+    private var backupJob: Job? = null
 
     /** 当前列表里的条目（带各自的来源）：恢复/导出靠它回到正确的那一侧。 */
     private var entries: List<OriginEntry> = emptyList()
@@ -468,8 +478,13 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update {
             it.copy(
                 loading = false,
-                message = (listOf(restoreCountMessage(restored, failures.size)) + failures.distinct())
-                    .joinToString(BackupListFormatter.SEPARATOR),
+                message = buildList {
+                    add(restoreCountMessage(restored, failures.size))
+                    // 恢复"成功"只是文件到位：模块要重启才加载，刷回去的原厂 boot 也要重启才真正
+                    // 离开 KSU。只说"N 项已恢复"会让用户以为已经在跑了。
+                    if (restored > 0) add(string(R.string.reboot_to_apply))
+                    addAll(failures.distinct())
+                }.joinToString(BackupListFormatter.SEPARATOR),
             )
         }
         // 恢复会改动源本身，列表要跟着更新。
@@ -537,6 +552,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 影响本地那份——这正是一次备份两个位置的意义所在。
      */
     fun backupNow() = viewModelScope.launch {
+        // 留住这一次备份的句柄，好让用户能取消它。从协程自己身上取，比在外面赋值少一层
+        // "谁先谁后"——Main.immediate 下协程体是先跑起来、再轮到外面那行的。
+        backupJob = coroutineContext[Job]
         val state = _uiState.value
         _uiState.update { it.copy(loading = true, message = null) }
         // 只有模块能挑；boot 那一栏传 null（源里有什么就备什么）。
@@ -594,6 +612,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             }
             results += BackupTargetResult(origin, kind, result)
         }
+        // 中途被取消就不再往下走：[cancelBackupRun] 已经把弹窗切成"已取消"，这里再写一次会把
+        // 它盖成一次正常完成的结果。列表刷新由取消那一侧等这个协程收尾之后去做。
+        if (!isActive) return@launch
         // 结果留在弹窗里（snackbar 几秒就没了，而"哪一份失败、为什么"值得看清），
         // 所以这里不写 message。
         _uiState.update { current ->
@@ -607,6 +628,35 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     /** 关掉备份弹窗。 */
     fun dismissBackupRun() = _uiState.update { it.copy(backupRun = null) }
+
+    /**
+     * 取消正在跑的那次备份。
+     *
+     * 已经写好的那几份留着：它们是完整、已入索引的备份，回滚等于删好数据；停下的只是当前这一份。
+     * 云端上传卡住时原来只有"杀进程"一条路，那样连已经传成的部分都说不清。
+     *
+     * 状态在这里就写成"已取消"：取消是投递给协程的，它要等到下一个挂起点才真的停，而这一手在
+     * 主线程上立刻完成——用户点了就该看到它。列表则等那个协程真的收尾（[Job.join]）之后再读：
+     * 它可能刚好写完了某一份，提前读会把那份漏在屏幕外。
+     */
+    fun cancelBackupRun() {
+        val running = backupJob ?: return
+        running.cancel()
+        _uiState.update { current ->
+            current.copy(
+                loading = false,
+                backupRun = current.backupRun?.copy(
+                    done = true,
+                    cancelled = true,
+                    result = string(R.string.backup_cancelled),
+                ),
+            )
+        }
+        viewModelScope.launch {
+            running.join()
+            refresh()
+        }
+    }
 
     /**
      * 采样算速度。
@@ -658,13 +708,17 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         settings.webDavUser = user.trim()
         settings.webDavPassword = pass
         settings.backupCloudEnabled = url.isNotBlank()
+        // 密码是加密落盘的，系统密钥库不可用时写不进去，而旧的那份已经被撤掉：只看"我写过了"就
+        // 报"已保存"，用户会拿着一个空密码去连云端，然后收到一个跟根因无关的 401。回读一次，
+        // 读不回来就照实说；表单里也清掉，那份密码确实没留下，不该装作留下了。
+        val passwordLost = pass.isNotBlank() && settings.webDavPassword.isBlank()
         val configured = repository.cloudConfigured()
         _uiState.update {
             it.copy(
                 cloudUrl = url.trim(),
                 cloudSavedUrl = url.trim(),
                 cloudUser = user.trim(),
-                cloudPass = pass,
+                cloudPass = if (passwordLost) "" else pass,
                 cloudConfigured = configured,
                 // 存好地址就把云端勾上并立刻去列一次：用户配云端就是为了看它上面已经有什么，
                 // 再让他自己勾一次、再等一次刷新是多余的两步。地址被清空时反过来摘掉勾选，
@@ -675,12 +729,19 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 cloudExpanded = false,
                 // 说一声"存下了"。原来这里清空 message，保存成功时界面上什么都不动（表单还铺着、
                 // 列表还在下面），看起来像没反应，只能靠地址栏那行字自己猜。
-                message = string(R.string.backup_cloud_saved),
+                message = string(
+                    if (passwordLost) R.string.backup_cloud_credential_failed else R.string.backup_cloud_saved,
+                ),
             )
         }
         // 连不上或凭据不对时，这次刷新会把原因说出来——那正是填完地址最需要的反馈。
         // 必须 join：refresh 是异步的，不等它跑完就去数云端有几份，数的还是刷新前的列表。
         refresh().join()
+        if (passwordLost) {
+            // 这次刷新多半带着 401 回来，那句原因会把真正的根因（密码根本没存进去）顶掉。
+            _uiState.update { it.copy(message = string(R.string.backup_cloud_credential_failed)) }
+            return@launch
+        }
         // 刷新完再补一句"上面有几份"：用户配云端就是为了知道那儿有没有能恢复的东西，而列表
         // 和刚才那句"已保存"都不回答这个问题。刷新失败时上面那句原因还在，这里不能覆盖它。
         announceCloudContents()

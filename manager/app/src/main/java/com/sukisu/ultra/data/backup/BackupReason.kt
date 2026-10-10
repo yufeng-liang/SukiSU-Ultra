@@ -52,6 +52,16 @@ sealed interface BackupReason {
     /** 模块装上了，但把禁用状态写回去失败。 */
     data class ModuleDisableFailed(val entryId: String, val external: String?) : BackupReason
 
+    /**
+     * 索引里的模块 id 形状不可用，拒绝拿它去拼 ksud 命令。
+     *
+     * 恢复禁用状态走的是 `ksud module disable <id>`，id 直接来自索引（共享存储或远端，外部可写）
+     * 并被拼进以 root 身份执行的 shell。同仓库对同类输入都有白名单（boot 的 sha1、文件名的
+     * `safeFileName`），模块 id 这一处也一样：形状不对就拒绝执行，而不是"转义一下再试"。
+     * 与 [ModuleDisableFailed] 分开：那个是"命令跑了但失败"，这个是"根本没敢跑"。
+     */
+    data class ModuleIdUnusable(val entryId: String) : BackupReason
+
     /** 引擎没有这个 kind 的源。 */
     data class NoSource(val kind: BackupKind) : BackupReason
 

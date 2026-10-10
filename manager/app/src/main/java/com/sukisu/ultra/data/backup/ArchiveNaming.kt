@@ -44,6 +44,18 @@ object ArchiveNaming {
         raw.map { if (it.isLetterOrDigit() || it == '.' || it == '-' || it == '_') it else '_' }
             .joinToString("")
 
+    private val MODULE_ID = Regex("^[A-Za-z0-9._-]{1,128}$")
+
+    /**
+     * 模块 id 是不是"原样可用"的（KernelSU 的模块 id 就是 `[A-Za-z0-9._-]+`）。
+     *
+     * 与 [safeId] 的"把危险字符洗掉"不同，这里要的是"要么原样，要么拒绝"：这个字符串会被拼进
+     * 以 root 身份执行的 `ksud module enable|disable <id>`，而它来自索引——索引躺在共享存储或
+     * 远端 WebDAV 上，谁都能改。洗出一个"看着还行"的 id，等于把一份被改过的索引变成一条以
+     * root 执行的命令；只有拒绝执行才是安全的。
+     */
+    fun isValidModuleId(raw: String): Boolean = MODULE_ID.matches(raw)
+
     fun moduleArchiveName(moduleId: String, versionCode: Long, timestamp: String): String =
         "$MODULE_PREFIX${safeId(moduleId)}_${versionCode}_$timestamp$MODULE_SUFFIX"
 

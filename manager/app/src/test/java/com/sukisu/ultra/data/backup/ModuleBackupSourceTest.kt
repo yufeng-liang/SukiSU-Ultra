@@ -184,6 +184,41 @@ class ModuleBackupSourceTest {
         }
     }
 
+    @Test
+    fun `restore refuses an entry id that would end up inside a root command`() {
+        runBlocking {
+            // 索引 JSON 在共享存储 / WebDAV 上，别人改得动。没有这道闸门，下面这个 id 会拼成
+            // `ksud module disable a; rm -rf /` 交给 root shell 去跑。
+            val calls = mutableListOf<String>()
+            val restorer = object : ModuleRestorer {
+                override suspend fun install(zip: File): Result<Unit> {
+                    calls += "install"; return Result.success(Unit)
+                }
+
+                override suspend fun setDisabled(id: String, disabled: Boolean): Result<Unit> {
+                    calls += "disable:$id"; return Result.success(Unit)
+                }
+            }
+            val meta = ModuleBackupMeta(
+                "a; rm -rf /", "Name", "1.0", 12L, "author",
+                /* disabled = */ true, true, "dev", "2026-10-08T12:00:00Z",
+            )
+            val entry = BackupEntry(
+                BackupKind.MODULE, "a; rm -rf /", "module_a_12_20261008_120000.zip", null, 3L, "x",
+                "2026-10-08T12:00:00Z",
+            )
+
+            val outcome = source(emptyList(), restorer)
+                .restore(entry, BackupManifest.renderModuleMeta(meta), "zip".byteInputStream())
+                .getOrThrow()
+
+            assertFalse(outcome.success)
+            assertTrue(outcome.reason is BackupReason.ModuleIdUnusable)
+            // 一条命令都不许发出去，安装也不行：这个 id 不可信，先装进去再谈别的没意义。
+            assertEquals(emptyList<String>(), calls)
+        }
+    }
+
     private companion object {
         val NoopRestorer = object : ModuleRestorer {
             override suspend fun install(zip: File) = Result.success(Unit)

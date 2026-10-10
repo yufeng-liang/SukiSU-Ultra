@@ -22,7 +22,7 @@ class LocalBackupStorage(
      */
     private fun target(relativePath: String) = "$rootDir/${ArchiveNaming.safeFileName(relativePath)}"
 
-    override suspend fun test(): Result<Unit> = runCatching {
+    override suspend fun test(): Result<Unit> = runCatchingCancellable {
         staging.cleanupStale()
         ensureRoot()
     }
@@ -35,14 +35,24 @@ class LocalBackupStorage(
         onProgress: (Long) -> Unit,
         open: () -> InputStream,
     ): Result<Unit> =
-        runCatching {
+        runCatchingCancellable {
             staging.cleanupStale()
             ensureRoot()
             val staged = staging.file(relativePath)
             try {
                 open().use { input -> staged.outputStream().use { staging.copyCancellable(input, it) } }
                 val target = target(relativePath)
-                if (!rootFiles.copyTo(staged, target)) {
+                // 先写到同目录的临时名再改名。`cp` 会先把目标内容截断，写到一半断掉（进程被杀、
+                // 断电、空间写满）留下的是半个文件——而索引正是靠这个文件活着的：半截索引读不出来，
+                // 引擎读不出来又拒绝回写，用户看到的就是"全部备份都没了"。改名是原子的，读者要么
+                // 看到旧内容、要么看到新内容。
+                val incoming = "$target$TEMP_SUFFIX"
+                if (!rootFiles.copyTo(staged, incoming)) {
+                    rootFiles.delete(incoming)
+                    throw BackupReasonException(BackupReason.WriteFailed(target, null))
+                }
+                if (!rootFiles.rename(incoming, target)) {
+                    rootFiles.delete(incoming)
                     throw BackupReasonException(BackupReason.WriteFailed(target, null))
                 }
             } finally {
@@ -50,7 +60,7 @@ class LocalBackupStorage(
             }
         }
 
-    override suspend fun get(relativePath: String): Result<InputStream> = runCatching {
+    override suspend fun get(relativePath: String): Result<InputStream> = runCatchingCancellable {
         staging.cleanupStale()
         val staged = staging.newFile("stage-", ".tmp")
         val target = target(relativePath)
@@ -62,7 +72,7 @@ class LocalBackupStorage(
         staging.openAndDelete(staged)
     }
 
-    override suspend fun delete(relativePath: String): Result<Unit> = runCatching {
+    override suspend fun delete(relativePath: String): Result<Unit> = runCatchingCancellable {
         val target = target(relativePath)
         if (!rootFiles.delete(target)) throw BackupReasonException(BackupReason.DeleteFailed(target, null))
     }
@@ -73,11 +83,14 @@ class LocalBackupStorage(
      * 这里必须按"先尝试读，读不到再确认是不是真的不存在"的顺序：反过来先问 exists() 的话，
      * 一次 exists() 的假阴性就会被引擎当成"空索引"，随后整体回写把已有 manifest 清掉。
      */
-    override suspend fun readText(relativePath: String): Result<String> = runCatching {
+    override suspend fun readText(relativePath: String): Result<String> = runCatchingCancellable {
+        val path = target(relativePath)
+        // 读取有上限（见 [BackupLimits]）：索引会被"读全量 → 改 → 整体回写"，被换成一个大文件时
+        // 必须当场报"读不出来"让引擎拒绝回写，而不是先把几十 MB 读进内存再 OOM——OOM 连拒绝都做不到。
         get(relativePath)
-            .mapCatching { it.use { stream -> stream.readBytes().decodeToString() } }
+            .mapCatching { stream -> stream.use { it.readBoundedText(BackupLimits.MAX_TEXT_BYTES, path) } }
             .getOrElse { error ->
-                if (rootFiles.exists(target(relativePath))) throw error
+                if (rootFiles.exists(path)) throw error
                 ""
             }
     }
@@ -95,5 +108,8 @@ class LocalBackupStorage(
     companion object {
         /** 后端 id。UI 靠它把失败区分成"本地"和"云端"，所以别在多处写字面量。 */
         const val ID = "local"
+
+        /** 写入过程中用的后缀，见 [put]：改名成功后就不会有这个名字的文件留下。 */
+        private const val TEMP_SUFFIX = ".tmp"
     }
 }

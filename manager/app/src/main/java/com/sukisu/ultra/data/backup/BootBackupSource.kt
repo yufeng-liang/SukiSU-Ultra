@@ -39,7 +39,7 @@ class BootBackupSource(
     private fun sha1Of(entry: RootFileEntry): String = entry.path.substringAfterLast('/').removePrefix("ksu_backup_")
 
     // [selected] 被忽略：这一栏能备份的只有 ksud 留下的那几张原厂镜像，没有"挑一张"的余地。
-    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatching {
+    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatchingCancellable {
         staging.cleanupStale()
         val timestamp = ArchiveNaming.timestamp(clock())
         val artifacts = mutableListOf<BackupArtifact>()
@@ -77,7 +77,7 @@ class BootBackupSource(
      * 导入的 boot 归档要自己把身份算出来：ksud 只认 `ksu_backup_<原厂镜像 sha1>`，
      * 而 sha1 只存在于内容里，文件名里的 12 位前缀不够用。
      */
-    override suspend fun metaForImport(open: () -> InputStream, size: Long): ImportMeta? = runCatching {
+    override suspend fun metaForImport(open: () -> InputStream, size: Long): ImportMeta? = runCatchingCancellable {
         val sha256 = open().use { it.sha256Hex() }
         val sha1 = open().use { it.sha1Hex() }
         ImportMeta(sha1, renderMeta(sha1, size, sha256))
@@ -87,23 +87,23 @@ class BootBackupSource(
         entry: BackupEntry,
         metaJson: String?,
         content: InputStream,
-    ): Result<RestoreOutcome> = runCatching {
+    ): Result<RestoreOutcome> = runCatchingCancellable {
         val meta = metaJson?.let { runCatching { JSONObject(it) }.getOrNull() }
-            ?: return@runCatching RestoreOutcome(false, BackupReason.BootNoSidecarMeta)
+            ?: return@runCatchingCancellable RestoreOutcome(false, BackupReason.BootNoSidecarMeta)
         val sha1 = meta.optString("sha1")
         val expectedSha256 = meta.optString("sha256")
         if (sha1.isBlank() || sha1 != entry.entryId || !SHA1_HEX.matches(entry.entryId)) {
-            return@runCatching RestoreOutcome(
+            return@runCatchingCancellable RestoreOutcome(
                 false,
                 BackupReason.BootForeignStockImage(sha1, entry.entryId),
             )
         }
         if (expectedSha256.isBlank()) {
-            return@runCatching RestoreOutcome(false, BackupReason.BootNoChecksum)
+            return@runCatchingCancellable RestoreOutcome(false, BackupReason.BootNoChecksum)
         }
         // ksud 找不到匹配文件时会静默 rebuild 并退出 0，所以这个前置条件必须由我们拒绝。
         if (entry.entryId !in stockImageFiles().map { sha1Of(it) }.toSet()) {
-            return@runCatching RestoreOutcome(
+            return@runCatchingCancellable RestoreOutcome(
                 false,
                 BackupReason.BootStockImageMissing(entry.entryId),
             )
@@ -115,7 +115,7 @@ class BootBackupSource(
             content.use { input -> staged.outputStream().use { input.copyTo(it) } }
             val actualSha256 = staged.inputStream().use { it.sha256Hex() }
             if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
-                return@runCatching RestoreOutcome(
+                return@runCatchingCancellable RestoreOutcome(
                     false,
                     BackupReason.Corrupted(entry.fileName, expectedSha256, actualSha256),
                 )
@@ -123,19 +123,21 @@ class BootBackupSource(
             // 把内容与身份绑死：伪造 meta + index 无法让一份任意镜像通过。
             val actualSha1 = staged.inputStream().use { it.sha1Hex() }
             if (actualSha1 != entry.entryId) {
-                return@runCatching RestoreOutcome(
+                return@runCatchingCancellable RestoreOutcome(
                     false,
                     BackupReason.BootIdentityMismatch(entry.entryId),
                 )
             }
             val target = "$backupDir/ksu_backup_${entry.entryId}"
             if (!rootFiles.copyTo(staged, target)) {
-                return@runCatching RestoreOutcome(false, BackupReason.WriteFailed(target, null))
+                return@runCatchingCancellable RestoreOutcome(false, BackupReason.WriteFailed(target, null))
             }
             restorer.restoreStockImage().getOrElse { error ->
-                // 刷失败就把刚放回去的文件清掉，别在 ksud 的备份目录里留一份没用的镜像。
-                rootFiles.delete(target)
-                return@runCatching RestoreOutcome(
+                // 失败就只是失败，**不要**删 target。上面两道校验已经确认过：这台设备上本来就有
+                // 一张 sha1 等于 entryId、内容也一致的原厂镜像，target 就是把它放到 ksud 要找的
+                // 名字上。删掉它不是"清理临时文件"，是抹掉用户机器上的原厂镜像——恢复失败一次
+                // 就永久少一张。留在原处也碍不着什么，ksud 下次照样找得到它。
+                return@runCatchingCancellable RestoreOutcome(
                     false,
                     BackupReason.BootFlashFailed(externalTextOrNull(error)),
                 )

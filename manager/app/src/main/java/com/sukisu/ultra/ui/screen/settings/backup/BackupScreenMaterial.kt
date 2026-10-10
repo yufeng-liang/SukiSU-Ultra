@@ -165,7 +165,11 @@ fun BackupMaterial(
         }
     }
 
-    BackupProgressDialogMaterial(state = state, onDismiss = actions.onDismissBackupRun)
+    BackupProgressDialogMaterial(
+        state = state,
+        onDismiss = actions.onDismissBackupRun,
+        onCancel = actions.onCancelBackupRun,
+    )
 }
 
 /**

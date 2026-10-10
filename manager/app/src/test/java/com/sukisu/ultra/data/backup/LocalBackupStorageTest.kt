@@ -19,6 +19,10 @@ private class FakeRootFiles : RootFiles {
         val bytes = files[path] ?: return false
         to.writeBytes(bytes); return true
     }
+    override fun rename(fromPath: String, toPath: String): Boolean {
+        val bytes = files.remove(fromPath) ?: return false
+        files[toPath] = bytes; return true
+    }
     override fun list(dir: String) = files.keys.filter { it.startsWith("$dir/") }
         .map { RootFileEntry(it, files.getValue(it).size.toLong(), 0L) }
     override fun delete(path: String) = files.remove(path) != null
@@ -117,6 +121,53 @@ class LocalBackupStorageTest {
                 override fun mkdirs(path: String) = false
             }
             assertTrue(storage(broken).test().isFailure)
+        }
+    }
+
+    @Test
+    fun `a write lands under the target name and leaves no temporary file behind`() {
+        runBlocking {
+            val root = FakeRootFiles()
+            assertTrue(storage(root).writeText("index.json", "{}").isSuccess)
+            assertEquals(listOf("/sdcard/Download/SukiSU-Backup/index.json"), root.files.keys.toList())
+        }
+    }
+
+    @Test
+    fun `an oversized index is refused instead of pulled into memory`() {
+        runBlocking {
+            // 索引被换成一个几十 MB 的大文件时，先把整份读进内存会 OOM——OOM 连"拒绝回写"
+            // 这一步都做不到，那才是真的丢索引。超限直接报"索引读不出来"，文件原样留着。
+            val root = FakeRootFiles()
+            val store = storage(root)
+            root.files["/sdcard/Download/SukiSU-Backup/index.json"] =
+                ByteArray(BackupLimits.MAX_TEXT_BYTES.toInt() + 1)
+
+            val result = store.readText(ArchiveNaming.INDEX_FILE)
+
+            assertTrue(result.isFailure)
+            val reason = reasonOf(result.exceptionOrNull()!!)
+            assertTrue("expected IndexUnreadable but got $reason", reason is BackupReason.IndexUnreadable)
+        }
+    }
+
+    @Test
+    fun `when the rename fails the previous content survives untouched`() {
+        runBlocking {
+            // 这一条守的是"索引不会被自己的写入写坏"：改名失败（或写到一半断电）时，目标文件必须
+            // 还是上一次那份完整内容，而不是被截断的半截——引擎读不出索引就拒绝回写，等于整份
+            // 备份列表消失。
+            val root = FakeRootFiles()
+            storage(root).writeText("index.json", "old")
+            val noRename = object : RootFiles by root {
+                override fun rename(fromPath: String, toPath: String) = false
+            }
+            val broken = LocalBackupStorage("/sdcard/Download/SukiSU-Backup", staging, noRename)
+
+            assertTrue(broken.writeText("index.json", "new-and-much-longer").isFailure)
+
+            assertEquals("old", root.files.getValue("/sdcard/Download/SukiSU-Backup/index.json").decodeToString())
+            assertTrue(root.files.keys.single(), root.files.keys.none { it.endsWith(".tmp") })
         }
     }
 }

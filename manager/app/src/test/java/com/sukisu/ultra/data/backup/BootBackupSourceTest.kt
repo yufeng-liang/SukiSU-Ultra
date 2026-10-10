@@ -23,6 +23,8 @@ private class FakeBootRootFiles(private val entries: Map<String, ByteArray>) : R
         val bytes = entries[path] ?: return false
         to.writeBytes(bytes); return true
     }
+    /** boot 恢复只写一张镜像、不落地索引，用不到改名。 */
+    override fun rename(fromPath: String, toPath: String) = false
     override fun list(dir: String) = entries.keys.map { RootFileEntry(it, entries.getValue(it).size.toLong(), 0L) }
     override fun delete(path: String): Boolean {
         deleted += path; return true
@@ -223,7 +225,7 @@ class BootBackupSourceTest {
     }
 
     @Test
-    fun `restore reports the ksud error and cleans up the image it placed`() {
+    fun `restore reports the ksud error and keeps the stock image that is already there`() {
         runBlocking {
             val body = "img-bytes".toByteArray()
             val id = identityOf(body)
@@ -239,7 +241,11 @@ class BootBackupSourceTest {
             val reason = outcome.reason
             assertTrue(reason is BackupReason.BootFlashFailed)
             assertEquals("no matching backup", (reason as BackupReason.BootFlashFailed).external)
-            assertEquals(listOf("/data/adb/ksu/ksu_backup_$id"), root.deleted)
+            // 放到 ksud 要找的位置上的那份文件，就是这台设备本来就有的原厂镜像——前置校验已经确认
+            // 它的内容与备份一致（见 restore 里的 BootStockImageMissing / BootIdentityMismatch）。
+            // 刷入失败再把它删掉，用户就永久少了一张原厂镜像，而备份本身一点忙都帮不上。
+            assertEquals(emptyList<String>(), root.deleted)
+            assertEquals(listOf("/data/adb/ksu/ksu_backup_$id"), root.restored)
         }
     }
 

@@ -76,6 +76,28 @@ class BackupPoliciesTest {
     }
 
     @Test
+    fun `retention never expires the run that was just written`() {
+        // 设备时钟被往回调过：刚写下的这一代 createdAt 比旧备份还早，按时间排序它是"最老"的，
+        // 于是"备份成功"的那一刻它就被自己删掉了。keepEntries 说的是"这些是刚写进去的"，
+        // 不依赖时钟也不依赖排序。
+        val existing = listOf(
+            entry("fresh", "9", "2026-09-01T00:00:00Z"),
+            entry("older", "8", "2026-10-01T00:00:00Z"),
+            entry("newest", "7", "2026-10-08T00:00:00Z"),
+        )
+
+        val expired = RetentionPolicy.expired(
+            existing = existing,
+            kind = BackupKind.MODULE,
+            keep = 2,
+            keepEntries = setOf("module_fresh_1_2026-09-01T00:00:00Z.zip"),
+        ).map { it.entryId }
+
+        // 受保护的一代留下，名额内最新的那一代也留下，走的是中间那份。
+        assertEquals(listOf("older"), expired)
+    }
+
+    @Test
     fun `retention ignores other kinds`() {
         val existing = listOf(
             entry("m1", "1", "2026-10-01T00:00:00Z"),
@@ -118,6 +140,20 @@ class BackupPoliciesTest {
         assertEquals(RetentionLimit.MAX, RetentionLimit.clampModule(1000))
         assertEquals(RetentionLimit.MAX_BOOT, RetentionLimit.clampBoot(1000))
         assertEquals(5, RetentionLimit.clampModule(5))
+    }
+
+    @Test
+    fun `the retention for a run is read at that moment, not cached`() {
+        // 引擎曾经是 `by lazy` 的，连当时的额度一起被缓存：用户在设置页把保留份数从 5 改成 2，
+        // 本次会话里下一次备份还是按 5 裁——看着改了不生效。额度必须每次现读。
+        var moduleKeep = 2
+        var bootKeep = 1
+        assertEquals(2 to 1, backupRetentionNow({ moduleKeep }, { bootKeep }))
+
+        moduleKeep = 7
+        bootKeep = 3
+
+        assertEquals(7 to 3, backupRetentionNow({ moduleKeep }, { bootKeep }))
     }
 
 }

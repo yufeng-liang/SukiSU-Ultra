@@ -1,5 +1,7 @@
 package com.sukisu.ultra.data.backup
 
+import java.time.Instant
+
 object DuplicatePolicy {
     /** 同一 kind 下 sha256 相同即视为已存在（内容未变的模块重复备份没有意义）。 */
     fun findDuplicate(existing: List<BackupEntry>, kind: BackupKind, sha256: String): BackupEntry? =
@@ -12,19 +14,44 @@ object RetentionPolicy {
      *
      * 额度按**次**算，不按文件算。一次备份 11 个模块会写出 11 个归档，按文件数裁剪会当场删掉
      * 6 个：用户看到"已备份 11 项"，列表里却只剩 5 项，而那 6 个是他刚备份的。
+     *
+     * [keepEntries] 是本次刚写进后端的文件名，它们所在的分堆无条件保留。设备时钟正常时它们
+     * 本来就最新，不需要这一层；时钟被往回调过时——这才是它的用处——"最近"会算到旧备份头上，
+     * 刚写完的这一代当场被自己删掉。时钟不可信，所以不靠排序兜这个底，而是明确保护。
+     *
+     * 排序键取分堆里最新的 [BackupEntry.createdAt]（解析不出时间就退化成会话号/原字符串）：
+     * 会话号是文件名里的 `yyyyMMdd_HHmmss`，文件名又是从 createdAt 生成的，两者同源，差别在于
+     * 老数据/外部导入的文件名可能没有那个时间戳，按字符串比会把它们永远排在最新一侧。
      */
-    fun expired(existing: List<BackupEntry>, kind: BackupKind, keep: Int): List<BackupEntry> {
+    fun expired(
+        existing: List<BackupEntry>,
+        kind: BackupKind,
+        keep: Int,
+        keepEntries: Set<String> = emptySet(),
+    ): List<BackupEntry> {
         val sameKind = existing.filter { it.kind == kind }
         if (keep <= 0) return sameKind
-        // 会话号就是备份那一刻的时间戳（yyyyMMdd_HHmmss），字典序即时间序；解析不出来的
-        // 条目退化成用 createdAt 当会话号，至少不会和别的条目并成一次。
+        val protectedKeys = sameKind
+            .filter { it.fileName in keepEntries }
+            .mapTo(mutableSetOf()) { groupKeyOf(it) }
+        // 刚写的这一代照样占额度，只是不许被删：留给别的备份的名额是 keep - protected。
+        val room = (keep - protectedKeys.size).coerceAtLeast(0)
         return sameKind
-            .groupBy { ArchiveNaming.sessionOf(it.fileName) ?: it.createdAt }
+            .groupBy { groupKeyOf(it) }
             .entries
-            .sortedBy { it.key }
-            .dropLast(keep)
+            .filterNot { it.key in protectedKeys }
+            .sortedWith(
+                compareBy({ group -> group.value.maxOfOrNull { createdAtOf(it) } ?: Instant.EPOCH }, { it.key }),
+            )
+            .dropLast(room)
             .flatMap { it.value }
     }
+
+    /** 一次备份 = 一个会话号（文件名里的时间戳）；没有时间戳的文件名退化成用 createdAt 当会话号。 */
+    private fun groupKeyOf(entry: BackupEntry) = ArchiveNaming.sessionOf(entry.fileName) ?: entry.createdAt
+
+    private fun createdAtOf(entry: BackupEntry): Instant =
+        runCatching { Instant.parse(entry.createdAt) }.getOrDefault(Instant.EPOCH)
 
     /**
      * 按 kind 取额度：模块、boot 各一份，取值都由 [RetentionLimit] 钳过。
@@ -56,6 +83,18 @@ object RetentionLimit {
 
     fun clampBoot(value: Int): Int = clamp(value, MAX_BOOT)
 }
+
+/**
+ * 一次备份用哪套保留额度：**每次备份现读**，不许缓存。
+ *
+ * 保留额度是活设置（设置页随时能改），`by lazy` 把引擎连同当时的额度一起缓存下来，用户改完
+ * 设置本次会话就不生效——看着改了、备份照旧按旧数字裁。取值函数而不是直接传 Int，是为了让
+ * "每次调用都重新读"这条纪律有一个能被单测盯住的地方（见 BackupPoliciesTest）。
+ *
+ * @return 模块与 boot 镜像各自的保留份数。
+ */
+internal fun backupRetentionNow(readModule: () -> Int, readBoot: () -> Int): Pair<Int, Int> =
+    readModule() to readBoot()
 
 object AutoBackupPolicy {
     /** 自动备份只覆盖模块，且必须显式开启；boot 镜像体积大且变化少，不做自动上传。 */

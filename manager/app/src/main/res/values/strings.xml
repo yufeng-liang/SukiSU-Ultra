@@ -61,6 +61,8 @@
     <string name="module_repo_source_delete_confirm">Remove this source?</string>
     <string name="module_repo_rename_source">Rename source</string>
     <string name="module_repo_sources_empty">No sources configured</string>
+    <string name="module_repo_sources_all_disabled">All repository sources are disabled</string>
+    <string name="module_repo_search_no_results">No repositories match your search</string>
     <string name="module_repo_add_repo">Add repository</string>
     <string name="module_repo_source_label">Repository</string>
     <string name="module_repo_source_also_in">Also published in</string>
@@ -69,6 +71,7 @@
     <string name="module_repo_candidate_add">Add</string>
     <string name="module_repo_candidate_added">Added</string>
     <string name="module_repo_fetch_failed">Failed to fetch: %1$s</string>
+    <string name="module_repo_no_installable_archive">This repository provides no installable archive</string>
     <string name="confirm">Confirm</string>
     <string name="uninstall">Uninstall</string>
     <string name="module_install">Install</string>
@@ -675,6 +678,8 @@
     <string name="backup_boot_explain">Stock images from before patching; restoring one returns the device to an unrooted state until it is patched again.</string>
     <string name="backup_boot_restore_confirm_title">Flash the stock image back?</string>
     <string name="backup_boot_restore_confirm_body">The patched boot image is replaced, so the device becomes unrooted until it is patched again.</string>
+    <string name="backup_restore_many_confirm_title">Restore %1$d items?</string>
+    <string name="backup_restore_many_confirm_body">The selected modules are installed again over the versions you have now. A backup may hold an older version, and restoring cannot be undone.</string>
     <string name="backup_now">Back up now</string>
     <string name="backup_import">Import from file</string>
     <string name="backup_restore">Restore</string>
@@ -692,6 +697,7 @@
     <string name="backup_cloud_test">Test connection</string>
     <string name="backup_cloud_save">Save</string>
     <string name="backup_cloud_saved">Cloud settings saved</string>
+    <string name="backup_cloud_credential_failed">Settings saved, but the password could not be stored (the system keystore is unavailable). Please enter it again.</string>
     <string name="backup_cloud_found">%1$d backups (%2$d items) found on the server, added to the list below.</string>
     <string name="backup_cloud_hint">Always the app password, never your login password.</string>
     <string name="backup_origin_group">Location</string>
@@ -752,6 +758,7 @@
     <string name="backup_reason_archive_failed">Could not package %1$s.</string>
     <string name="backup_reason_module_install_failed">Installing %1$s failed.</string>
     <string name="backup_reason_module_disable_failed">%1$s was installed, but its disabled state could not be restored.</string>
+    <string name="backup_reason_module_id_unusable">The module id in this backup is not usable (%1$s), so nothing was installed. The backup may have been edited by something else.</string>
     <string name="backup_reason_no_source">There is no backup source for this kind of item.</string>
     <string name="backup_reason_boot_no_meta">This boot backup has no description file, so it cannot be restored safely.</string>
     <string name="backup_reason_boot_foreign">This boot backup belongs to a different stock image (sha1 %1$s vs %2$s), so it cannot be used on this device.</string>
@@ -803,6 +810,7 @@
     <string name="backup_deleted_groups">deleted %1$d backups</string>
     <string name="backup_share_chooser">Share backup</string>
     <string name="backup_progress_title">Backing up</string>
+    <string name="backup_cancelled">Backup cancelled. Anything already written is kept.</string>
     <string name="backup_progress_target">Target %1$d of %2$d · %3$s %4$s</string>
     <string name="backup_progress_files">file %1$d of %2$d</string>
     <string name="backup_result_title">Backup finished</string>

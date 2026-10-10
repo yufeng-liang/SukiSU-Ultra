@@ -19,7 +19,7 @@ import java.util.zip.ZipOutputStream
  */
 class ZipModuleArchiver(private val staging: StagingArea) : ModuleArchiver {
 
-    override suspend fun archive(module: Module): Result<ArchivedModule> = runCatching {
+    override suspend fun archive(module: Module): Result<ArchivedModule> = runCatchingCancellable {
         staging.cleanupStale()
         val sourceRoot = sourceRootFor(module)
         require(sourceRoot.exists()) { "module directory missing: ${module.id}" }
@@ -28,6 +28,9 @@ class ZipModuleArchiver(private val staging: StagingArea) : ModuleArchiver {
         ZipOutputStream(outFile.outputStream().buffered()).use { zip ->
             sourceRoot.listFiles().orEmpty()
                 .filterNot { it.name in CONTROL_MARKERS }
+                // 顶层也要排：listFiles() 给的是文件系统顺序，两次跑可能不同，字节不同 sha256
+                // 就不同，"内容没变就别再存一份"的去重照样命不中（见 addEntry 里的同一句）。
+                .sortedBy { it.name }
                 .forEach { child -> addEntry(zip, child, child.name) }
         }
         ArchivedModule(outFile, outFile.length(), outFile.inputStream().use { it.sha256Hex() })

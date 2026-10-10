@@ -107,6 +107,7 @@ object AutoBackupRecordJson {
                 .put("entryId", reason.entryId).putExternal(reason.external)
             is BackupReason.ModuleDisableFailed -> put("type", "module_disable_failed")
                 .put("entryId", reason.entryId).putExternal(reason.external)
+            is BackupReason.ModuleIdUnusable -> put("type", "module_id_unusable").put("entryId", reason.entryId)
             is BackupReason.NoSource -> put("type", "no_source").put("kind", reason.kind.wireName)
             BackupReason.BootNoSidecarMeta -> put("type", "boot_no_sidecar_meta")
             is BackupReason.BootForeignStockImage -> put("type", "boot_foreign_stock_image")
@@ -146,6 +147,7 @@ object AutoBackupRecordJson {
             "archive_failed" -> BackupReason.ArchiveFailed(json.optString("entryId"), json.externalOrNull())
             "module_install_failed" -> BackupReason.ModuleInstallFailed(json.optString("entryId"), json.externalOrNull())
             "module_disable_failed" -> BackupReason.ModuleDisableFailed(json.optString("entryId"), json.externalOrNull())
+            "module_id_unusable" -> BackupReason.ModuleIdUnusable(json.optString("entryId"))
             "no_source" -> BackupReason.NoSource(
                 BackupKind.entries.firstOrNull { it.wireName == json.optString("kind") } ?: BackupKind.MODULE,
             )

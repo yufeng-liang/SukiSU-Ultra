@@ -22,7 +22,11 @@ import com.sukisu.ultra.R
  * 跑完之后结果也留在这里，而不是几秒就消失的 snackbar——哪一份失败、为什么，值得看清。
  */
 @Composable
-fun BackupProgressDialogMaterial(state: BackupUiState, onDismiss: () -> Unit) {
+fun BackupProgressDialogMaterial(
+    state: BackupUiState,
+    onDismiss: () -> Unit,
+    onCancel: () -> Unit,
+) {
     val run = state.backupRun ?: return
     AlertDialog(
         // 还在跑的时候点外面/返回键不该把它关掉：关掉就再也看不到这次备份的进度和结果了。
@@ -80,6 +84,16 @@ fun BackupProgressDialogMaterial(state: BackupUiState, onDismiss: () -> Unit) {
                 Text(stringResource(R.string.backup_done))
             }
         },
+        // 还在跑的时候给一条出路：窗口关不掉也停不下来，云端上传卡住时原来只能杀进程。
+        dismissButton = if (run.done) {
+            null
+        } else {
+            {
+                TextButton(onClick = onCancel) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        },
     )
 }
 
@@ -108,11 +122,11 @@ internal fun transferLine(run: BackupRunState): String {
  * 跑完之后那行平均速度（总字节 ÷ 这次目标的耗时）。
  *
  * 没推过东西时返回 null：一次全跳过的备份算出 0 B/s 只是噪音，而"没有可备份的镜像"那种情况
- * 连耗时都不代表传输。
+ * 连耗时都不代表传输。取消的那次也不报：只传了一半，除出来的数字是对的，读起来却像成绩。
  */
 @Composable
 internal fun averageLine(run: BackupRunState): String? =
-    if (run.averageBytesPerSecond <= 0L) {
+    if (run.cancelled || run.averageBytesPerSecond <= 0L) {
         null
     } else {
         stringResource(

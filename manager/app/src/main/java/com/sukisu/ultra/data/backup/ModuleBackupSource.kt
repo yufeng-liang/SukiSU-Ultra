@@ -32,7 +32,7 @@ class ModuleBackupSource(
 
     override val kind: BackupKind = BackupKind.MODULE
 
-    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatching {
+    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatchingCancellable {
         // 勾选的模块在打包期间可能被卸载：过滤后为空就是"没得备份"，交给上层按空结果处理，
         // 而不是把它当成错误——用户可能刚把勾上的模块删掉。
         val modules = lister.list()
@@ -86,13 +86,19 @@ class ModuleBackupSource(
         entry: BackupEntry,
         metaJson: String?,
         content: InputStream,
-    ): Result<RestoreOutcome> = runCatching {
+    ): Result<RestoreOutcome> = runCatchingCancellable {
+        // entryId 直接来自索引（共享存储或远端，外部可写），恢复禁用状态时会被拼进以 root 执行的
+        // ksud 命令。形状不对就地拒绝：装上了也不会去执行那条命令，与其说"恢复了"再说"禁用态没恢复"，
+        // 不如一开始就告诉用户这份备份的 id 不可用。
+        if (!ArchiveNaming.isValidModuleId(entry.entryId)) {
+            return@runCatchingCancellable RestoreOutcome(false, BackupReason.ModuleIdUnusable(entry.entryId))
+        }
         staging.cleanupStale()
         val staged = staging.newFile("restore-", ".zip")
         try {
             content.use { input -> staged.outputStream().use { input.copyTo(it) } }
             restorer.install(staged).getOrElse { error ->
-                return@runCatching RestoreOutcome(
+                return@runCatchingCancellable RestoreOutcome(
                     false,
                     BackupReason.ModuleInstallFailed(entry.entryId, externalTextOrNull(error)),
                 )
@@ -100,7 +106,7 @@ class ModuleBackupSource(
             val meta = metaJson?.let { runCatching { BackupManifest.parseModuleMeta(it) }.getOrNull() }
             if (meta?.disabled == true) {
                 restorer.setDisabled(entry.entryId, true).getOrElse { error ->
-                    return@runCatching RestoreOutcome(
+                    return@runCatchingCancellable RestoreOutcome(
                         false,
                         BackupReason.ModuleDisableFailed(entry.entryId, externalTextOrNull(error)),
                     )

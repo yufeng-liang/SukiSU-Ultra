@@ -28,6 +28,8 @@ class ShellRootFiles(private val shell: () -> Shell = { getRootShell() }) : Root
 
     override fun copyFrom(path: String, to: File): Boolean = exec("cp ${quote(path)} ${quote(to.absolutePath)}")
 
+    override fun rename(fromPath: String, toPath: String): Boolean = exec("mv -f ${quote(fromPath)} ${quote(toPath)}")
+
     override fun list(dir: String): List<RootFileEntry> {
         val suDir = SuFile(dir)
         if (!suDir.exists()) return emptyList()

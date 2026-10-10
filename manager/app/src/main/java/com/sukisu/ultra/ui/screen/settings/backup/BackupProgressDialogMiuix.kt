@@ -27,7 +27,11 @@ import top.yukonga.miuix.kmp.window.WindowDialog
  * 跑完之后结果也留在这里，而不是几秒就消失的 snackbar——哪一份失败、为什么，值得看清。
  */
 @Composable
-fun BackupProgressDialogMiuix(state: BackupUiState, onDismiss: () -> Unit) {
+fun BackupProgressDialogMiuix(
+    state: BackupUiState,
+    onDismiss: () -> Unit,
+    onCancel: () -> Unit,
+) {
     val run = state.backupRun ?: return
     WindowDialog(
         show = true,
@@ -86,6 +90,16 @@ fun BackupProgressDialogMiuix(state: BackupUiState, onDismiss: () -> Unit) {
                         fontSize = 12.sp,
                         color = colorScheme.onSurfaceVariantSummary,
                         modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                // 还在跑的时候给一条出路：窗口关不掉也停不下来，云端上传卡住时原来只能杀进程。
+                // 跑着的时候【完成】是灰的，所以同色的两个按钮不会同时可点。
+                if (!run.done) {
+                    TextButton(
+                        text = stringResource(R.string.cancel),
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        onClick = onCancel,
                     )
                 }
                 TextButton(

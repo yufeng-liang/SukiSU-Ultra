@@ -223,11 +223,17 @@ data class BackupUiState(
     val openGroupSelection: List<BackupRow>
         get() = openGroup?.rows.orEmpty().filter { it.id in openGroupSelected }
 
-    /** 详情页里的"全选"是否处于选中态。 */
+    /**
+     * 详情页里的"全选"是否处于选中态。
+     *
+     * 按"每一行都勾上了"判断，不比较数量：[openGroupSelected] 是行 id 的集合，切进切出另一组
+     * 备份、或列表刷新换出一批新行之后，里面可能留着别组的 id。数量刚好相等时按数量判断会显示
+     * 成"已全选"，而屏幕上明明有没勾的行——用户正是靠这个方框知道自己要恢复哪几条。
+     */
     val allGroupEntriesSelected: Boolean
         get() {
             val rows = openGroup?.rows.orEmpty()
-            return rows.isNotEmpty() && openGroupSelected.size == rows.size
+            return rows.isNotEmpty() && rows.all { it.id in openGroupSelected }
         }
 }
 
@@ -268,6 +274,13 @@ data class BackupRunState(
     /** 已经跑完，[result] 里是结果。 */
     val done: Boolean = false,
     val result: String? = null,
+    /**
+     * 这一次是用户取消的。
+     *
+     * 和"失败"分开：取消是用户自己要的，结果里不该出现失败清单，也不该再报平均速度——那份只
+     * 传了一半，算出来的数字没错，但读起来像一次成绩。
+     */
+    val cancelled: Boolean = false,
 ) {
     /** 进度条要的值；总字节还不知道时给 0，界面按不确定进度画。 */
     val fraction: Float
@@ -313,6 +326,8 @@ data class BackupActions(
     val onShareConsumed: () -> Unit,
     /** 关掉备份进度/结果弹窗。 */
     val onDismissBackupRun: () -> Unit,
+    /** 取消正在跑的备份：已经写好的那几份留着，传了一半的那份停下。 */
+    val onCancelBackupRun: () -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
     /** 自动备份写到哪：本机 / 云端各一个。 */
