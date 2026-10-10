@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.LayersClear
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material.icons.rounded.Android
@@ -125,6 +126,22 @@ fun SettingPagerMaterial(
                     )
                 )
             }
+
+            // 投稿开关不挂在 KsuIsValid 里：它是"要不要被打扰"的偏好，不是内核能力，
+            // 没 root 时也得能关。
+            SegmentedColumn(
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                content = listOf {
+                    // 关掉后：装本地模块不再弹分享提示，模块列表也不再显示投稿按钮。
+                    SegmentedSwitchItem(
+                        icon = Icons.Filled.Share,
+                        title = stringResource(id = R.string.module_contribution_settings_title),
+                        summary = stringResource(id = R.string.module_contribution_settings_summary),
+                        checked = uiState.moduleContributionEnabled,
+                        onCheckedChange = actions.onSetModuleContributionEnabled
+                    )
+                }
+            )
 
             SegmentedColumn(
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),

@@ -75,6 +75,7 @@ class SettingsViewModel(
             val appLanguage = repo.appLanguage
             val autoJailbreak = repo.autoJailbreak
             val useSoftReboot = repo.useSoftReboot
+            val moduleContributionEnabled = repo.isModuleContributionEnabled()
             val isLateLoadMode = Natives.isLateLoadMode
 
             _uiState.update {
@@ -114,6 +115,7 @@ class SettingsViewModel(
                     isDefaultUmountModules = isDefaultUmountModules,
                     isLkmMode = isLkmMode,
                     autoJailbreak = autoJailbreak,
+                    moduleContributionEnabled = moduleContributionEnabled,
                     useSoftReboot = useSoftReboot,
                     isLateLoadMode = isLateLoadMode,
                 )
@@ -337,6 +339,11 @@ class SettingsViewModel(
     fun setAutoJailbreak(enabled: Boolean) {
         repo.autoJailbreak = enabled
         _uiState.update { it.copy(autoJailbreak = enabled) }
+    }
+
+    fun setModuleContributionEnabled(enabled: Boolean) {
+        repo.setModuleContributionEnabled(enabled)
+        _uiState.update { it.copy(moduleContributionEnabled = enabled) }
     }
 
     fun setUseSoftReboot(enabled: Boolean) {

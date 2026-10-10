@@ -162,6 +162,7 @@ fun ModulePagerMiuix(
     confirmDialogState: ModuleConfirmDialogState?,
     moduleEvent: Flow<ModuleEffect>,
     actions: ModuleActions,
+    contribution: ModuleContributionController,
     bottomInnerPadding: Dp,
 ) {
     val modules = uiState.moduleList
@@ -244,6 +245,23 @@ fun ModulePagerMiuix(
             }
         }
     }
+
+    // 本地 zip 装完、且查出来是个新模块时的「分享这个模块吗？」
+    // 只有 CheckStatus.NEW 会走到这里；查不出来、版本更新、已收录都静默。
+    ObserveSharePrompt(
+        contribution = contribution,
+        snackbar = { text, label ->
+            snackbarJob.value?.cancel()
+            snackbarHostState.newestSnackbarData()?.dismiss()
+            snackbarHostState.showSnackbar(
+                message = text,
+                actionLabel = label,
+                duration = SnackbarDuration.Long,
+            ) == SnackbarResult.ActionPerformed
+        },
+        message = stringResource(R.string.module_contribution_snackbar),
+        actionLabel = stringResource(R.string.module_contribution_action),
+    )
 
     fun onModuleAddShortcut(module: Module, type: ShortcutType) {
         shortcutState.bindModule(module)
@@ -432,6 +450,7 @@ fun ModulePagerMiuix(
                     modules = uiState.searchResults,
                     updateInfoMap = uiState.updateInfo,
                     actions = actions,
+                    contribution = contribution,
                     onModuleAddShortcut = ::onModuleAddShortcut,
                     contentPadding = PaddingValues(
                         top = 6.dp,
@@ -536,6 +555,7 @@ fun ModulePagerMiuix(
                             modules = modules,
                             updateInfoMap = uiState.updateInfo,
                             actions = actions,
+                            contribution = contribution,
                             onModuleAddShortcut = { module, type ->
                                 onModuleAddShortcut(module, type)
                             },
@@ -691,6 +711,7 @@ private fun ModuleList(
     modules: List<Module>,
     updateInfoMap: Map<String, ModuleUpdateInfo>,
     actions: ModuleActions,
+    contribution: ModuleContributionController,
     onModuleAddShortcut: (Module, ShortcutType) -> Unit,
     contentPadding: PaddingValues,
     listState: LazyListState = rememberLazyListState(),
@@ -714,6 +735,7 @@ private fun ModuleList(
                 ModuleItem(
                     module = module,
                     updateUrl = moduleUpdateInfo.downloadUrl,
+                    contribution = contribution,
                     onUninstall = {
                         actions.onRequestUninstallConfirmation(currentModuleState.value)
                     },
@@ -760,6 +782,7 @@ private fun ModuleList(
 fun ModuleItem(
     module: Module,
     updateUrl: String,
+    contribution: ModuleContributionController,
     onUndoUninstall: () -> Unit,
     onUninstall: () -> Unit,
     onCheckChanged: (Boolean) -> Unit,
@@ -769,6 +792,10 @@ fun ModuleItem(
     onOpenWebUi: () -> Unit
 ) {
     val secondaryContainer = colorScheme.secondaryContainer.copy(alpha = 0.8f)
+    // 渲染到这一格时才查收录状态：既是唯一能自然限流的时机，也避免一次刷新连发 N 个请求。
+    contribution.rememberChecked(module)
+    val showContribute = contribution.showButton(module)
+    val showUnknown = contribution.showUnknownHint(module)
     val actionIconTint = colorScheme.onSurface.copy(alpha = if (isInDarkTheme()) 0.7f else 0.9f)
     val updateBg = colorScheme.tertiaryContainer.copy(alpha = 0.6f)
     val updateTint = colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
@@ -903,6 +930,46 @@ fun ModuleItem(
                 color = colorScheme.onSurfaceVariantSummary,
                 textDecoration = textDecoration
             )
+        }
+
+        if (showContribute) {
+            Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                IconButton(
+                    backgroundColor = secondaryContainer,
+                    minHeight = 35.dp,
+                    minWidth = 35.dp,
+                    onClick = { contribution.openFor(module) },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Icon(
+                            modifier = Modifier.size(20.dp),
+                            imageVector = MiuixIcons.UploadCloud,
+                            tint = actionIconTint,
+                            contentDescription = stringResource(R.string.module_contribution_submit),
+                        )
+                        Text(
+                            modifier = Modifier.padding(start = 4.dp, end = 3.dp),
+                            text = stringResource(R.string.module_contribution_submit),
+                            color = actionIconTint,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 15.sp,
+                        )
+                    }
+                }
+                // 查不出来时如实说一声：用户主动点投稿，该知道"是不是已收录我们没查出来"。
+                if (showUnknown) {
+                    Text(
+                        modifier = Modifier.padding(start = 2.dp, top = 4.dp),
+                        text = stringResource(R.string.module_contribution_unknown),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            }
         }
 
         HorizontalDivider(

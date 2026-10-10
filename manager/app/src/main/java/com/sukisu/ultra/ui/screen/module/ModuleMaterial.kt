@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
@@ -150,6 +151,7 @@ fun ModulePagerMaterial(
     confirmDialogState: ModuleConfirmDialogState?,
     moduleEvent: Flow<ModuleEffect>,
     actions: ModuleActions,
+    contribution: ModuleContributionController,
     bottomInnerPadding: Dp,
 ) {
     val snackBarHost = remember { SnackbarHostState() }
@@ -268,6 +270,24 @@ fun ModulePagerMaterial(
         }
     }
 
+    // 本地 zip 装完、且查出来是个新模块时的「分享这个模块吗？」
+    // 只有 CheckStatus.NEW 会走到这里（见 ModuleContributionController.checkAfterLocalZipInstall）；
+    // 查不出来、查出来是版本更新或已收录，都静默。
+    ObserveSharePrompt(
+        contribution = contribution,
+        snackbar = { text, label ->
+            snackbarJob.value?.cancel()
+            snackBarHost.currentSnackbarData?.dismiss()
+            snackBarHost.showSnackbar(
+                message = text,
+                actionLabel = label,
+                duration = SnackbarDuration.Long,
+            ) == SnackbarResult.ActionPerformed
+        },
+        message = stringResource(R.string.module_contribution_snackbar),
+        actionLabel = stringResource(R.string.module_contribution_action),
+    )
+
     ExpressiveScaffold(
         topBar = {
             SearchAppBar(
@@ -350,6 +370,7 @@ fun ModulePagerMaterial(
                         displayModules = uiState.searchResults,
                         updateInfoMap = uiState.updateInfo,
                         actions = actions,
+                        contribution = contribution,
                         onModuleAddShortcut = { module, type -> onModuleAddShortcut(module, type) },
                         closeSearch = closeSearch,
                     )
@@ -455,6 +476,7 @@ fun ModulePagerMaterial(
                 displayModules = uiState.moduleList,
                 updateInfoMap = uiState.updateInfo,
                 actions = actions,
+                contribution = contribution,
                 onModuleAddShortcut = { module, type -> onModuleAddShortcut(module, type) },
             )
         }
@@ -484,6 +506,7 @@ private fun ModuleList(
     displayModules: List<Module>,
     updateInfoMap: Map<String, ModuleUpdateInfo>,
     actions: ModuleActions,
+    contribution: ModuleContributionController,
     onModuleAddShortcut: (Module, ShortcutType) -> Unit,
     closeSearch: () -> Unit? = {},
 ) {
@@ -505,6 +528,7 @@ private fun ModuleList(
             ModuleItem(
                 module = module,
                 updateUrl = moduleUpdateInfo.downloadUrl,
+                contribution = contribution,
                 onUninstallClicked = {
                     if (module.remove) {
                         actions.onUndoUninstallModule(module)
@@ -691,6 +715,7 @@ private fun ModuleShortcutSheet(
 private fun ModuleItem(
     module: Module,
     updateUrl: String,
+    contribution: ModuleContributionController,
     onUninstallClicked: () -> Unit,
     onCheckChanged: (Boolean) -> Unit,
     onUpdate: () -> Unit,
@@ -700,6 +725,10 @@ private fun ModuleItem(
     closeSearch: () -> Unit
 ) {
     val hasDescription = module.description.isNotBlank()
+    // 渲染到这一格时才查收录状态：既是唯一能自然限流的时机，也避免一次刷新连发 N 个请求。
+    contribution.rememberChecked(module)
+    val showContribute = contribution.showButton(module)
+    val showUnknown = contribution.showUnknownHint(module)
     val maxLinesLimit = LocalModuleDescriptionMaxLines.current
     var expanded by rememberSaveable(module.id) { mutableStateOf(false) }
     val canOpenWebUi = module.hasWebUi && !module.remove && module.enabled
@@ -818,6 +847,40 @@ private fun ModuleItem(
                             modifier = Modifier.padding(bottom = 4.dp),
                             contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                             backgroundColor = MaterialTheme.colorScheme.tertiaryContainer
+                        )
+                    }
+                }
+            }
+
+            if (showContribute) {
+                Row(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilledTonalButton(
+                        modifier = Modifier.defaultMinSize(52.dp, 32.dp),
+                        onClick = { contribution.openFor(module) },
+                        contentPadding = ButtonDefaults.TextButtonContentPadding
+                    ) {
+                        Icon(
+                            modifier = Modifier.size(20.dp),
+                            imageVector = Icons.Outlined.CloudUpload,
+                            contentDescription = null,
+                        )
+                        Text(
+                            modifier = Modifier.padding(start = 7.dp),
+                            fontFamily = MaterialTheme.typography.labelMedium.fontFamily,
+                            fontSize = MaterialTheme.typography.labelMedium.fontSize,
+                            text = stringResource(R.string.module_contribution_submit)
+                        )
+                    }
+                    // 查不出来时如实说一声：用户主动点投稿，该知道"是不是已收录我们没查出来"。
+                    if (showUnknown) {
+                        Text(
+                            text = stringResource(R.string.module_contribution_unknown),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
                 }

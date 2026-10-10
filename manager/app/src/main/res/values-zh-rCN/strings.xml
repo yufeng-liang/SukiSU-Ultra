@@ -782,4 +782,23 @@
     <string name="backup_result_title">备份完成</string>
     <string name="backup_result_average_speed">平均 %1$s/s</string>
     <string name="backup_done">完成</string>
+    <string name="module_contribution_submit">分享此模块</string>
+    <string name="module_contribution_snackbar">向大家分享这个模块吗？</string>
+    <string name="module_contribution_action">分享</string>
+    <string name="module_contribution_dialog_title">投稿模块</string>
+    <string name="module_contribution_id">模块 ID</string>
+    <string name="module_contribution_name">模块名称</string>
+    <string name="module_contribution_version">版本</string>
+    <string name="module_contribution_author">作者</string>
+    <string name="module_contribution_description">描述</string>
+    <string name="module_contribution_source">出处链接或来源说明</string>
+    <string name="module_contribution_uploader">你的署名，会公开展示</string>
+    <string name="module_contribution_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载。请勿上传包含个人隐私、密钥等敏感信息的内容。</string>
+    <string name="module_contribution_consent_required">请先勾选确认</string>
+    <string name="module_contribution_submitting">正在提交…</string>
+    <string name="module_contribution_success">已提交，等待审核</string>
+    <string name="module_contribution_failed">提交失败</string>
+    <string name="module_contribution_unknown">无法确认是否已收录</string>
+    <string name="module_contribution_settings_title">模块投稿</string>
+    <string name="module_contribution_settings_summary">安装本地模块时，提示分享尚未收录的模块</string>
 </resources>

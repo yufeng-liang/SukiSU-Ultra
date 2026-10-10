@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.LayersClear
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.SystemUpdateAlt
@@ -150,6 +151,21 @@ fun SettingPagerMiuix(
                                 onCheckedChange = actions.onSetCheckModuleUpdate
                             )
                         }
+                        // 关掉后：装本地模块不再弹分享提示，模块列表也不再显示投稿按钮。
+                        SwitchPreference(
+                            title = stringResource(id = R.string.module_contribution_settings_title),
+                            summary = stringResource(id = R.string.module_contribution_settings_summary),
+                            startAction = {
+                                Icon(
+                                    Icons.Rounded.Share,
+                                    modifier = Modifier.padding(end = 6.dp),
+                                    contentDescription = stringResource(id = R.string.module_contribution_settings_title),
+                                    tint = colorScheme.onBackground
+                                )
+                            },
+                            checked = uiState.moduleContributionEnabled,
+                            onCheckedChange = actions.onSetModuleContributionEnabled
+                        )
                     }
 
                     Card(

@@ -30,6 +30,22 @@ fun isSoftRebootPreferred(): Boolean =
     Natives.isLateLoadMode || ksuApp.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
         .getBoolean(KEY_USE_SOFT_REBOOT, false)
 
+/**
+ * 投稿开关的存储约定。
+ *
+ * 这两条是纯数据，单独放出来是为了让单测能在 JVM 上直接锁住（[SettingsRepositoryImpl]
+ * 要 Android 的 SharedPreferences 才能跑）：key 一旦改名，老用户的选择会静默回到默认值；
+ * 默认值一旦翻面，所有人的投稿入口会在一次升级里集体消失或集体冒出来。
+ */
+object ModuleContributionPrefs {
+    const val KEY = "module_contribution_enabled"
+    const val DEFAULT = true
+
+    /** 没这个 key（老版本升级上来）就按默认开，而不是按"关"——老用户不该在升级后被静音。 */
+    fun resolve(contains: Boolean, stored: Boolean = DEFAULT): Boolean =
+        if (contains) stored else DEFAULT
+}
+
 class SettingsRepositoryImpl : SettingsRepository {
 
     private companion object {
@@ -276,6 +292,15 @@ class SettingsRepositoryImpl : SettingsRepository {
     override fun isDefaultUmountModules(): Boolean = Natives.isDefaultUmountModules()
 
     override fun setDefaultUmountModules(enabled: Boolean): Boolean = Natives.setDefaultUmountModules(enabled)
+
+    override fun isModuleContributionEnabled(): Boolean = ModuleContributionPrefs.resolve(
+        contains = prefs.contains(ModuleContributionPrefs.KEY),
+        stored = prefs.getBoolean(ModuleContributionPrefs.KEY, ModuleContributionPrefs.DEFAULT),
+    )
+
+    override fun setModuleContributionEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean(ModuleContributionPrefs.KEY, enabled) }
+    }
 
     override fun isLkmMode(): Boolean = Natives.isLkmMode
 

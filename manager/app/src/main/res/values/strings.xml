@@ -800,4 +800,23 @@
     <string name="backup_result_title">Backup finished</string>
     <string name="backup_result_average_speed">Average %1$s/s</string>
     <string name="backup_done">Done</string>
+    <string name="module_contribution_submit">Share this module</string>
+    <string name="module_contribution_snackbar">Share this module with everyone?</string>
+    <string name="module_contribution_action">Share</string>
+    <string name="module_contribution_dialog_title">Contribute module</string>
+    <string name="module_contribution_id">Module ID</string>
+    <string name="module_contribution_name">Module name</string>
+    <string name="module_contribution_version">Version</string>
+    <string name="module_contribution_author">Author</string>
+    <string name="module_contribution_description">Description</string>
+    <string name="module_contribution_source">Source link or origin</string>
+    <string name="module_contribution_uploader">Your name, shown publicly</string>
+    <string name="module_contribution_consent">I understand the file will be stored publicly and anyone can download it. Do not upload content containing personal information or keys.</string>
+    <string name="module_contribution_consent_required">Please check the confirmation box first</string>
+    <string name="module_contribution_submitting">Submitting…</string>
+    <string name="module_contribution_success">Submitted, awaiting review</string>
+    <string name="module_contribution_failed">Submission failed</string>
+    <string name="module_contribution_unknown">Unable to confirm whether it was accepted</string>
+    <string name="module_contribution_settings_title">Module contributions</string>
+    <string name="module_contribution_settings_summary">When installing a local module, offer to share modules that are not yet listed</string>
 </resources>
