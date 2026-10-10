@@ -191,7 +191,7 @@ fun BackupDetailMiuix(
                     )
                     group.rows.forEach { row ->
                         CheckboxPreference(
-                            title = entryTitle(row, group),
+                            title = entryTitle(row),
                             summary = row.subtitle.takeIf { it.isNotBlank() },
                             checked = row.id in state.openGroupSelected,
                             onCheckedChange = { actions.onToggleGroupEntry(row.id) },
@@ -213,11 +213,5 @@ fun BackupDetailMiuix(
     }
 }
 
-/** 条目标题：整组都是回滚点时标题上已经说了，单个条目就不必再缀一次。 */
-@Composable
-internal fun entryTitle(row: BackupRow, group: BackupGroup): String =
-    if (row.isRollback && !group.isRollback) {
-        row.title + BackupListFormatter.SEPARATOR + stringResource(R.string.backup_rollback_badge)
-    } else {
-        row.title
-    }
+/** 条目在列表里显示的名字。 */
+internal fun entryTitle(row: BackupRow): String = row.title

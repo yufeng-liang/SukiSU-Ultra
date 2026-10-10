@@ -62,9 +62,6 @@ private class FakeSource(
     private val artifacts: List<BackupArtifact>,
     private val failures: List<BackupFailure> = emptyList(),
 ) : BackupSource {
-    /** 记录调用顺序：恢复前拍回滚点这件事只能靠顺序证明。 */
-    val calls = mutableListOf<String>()
-
     /** 最近一次 [export] 收到的勾选集合：用来证明它被原样透传给了源。 */
     var lastSelection: Set<String>? = null
 
@@ -73,13 +70,7 @@ private class FakeSource(
         return Result.success(ExportOutcome(artifacts, failures))
     }
 
-    override suspend fun exportOne(entryId: String): Result<BackupArtifact?> {
-        calls += "exportOne"
-        return Result.success(artifacts.firstOrNull { it.entryId == entryId })
-    }
-
     override suspend fun restore(entry: BackupEntry, metaJson: String?, content: InputStream): Result<RestoreOutcome> {
-        calls += "restore"
         // 真实源都会把内容读到底（落盘再交给 ksud），校验也发生在读到末尾时。
         content.use { it.readBytes() }
         return Result.success(RestoreOutcome(true))
@@ -472,66 +463,6 @@ class BackupEngineTest {
     }
 
     @Test
-    fun `restore snapshots a rollback point before restoring`() {
-        runBlocking {
-            val storage = FakeStorage("local")
-            val current = "current".toByteArray()
-            storage.files["module_a_1_20261008_120000.zip"] = current
-            val source = moduleSource(artifact("a", "sha-a"))
-
-            engine(listOf(storage), source)
-                .restore(storage, entry(sha256 = current.sha256Hex(), size = current.size.toLong()))
-                .getOrThrow()
-
-            assertEquals(listOf("exportOne", "restore"), source.calls)
-            val rollback = BackupManifest.parseEntries(storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString()).single()
-            assertTrue(rollback.fileName.startsWith(RollbackPolicy.PREFIX))
-            assertTrue(storage.files.containsKey(rollback.fileName))
-        }
-    }
-
-    @Test
-    fun `the rollback point keeps the sidecar meta so disabled state survives`() {
-        runBlocking {
-            val storage = FakeStorage("local")
-            val current = "current".toByteArray()
-            storage.files["module_a_1_20261008_120000.zip"] = current
-
-            engine(listOf(storage), moduleSource(artifact("a", "sha-a")))
-                .restore(storage, entry(sha256 = current.sha256Hex(), size = current.size.toLong()))
-                .getOrThrow()
-
-            val rollback = BackupManifest.parseEntries(storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString()).single()
-            assertEquals(
-                "pre_restore_20261008_120000_module_a_1_20261008_120000.zip.meta.json",
-                rollback.metaFileName,
-            )
-            assertTrue(storage.files.containsKey(rollback.metaFileName!!))
-        }
-    }
-
-    @Test
-    fun `restoring from the cloud keeps the rollback point local`() {
-        runBlocking {
-            val cloud = FakeStorage("webdav")
-            val local = FakeStorage("local")
-            val current = "cloud-current".toByteArray()
-            cloud.files["module_a_1_20261008_120000.zip"] = current
-
-            engine(listOf(cloud), moduleSource(artifact("a", "sha-a")))
-                .restore(cloud, entry(sha256 = current.sha256Hex(), size = current.size.toLong()), rollbackStorage = local)
-                .getOrThrow()
-
-            assertFalse(
-                "the rollback point must not be uploaded to a third-party cloud",
-                cloud.files.containsKey(ArchiveNaming.INDEX_FILE),
-            )
-            val rollback = BackupManifest.parseEntries(local.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString()).single()
-            assertTrue(rollback.fileName.startsWith(RollbackPolicy.PREFIX))
-        }
-    }
-
-    @Test
     fun `restore verifies the recorded sha256 and succeeds when it matches`() {
         runBlocking {
             val storage = FakeStorage("local")
@@ -631,42 +562,6 @@ class BackupEngineTest {
     }
 
     @Test
-    fun `importFrom still accepts content that only exists as a rollback point`() {
-        runBlocking {
-            val storage = FakeStorage("local")
-            val body = "foreign".toByteArray()
-            val sha = body.inputStream().use { it.sha256Hex() }
-            // 回滚点会被按"同一项留 1 份"裁掉，所以"内容只以回滚点存在"时，导入的这一份才是
-            // 用户自己能指着的那份——和 backup 里那条"回滚点不参与去重"的规矩一致。
-            storage.files[ArchiveNaming.INDEX_FILE] = BackupManifest.renderEntries(
-                listOf(
-                    BackupEntry(
-                        kind = BackupKind.MODULE,
-                        entryId = "imported",
-                        fileName = "${RollbackPolicy.PREFIX}module_imported_1_20261008_120000.zip",
-                        metaFileName = null,
-                        sizeBytes = body.size.toLong(),
-                        sha256 = sha,
-                        createdAt = "2026-10-08T12:00:00Z",
-                    ),
-                ),
-            ).encodeToByteArray()
-
-            engine(listOf(storage), moduleSource()).importFrom(
-                storage = storage,
-                kind = BackupKind.MODULE,
-                fileName = "module_imported_1_20261008_130000.zip",
-                metaFileName = null,
-                size = body.size.toLong(),
-                open = { body.inputStream() },
-                metaJson = null,
-            ).getOrThrow()
-
-            assertTrue(storage.files.containsKey("module_imported_1_20261008_130000.zip"))
-        }
-    }
-
-    @Test
     fun `importFrom flattens a hostile file name`() {
         runBlocking {
             val storage = FakeStorage("local")
@@ -686,28 +581,4 @@ class BackupEngineTest {
         }
     }
 
-    @Test
-    fun `importFrom strips a rollback prefix so the entry is not treated as a restore point`() {
-        runBlocking {
-            val storage = FakeStorage("local")
-            val body = "foreign".toByteArray()
-
-            engine(listOf(storage), moduleSource()).importFrom(
-                storage = storage,
-                kind = BackupKind.MODULE,
-                fileName = "${RollbackPolicy.PREFIX}module_x_1_20261008_130000.zip",
-                metaFileName = null,
-                size = body.size.toLong(),
-                open = { body.inputStream() },
-                metaJson = null,
-            ).getOrThrow()
-
-            val entry = BackupManifest
-                .parseEntries(storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString())
-                .single()
-            assertEquals("module_x_1_20261008_130000.zip", entry.fileName)
-            // 留着前缀就等于把用户导入的文件交给回滚点的保留策略去裁（每项只留 1 份）。
-            assertFalse(RollbackPolicy.isRollback(entry))
-        }
-    }
 }

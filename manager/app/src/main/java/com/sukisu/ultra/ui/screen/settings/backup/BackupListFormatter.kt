@@ -4,7 +4,6 @@ import com.sukisu.ultra.data.backup.BackupEntry
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
-import com.sukisu.ultra.data.backup.RollbackPolicy
 import java.util.Locale
 
 data class BackupRow(
@@ -41,8 +40,6 @@ data class BackupRow(
      * 拼进一句话里的时间拿不回来。
      */
     val createdAt: String,
-    /** 恢复前自动拍下的安全网条目。UI 要标出来，否则用户会把它当成一份普通备份。 */
-    val isRollback: Boolean = false,
 )
 
 /**
@@ -107,7 +104,6 @@ object BackupListFormatter {
         originLabel = labels.originLabel(origin),
         kind = BackupKind.BOOT,
         createdAt = entry.createdAt,
-        isRollback = RollbackPolicy.isRollback(entry),
     )
 
     private fun moduleRow(
@@ -130,7 +126,6 @@ object BackupListFormatter {
             originLabel = labels.originLabel(origin),
             kind = BackupKind.MODULE,
             createdAt = entry.createdAt,
-            isRollback = RollbackPolicy.isRollback(entry),
         )
     }
 

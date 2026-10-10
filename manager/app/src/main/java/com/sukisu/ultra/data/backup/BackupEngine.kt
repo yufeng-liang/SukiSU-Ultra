@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 每个失败都记录在案——单个后端故障不能掩盖健康后端的结果。
  *
  * index.json 的读-改-写是"读全量 → 改 → 整体回写"，所以必须串行化：模块安装后的自动备份
- * 跑在脱离页面的协程里，与用户手动备份、与恢复前的回滚点写入都可能重叠。锁按后端 id 取，
+ * 跑在脱离页面的协程里，与用户手动备份、手动删除都可能重叠。锁按后端 id 取，
  * 且是进程级的（[indexLocks]），因为每个 [com.sukisu.ultra.data.backup.BackupRepository]
  * 都会各自装配一套后端实例。
  */
@@ -23,13 +23,6 @@ class BackupEngine(
     private val storages: List<BackupStorage>,
     private val retention: Int = 5,
     private val bootRetention: Int = 2,
-    /**
-     * 回滚点额度（每个项目留几份）。
-     *
-     * 由装配方给而不是在这里写死 1：它是用户能调的一项设置，而引擎不该知道偏好项从哪来。
-     * 到用时才经 [RetentionLimit.clampRollback] 钳一次——装配方传进来的值同样可能来自磁盘。
-     */
-    private val rollbackRetention: Int = 1,
     private val clock: () -> Instant = { Instant.now() },
 ) {
 
@@ -73,10 +66,7 @@ class BackupEngine(
                     val usedNames = index.mapTo(mutableSetOf()) { it.fileName }
 
                     outcome.artifacts.forEachIndexed { artifactIndex, artifact ->
-                        // 回滚点不参与去重：内容只以回滚点形式存在时，正常备份仍应立成业务条目，
-                        // 否则那份回滚点被保留策略淘汰后，内容就再没有索引指向它了。
-                        val business = (index + pending).filterNot { RollbackPolicy.isRollback(it) }
-                        if (DuplicatePolicy.findDuplicate(business, kind, artifact.sha256) != null) {
+                        if (DuplicatePolicy.findDuplicate(index + pending, kind, artifact.sha256) != null) {
                             skipped += artifact.fileName
                             return@forEachIndexed
                         }
@@ -187,24 +177,12 @@ class BackupEngine(
         }
     }
 
-    /**
-     * 恢复 [entry]。
-     *
-     * [rollbackStorage] 是回滚点落点，默认与被恢复的项同一个后端；云端恢复必须显式传本地后端——
-     * 否则每次从云端恢复都会先把当前那一项（boot 时是 32–96MB 的镜像）上传到第三方网盘，
-     * 而设计要的是"回滚点留在本地、不上云"。
-     */
+    /** 恢复 [entry]。 */
     suspend fun restore(
         storage: BackupStorage,
         entry: BackupEntry,
-        rollbackStorage: BackupStorage = storage,
     ): Result<RestoreOutcome> = runCatching {
         val source = sources.getValue(entry.kind)
-        // 恢复回滚点本身就是"回到恢复前的状态"，再给它拍一个回滚点毫无意义，
-        // 而且会把正在读取的那一份当成"旧的同类回滚点"删掉，导致这次恢复必然失败。
-        if (!RollbackPolicy.isRollback(entry)) {
-            snapshotForRollback(rollbackStorage, source, entry)
-        }
         val metaJson = entry.metaFileName
             ?.let { name -> storage.readText(name).getOrNull() }
             ?.takeIf { it.isNotBlank() }
@@ -218,50 +196,6 @@ class BackupEngine(
         if (entry.sha256.isBlank()) raw
         else VerifyingInputStream(raw, entry.sha256, entry.fileName)
 
-    /**
-     * 恢复前把"当前那一项"导出成回滚点。
-     *
-     * 拿不到回滚点只是少了安全网，不该让用户连恢复都做不了——所以这里全程不抛异常。
-     * 回滚点不计入业务归档额度，且按"同一项"只留最近 1 份（见 [RollbackPolicy.expiredRollbacks]）。
-     */
-    private suspend fun snapshotForRollback(rollbackStorage: BackupStorage, source: BackupSource, entry: BackupEntry) {
-        val artifact = source.exportOne(entry.entryId).getOrNull() ?: return
-        try {
-            withIndexLock(rollbackStorage.id) {
-                val index = readIndex(rollbackStorage).getOrNull() ?: return@withIndexLock
-                val usedNames = index.mapTo(mutableSetOf()) { it.fileName }
-                val name = ArchiveNaming.uniqueName(
-                    RollbackPolicy.rollbackNameFor(entry, ArchiveNaming.timestamp(clock())),
-                    usedNames,
-                )
-                if (rollbackStorage.put(name, artifact.sizeBytes, open = artifact.openContent).isFailure) return@withIndexLock
-
-                // 边车 meta 要一起留：少了它，用回滚点救回来的模块会丢掉禁用状态。
-                val metaName = artifact.metaFileName?.let { ArchiveNaming.metaFileNameFor(name) }
-                if (metaName != null && artifact.metaJson != null) {
-                    rollbackStorage.writeText(metaName, artifact.metaJson)
-                }
-
-                val updated = index + BackupEntry(
-                    kind = entry.kind,
-                    entryId = entry.entryId,
-                    fileName = name,
-                    metaFileName = metaName,
-                    sizeBytes = artifact.sizeBytes,
-                    sha256 = artifact.sha256,
-                    createdAt = clock().toString(),
-                )
-                val expired = RollbackPolicy.expiredRollbacks(updated, RetentionLimit.clampRollback(rollbackRetention))
-                expired.forEach { old ->
-                    rollbackStorage.delete(old.fileName)
-                    old.metaFileName?.let { rollbackStorage.delete(it) }
-                }
-                rollbackStorage.writeText(ArchiveNaming.INDEX_FILE, BackupManifest.renderEntries(updated - expired.toSet()))
-            }
-        } finally {
-            artifact.cleanup?.invoke()
-        }
-    }
 
     /** 导出到调用方给的流。sink 必须无论成败都被关闭，否则 SAF 选定的文档会留半截内容。 */
     suspend fun exportTo(storage: BackupStorage, entry: BackupEntry, sink: OutputStream): Result<Unit> = runCatching {
@@ -280,11 +214,7 @@ class BackupEngine(
         open: () -> InputStream,
         metaJson: String?,
     ): Result<Unit> = runCatching {
-        // 导入的文件不能顶着回滚点的前缀：`RollbackPolicy` 是按文件名前缀认回滚点的，
-        // 一个恰好叫 pre_restore_*.zip 的用户文件会被当成"同一项的第 2 份回滚点"裁掉，
-        // 也会在列表里被标成"恢复点"。
         val requested = ArchiveNaming.safeFileName(fileName)
-            .removePrefix(RollbackPolicy.PREFIX)
             .ifBlank { ArchiveNaming.IMPORTED_FALLBACK_NAME }
         val adopted = sources[kind]?.metaForImport(open, size)
         val resolvedMeta = metaJson ?: adopted?.metaJson
@@ -294,10 +224,7 @@ class BackupEngine(
         val sha256 = open().use { it.sha256Hex() }
         withIndexLock(storage.id) {
             val index = readIndex(storage).getOrThrow()
-            // 回滚点不参与去重，和 [backup] 里那条规矩一致：内容只以回滚点形式存在时，导入的
-            // 这一份才是能被用户自己指着的那份，而回滚点会被按"同一项留 1 份"裁掉。
-            val business = index.filterNot { RollbackPolicy.isRollback(it) }
-            DuplicatePolicy.findDuplicate(business, kind, sha256)?.let { existing ->
+            DuplicatePolicy.findDuplicate(index, kind, sha256)?.let { existing ->
                 throw BackupReasonException(BackupReason.DuplicateContent(existing.fileName))
             }
             val taken = index.filterNot { it.fileName == requested }.mapTo(mutableSetOf()) { it.fileName }

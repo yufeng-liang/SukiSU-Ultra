@@ -236,12 +236,6 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = RetentionLimit.clampBoot(prefs.getInt("backup_boot_retention", BackupDefaults.BOOT_RETENTION))
         set(value) = prefs.edit { putInt("backup_boot_retention", RetentionLimit.clampBoot(value)) }
 
-    override var backupRollbackRetention: Int
-        get() = RetentionLimit.clampRollback(
-            prefs.getInt("backup_rollback_retention", BackupDefaults.ROLLBACK_RETENTION)
-        )
-        set(value) = prefs.edit { putInt("backup_rollback_retention", RetentionLimit.clampRollback(value)) }
-
     override var backupAutoLastRecord: String
         get() = prefs.getString("backup_auto_last_record", "") ?: ""
         set(value) = prefs.edit {

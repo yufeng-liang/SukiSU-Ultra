@@ -50,14 +50,13 @@ interface SettingsRepository {
     var backupAutoCloud: Boolean
 
     /**
-     * 保留额度：模块留最近几次备份、boot 留几次、回滚点每个项目留几份。
+     * 保留额度：模块留最近几次备份、boot 留几次。
      *
-     * 三个都在 `RetentionLimit` 的范围里，读出来就钳过——这些数字躺在 SharedPreferences 里，
+     * 两个都在 `RetentionLimit` 的范围里，读出来就钳过——这些数字躺在 SharedPreferences 里，
      * 手改过、从老版本升上来都可能越界，而越界的额度是"备份完立刻把成果删光"这种事故。
      */
     var backupRetention: Int
     var backupBootRetention: Int
-    var backupRollbackRetention: Int
 
     /**
      * 上一次自动备份的结果（JSON，见 `AutoBackupRecordJson`）。

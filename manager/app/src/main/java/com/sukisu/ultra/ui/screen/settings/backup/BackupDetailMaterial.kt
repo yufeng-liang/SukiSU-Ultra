@@ -154,7 +154,7 @@ fun BackupDetailMaterial(
                     group.rows.forEach { row ->
                         item {
                             SegmentedCheckboxItem(
-                                title = entryTitle(row, group),
+                                title = entryTitle(row),
                                 summary = row.subtitle.takeIf { it.isNotBlank() },
                                 checked = row.id in state.openGroupSelected,
                                 onCheckedChange = { actions.onToggleGroupEntry(row.id) },

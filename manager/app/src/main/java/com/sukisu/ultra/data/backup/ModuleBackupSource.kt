@@ -39,10 +39,6 @@ class ModuleBackupSource(
         exportAll(if (selected == null) modules else modules.filter { it.id in selected })
     }
 
-    override suspend fun exportOne(entryId: String): Result<BackupArtifact?> = runCatching {
-        lister.list().firstOrNull { it.id == entryId }?.let { exportAll(listOf(it)).artifacts.firstOrNull() }
-    }
-
     private suspend fun exportAll(modules: List<Module>): ExportOutcome {
         val timestamp = ArchiveNaming.timestamp(clock())
         val device = deviceName()

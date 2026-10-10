@@ -25,15 +25,9 @@ object BackupLabels {
     fun kind(kind: BackupKind): Int =
         if (kind == BackupKind.BOOT) R.string.backup_kind_boot else R.string.backup_kind_module
 
-    /**
-     * 分组卡片上"这一组是什么"那一栏。
-     *
-     * 回滚点自成一类：它存的是"恢复前的那一份"，不是用户主动备份的模块，叫它"模块"会让
-     * 用户以为那是自己备的。
-     */
+    /** 分组卡片上"这一组是什么"那一栏。 */
     @StringRes
-    fun groupKind(group: BackupGroup): Int =
-        if (group.isRollback) R.string.backup_group_rollback else kind(group.kind)
+    fun groupKind(group: BackupGroup): Int = kind(group.kind)
 
     /** 分组卡片的副标题：来源（两侧都勾上时才写）· 内容 · 项数。 */
     fun groupSummary(originLabel: String?, kindLabel: String, countText: String): String =

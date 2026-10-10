@@ -143,21 +143,6 @@ class ModuleBackupSourceTest {
     }
 
     @Test
-    fun `exportOne archives only the requested module`() {
-        runBlocking {
-            val artifact = source(listOf(module("a"), module("b"))).exportOne("b").getOrThrow()
-            assertEquals("b", artifact?.entryId)
-        }
-    }
-
-    @Test
-    fun `exportOne returns null for an unknown module`() {
-        runBlocking {
-            assertNull(source(listOf(module("a"))).exportOne("nope").getOrThrow())
-        }
-    }
-
-    @Test
     fun `restore installs the archive then applies the disabled flag`() {
         runBlocking {
             val calls = mutableListOf<String>()

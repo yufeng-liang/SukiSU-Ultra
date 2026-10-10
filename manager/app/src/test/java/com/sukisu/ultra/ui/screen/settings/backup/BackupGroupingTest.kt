@@ -15,7 +15,6 @@ class BackupGroupingTest {
         origin: BackupOrigin = BackupOrigin.LOCAL,
         kind: BackupKind = BackupKind.MODULE,
         title: String = fileName,
-        isRollback: Boolean = false,
     ) = BackupRow(
         id = "${origin.name}/$fileName",
         title = title,
@@ -25,7 +24,6 @@ class BackupGroupingTest {
         originLabel = "This device",
         kind = kind,
         createdAt = createdAt,
-        isRollback = isRollback,
     )
 
     /** 标题就是时刻本身，测试里直接回显，方便断言"这一组取的是哪一刻"。 */
@@ -87,27 +85,6 @@ class BackupGroupingTest {
             label,
         )
         assertEquals("T(2026-10-09T09:31:08Z)", groups.first().label)
-    }
-
-    /** 回滚点自带自己的时间戳，所以它自成一堆，不会混进它所保护的那次备份里。 */
-    @Test
-    fun `a restore point is its own group and is flagged`() {
-        val groups = BackupGrouping.group(
-            listOf(
-                row("module_a_1_20261009_093107.zip", "2026-10-09T09:31:07Z"),
-                row(
-                    "pre_restore_20261009_093426_module_a_1_20261009_093107.zip",
-                    "2026-10-09T09:34:26Z",
-                    isRollback = true,
-                ),
-            ),
-            label,
-        )
-        assertEquals(2, groups.size)
-        val rollback = groups.first()
-        assertTrue(rollback.isRollback)
-        assertEquals(BackupKind.MODULE, rollback.kind)
-        assertEquals(1, rollback.rows.size)
     }
 
     /** 两侧各有一份同名归档时是两组：来源不同就是两次不同的备份。 */

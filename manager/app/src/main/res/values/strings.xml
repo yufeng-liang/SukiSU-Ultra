@@ -668,7 +668,7 @@
     <string name="backup_tab_backup">Back up</string>
     <string name="backup_tab_restore">Restore</string>
     <string name="backup_tab_restore_count">Restore (%1$d)</string>
-    <string name="backup_entry_summary">Back up modules and the stock boot image, on this device or in the cloud.</string>
+    <string name="backup_entry_summary">Modules and the stock boot image can be backed up on this device or in the cloud.</string>
     <string name="backup_kind_module">Modules</string>
     <string name="backup_kind_boot">Stock boot image</string>
     <string name="backup_boot_row_title">Stock image</string>
@@ -720,7 +720,6 @@
     <string name="backup_restored">Restored %s</string>
     <string name="backup_exported">Exported %s</string>
     <string name="backup_imported">Imported</string>
-    <string name="backup_rollback_badge">Restore point</string>
     <string name="backup_row_disabled">Disabled</string>
     <string name="backup_restore_failed">Restore failed</string>
     <string name="backup_empty_module_local">No backups yet. Back up now packages the modules onto this device.</string>
@@ -781,7 +780,6 @@
     <string name="backup_nothing_boot">no stock image to back up</string>
     <string name="backup_nothing_module">no modules to back up</string>
     <string name="backup_group_summary">%1$s · %2$d items</string>
-    <string name="backup_group_rollback">Restore point</string>
     <string name="backup_detail_title">Backup details</string>
     <plurals name="backup_group_items">
         <item quantity="one">%1$d item</item>
@@ -830,14 +828,12 @@
     <string name="module_contribution_settings_title">Module contributions</string>
     <string name="module_contribution_settings_summary">When installing a local module, offer to share modules that are not yet listed</string>
 
-    <!-- Retention quotas. Each has its own range (modules 1–20, boot 1–10, restore points 1–5),
+    <!-- Retention quotas. Each has its own range (modules 1–20, boot 1–10),
          so the wording deliberately avoids naming the numbers. -->
     <string name="backup_retention_title">How many backups to keep</string>
     <string name="backup_retention_summary">Older backups beyond this are removed automatically on the next backup.</string>
     <string name="backup_retention_module">Modules</string>
     <string name="backup_retention_boot">Stock boot image</string>
-    <string name="backup_retention_rollback">Restore points (per item)</string>
-    <string name="backup_retention_rollback_summary">The current state is backed up before a restore; this is how many are kept per item.</string>
     <string name="backup_retention_boot_summary">One image is 32–96 MB, so a high number takes a lot of space.</string>
     <string name="backup_retention_count">%1$d</string>
 </resources>

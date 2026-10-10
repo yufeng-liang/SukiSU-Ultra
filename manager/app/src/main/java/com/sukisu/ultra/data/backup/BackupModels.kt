@@ -52,7 +52,7 @@ data class ExportOutcome(
     val failures: List<BackupFailure> = emptyList(),
 )
 
-/** 归档存放的位置。回滚点例外：它始终落在 [LOCAL]，即使被恢复的那一项在云端。 */
+/** 归档存放的位置：本机或云端。 */
 enum class BackupOrigin { LOCAL, CLOUD }
 
 /**

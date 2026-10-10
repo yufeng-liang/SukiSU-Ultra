@@ -74,18 +74,6 @@ class BootBackupSource(
     }
 
     /**
-     * boot 的"全部"通常就 1–2 张原厂镜像（ksud 只在 patch 时留当前这一张），
-     * 所以直接复用 [export] 再挑一项。没被选中的那几张必须在这里清掉——
-     * 它们是为 [export] 的其它 artifact 落的副本，而 artifact 一旦丢弃就没人再调用它的 cleanup。
-     */
-    override suspend fun exportOne(entryId: String): Result<BackupArtifact?> = runCatching {
-        val artifacts = export().getOrThrow().artifacts
-        val selected = artifacts.firstOrNull { it.entryId == entryId }
-        artifacts.filter { it !== selected }.forEach { it.cleanup?.invoke() }
-        selected
-    }
-
-    /**
      * 导入的 boot 归档要自己把身份算出来：ksud 只认 `ksu_backup_<原厂镜像 sha1>`，
      * 而 sha1 只存在于内容里，文件名里的 12 位前缀不够用。
      */

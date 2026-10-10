@@ -96,12 +96,6 @@ class BackupListFormatterTest {
         assertEquals("1.7 MB", BackupListFormatter.humanSize(1834021))
     }
 
-    @Test
-    fun `rollback entries are flagged so the ui can label them`() {
-        val rollback = entry.copy(fileName = "pre_restore_20261008_130000_${entry.fileName}")
-        assertEquals(listOf(false, true), rowsOf(entry, rollback).map { it.isRollback })
-    }
-
     /** 恢复 boot 会清掉 root，界面靠行自己的类型决定要不要弹确认框。 */
     @Test
     fun `each row carries the kind it was built from`() {

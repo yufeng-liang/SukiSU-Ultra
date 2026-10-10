@@ -157,14 +157,13 @@ data class BackupUiState(
     val autoBackupRecord: AutoBackupRecord? = null,
 
     /**
-     * 保留额度：模块留最近几次备份、boot 留几次、回滚点每个项目留几份。
+     * 保留额度：模块留最近几次备份、boot 留几次。
      *
-     * 以前这三个是代码里的常量，界面上看不见也改不了——用户只能从"我的第六份备份不见了"反推出
+     * 以前这两个是代码里的常量，界面上看不见也改不了——用户只能从"我的第六份备份不见了"反推出
      * 有这么个限制。默认值在 [BackupDefaults]，取值范围在 [RetentionLimit]。
      */
     val moduleRetention: Int = BackupDefaults.RETENTION,
     val bootRetention: Int = BackupDefaults.BOOT_RETENTION,
-    val rollbackRetention: Int = BackupDefaults.ROLLBACK_RETENTION,
     /** 保留额度那一块是否展开。它是"设一次就不管"的设置，摊开会把备份选项挤下去。 */
     val retentionExpanded: Boolean = false,
 ) {
@@ -319,10 +318,9 @@ data class BackupActions(
     /** 自动备份写到哪：本机 / 云端各一个。 */
     val onSetAutoBackupLocal: (Boolean) -> Unit,
     val onSetAutoBackupCloud: (Boolean) -> Unit,
-    /** 保留额度：模块 / boot / 回滚点各几次。值由数据层钳过，界面传原值即可。 */
+    /** 保留额度：模块 / boot 各几次。值由数据层钳过，界面传原值即可。 */
     val onSetModuleRetention: (Int) -> Unit,
     val onSetBootRetention: (Int) -> Unit,
-    val onSetRollbackRetention: (Int) -> Unit,
     /** 保留额度那一块的展开/收起。 */
     val onToggleRetention: () -> Unit,
     val onToggleCloud: () -> Unit,

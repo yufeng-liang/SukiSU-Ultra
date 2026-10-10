@@ -35,7 +35,6 @@ class BackupSelectionTest {
             session = id,
             label = id,
             rows = (1..rows).map { row("$id-$it", origin) },
-            isRollback = false,
         )
 
     @Test

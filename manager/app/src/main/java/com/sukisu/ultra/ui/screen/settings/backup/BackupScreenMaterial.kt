@@ -419,7 +419,7 @@ private fun ModulePickerListMaterial(state: BackupUiState, actions: BackupAction
 }
 
 /**
- * 保留额度那一块：三个滑块（模块 / boot / 回滚点）。
+ * 保留额度那一块：两个滑块（模块 / boot）。
  *
  * 默认收起，理由与 Miuix 那一版相同（见 `RetentionCardMiuix`）。两个主题共用同一份取值与
  * 提交时机——滑块只在松手时提交，中途不落盘。
@@ -467,13 +467,6 @@ private fun RetentionCardMaterial(state: BackupUiState, actions: BackupActions) 
                         value = state.bootRetention,
                         max = RetentionLimit.MAX_BOOT,
                         onCommit = actions.onSetBootRetention,
-                    )
-                    RetentionSliderMaterial(
-                        title = stringResource(R.string.backup_retention_rollback),
-                        summary = stringResource(R.string.backup_retention_rollback_summary),
-                        value = state.rollbackRetention,
-                        max = RetentionLimit.MAX_ROLLBACK,
-                        onCommit = actions.onSetRollbackRetention,
                     )
                 }
             }

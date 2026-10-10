@@ -24,8 +24,6 @@ object BackupDefaults {
     /** boot 单张原厂镜像 32–96MB，留 5 份就是几百 MB，默认只留 2 份。 */
     const val BOOT_RETENTION = 2
 
-    /** 回滚点默认每个项目留 1 份：它是"恢复到一半出问题"时的一次性退路，不是版本历史。 */
-    const val ROLLBACK_RETENTION = 1
 }
 
 /**
@@ -93,7 +91,6 @@ class BackupRepository(private val context: Context = ksuApp) {
             storages = listOf(localStorage),
             retention = settings.backupRetention,
             bootRetention = settings.backupBootRetention,
-            rollbackRetention = settings.backupRollbackRetention,
         )
     }
 
@@ -122,7 +119,6 @@ class BackupRepository(private val context: Context = ksuApp) {
         storages = listOf(cloudStorage()),
         retention = settings.backupRetention,
         bootRetention = settings.backupBootRetention,
-        rollbackRetention = settings.backupRollbackRetention,
     )
 
     private fun storageFor(origin: BackupOrigin): BackupStorage =
@@ -165,13 +161,10 @@ class BackupRepository(private val context: Context = ksuApp) {
     suspend fun list(origin: BackupOrigin, kind: BackupKind): Result<List<BackupEntry>> =
         withContext(Dispatchers.IO) { engineFor(origin).list(storageFor(origin), kind) }
 
-    /**
-     * 恢复。回滚点始终落在本地后端：从云端恢复时把当前那一项写回云端既违背设计
-     * （回滚点不上云），boot 时还等于每次恢复先上传 32–96MB。
-     */
+    /** 恢复 [entry]：从它所属的后端读归档，交给对应的源装回设备。 */
     suspend fun restore(origin: BackupOrigin, entry: BackupEntry): Result<RestoreOutcome> =
         withContext(Dispatchers.IO) {
-            engineFor(origin).restore(storageFor(origin), entry, rollbackStorage = localStorage)
+            engineFor(origin).restore(storageFor(origin), entry)
         }
 
     /** 删掉这几条备份：归档、边车 meta 和索引一起清。 */

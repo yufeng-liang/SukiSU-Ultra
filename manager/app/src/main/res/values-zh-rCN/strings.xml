@@ -653,7 +653,7 @@
     <string name="backup_tab_backup">备份</string>
     <string name="backup_tab_restore">恢复</string>
     <string name="backup_tab_restore_count">恢复（%1$d）</string>
-    <string name="backup_entry_summary">备份模块与原厂 boot 镜像，可备份在本机或云端。</string>
+    <string name="backup_entry_summary">模块、原厂boot镜像可备份到本机/云端</string>
     <string name="backup_kind_module">模块</string>
     <string name="backup_kind_boot">原厂 boot 镜像</string>
     <string name="backup_boot_row_title">原厂镜像</string>
@@ -704,7 +704,6 @@
     <string name="backup_restored">已恢复 %s</string>
     <string name="backup_exported">已导出 %s</string>
     <string name="backup_imported">已导入</string>
-    <string name="backup_rollback_badge">恢复点</string>
     <string name="backup_row_disabled">已禁用</string>
     <string name="backup_restore_failed">恢复失败</string>
     <string name="backup_empty_module_local">还没有备份。点「立即备份」将模块打包备份到本机。</string>
@@ -764,7 +763,6 @@
     <string name="backup_nothing_boot">没有可备份的原厂镜像</string>
     <string name="backup_nothing_module">没有可备份的模块</string>
     <string name="backup_group_summary">%1$s · %2$d 项</string>
-    <string name="backup_group_rollback">恢复点</string>
     <string name="backup_detail_title">备份详情</string>
     <plurals name="backup_group_items">
         <item quantity="other">%1$d 项</item>
@@ -812,14 +810,12 @@
     <string name="module_contribution_settings_title">模块投稿</string>
     <string name="module_contribution_settings_summary">安装本地模块时，提示分享尚未收录的模块</string>
 
-    <!-- 保留额度。三档各自上下限不同（模块 1–20、boot 1–10、回滚点 1–5），说明里不写死数字，
+    <!-- 保留额度。两档上下限不同（模块 1–20、boot 1–10），说明里不写死数字，
          免得改了 `RetentionLimit` 而文案还在说旧值。 -->
     <string name="backup_retention_title">保留几次备份</string>
     <string name="backup_retention_summary">超出数量的旧备份会在下次备份时自动删除。</string>
     <string name="backup_retention_module">模块</string>
     <string name="backup_retention_boot">原厂 boot 镜像</string>
-    <string name="backup_retention_rollback">恢复点（每项）</string>
-    <string name="backup_retention_rollback_summary">恢复前会自动备份当前状态；每个项目保留最近几次。</string>
     <string name="backup_retention_boot_summary">单张镜像 32–96MB，数量过多会占用较多存储空间。</string>
     <string name="backup_retention_count">%1$d 次</string>
 </resources>

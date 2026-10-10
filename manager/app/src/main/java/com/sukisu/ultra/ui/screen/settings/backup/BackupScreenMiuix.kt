@@ -524,7 +524,7 @@ private fun ModulePickerMiuix(state: BackupUiState, actions: BackupActions) {
 }
 
 /**
- * 保留额度那一块：三个滑块（模块 / boot / 回滚点）。
+ * 保留额度那一块：两个滑块（模块 / boot）。
  *
  * 默认收起：它是"设一次就不管"的东西，三条滑块常驻会把上面真正要用的备份选项顶到屏幕外。
  * 收起时标题右边写着当前三个值，不改也能看见现在是多少。
@@ -577,13 +577,6 @@ private fun RetentionCardMiuix(state: BackupUiState, actions: BackupActions) {
                     value = state.bootRetention,
                     max = RetentionLimit.MAX_BOOT,
                     onCommit = actions.onSetBootRetention,
-                )
-                RetentionSliderMiuix(
-                    title = stringResource(R.string.backup_retention_rollback),
-                    summary = stringResource(R.string.backup_retention_rollback_summary),
-                    value = state.rollbackRetention,
-                    max = RetentionLimit.MAX_ROLLBACK,
-                    onCommit = actions.onSetRollbackRetention,
                 )
             }
         }

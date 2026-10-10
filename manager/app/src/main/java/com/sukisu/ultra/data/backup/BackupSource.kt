@@ -22,9 +22,6 @@ interface BackupSource {
      */
     suspend fun export(selected: Set<String>? = null): Result<ExportOutcome>
 
-    /** 只导出 [entryId] 这一项；不存在时返回 null。恢复前拍回滚点用它，避免为一项打包全部。 */
-    suspend fun exportOne(entryId: String): Result<BackupArtifact?>
-
     /** 从 [content] 恢复。[metaJson] 是归档的边车元数据，可能为 null（导入的第三方归档）。 */
     suspend fun restore(entry: BackupEntry, metaJson: String?, content: InputStream): Result<RestoreOutcome>
 

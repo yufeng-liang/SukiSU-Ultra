@@ -11,12 +11,10 @@ object RetentionPolicy {
      * 返回应删除的条目：同 kind 内按"哪一次备份"分堆，超出最近 [keep] 次的部分整堆删掉。
      *
      * 额度按**次**算，不按文件算。一次备份 11 个模块会写出 11 个归档，按文件数裁剪会当场删掉
-     * 6 个：用户看到"已写入 11 项"，列表里却只剩 5 项，而那 6 个是他刚备份的。回滚点不参与
-     * 业务额度计算（它有自己的 [RollbackPolicy.expiredRollbacks]），否则拍一次回滚点就会挤掉
-     * 一次业务备份。
+     * 6 个：用户看到"已备份 11 项"，列表里却只剩 5 项，而那 6 个是他刚备份的。
      */
     fun expired(existing: List<BackupEntry>, kind: BackupKind, keep: Int): List<BackupEntry> {
-        val sameKind = existing.filter { it.kind == kind && !RollbackPolicy.isRollback(it) }
+        val sameKind = existing.filter { it.kind == kind }
         if (keep <= 0) return sameKind
         // 会话号就是备份那一刻的时间戳（yyyyMMdd_HHmmss），字典序即时间序；解析不出来的
         // 条目退化成用 createdAt 当会话号，至少不会和别的条目并成一次。
@@ -52,47 +50,11 @@ object RetentionLimit {
     /** boot 单张镜像 32–96MB，留 20 份就是近 2GB，上限比模块更紧。 */
     const val MAX_BOOT = 10
 
-    /** 回滚点是"恢复到一半出问题"时才用得上的安全网，几份就够，多了只是占空间。 */
-    const val MAX_ROLLBACK = 5
-
     fun clamp(value: Int, max: Int = MAX): Int = value.coerceIn(MIN, max)
 
     fun clampModule(value: Int): Int = clamp(value, MAX)
 
     fun clampBoot(value: Int): Int = clamp(value, MAX_BOOT)
-
-    fun clampRollback(value: Int): Int = clamp(value, MAX_ROLLBACK)
-}
-
-/**
- * 回滚点：恢复模块/boot 之前，先把"当前那一项"导出成 `pre_restore_*` 留在本地后端。
- * 恢复失败或恢复后出问题时，用户可以再把这个回滚点恢复回去——root 工具里恢复出错等于变砖，
- * 这个安全网比多留几份业务备份值钱。
- */
-object RollbackPolicy {
-    const val PREFIX = "pre_restore_"
-
-    fun isRollback(entry: BackupEntry): Boolean = entry.fileName.startsWith(PREFIX)
-
-    fun rollbackNameFor(original: BackupEntry, timestamp: String): String =
-        "$PREFIX${timestamp}_${original.fileName}"
-
-    /**
-     * 回滚点按"同一项"裁剪：每个 (kind, entryId) 只留最近 [keep] 份。
-     *
-     * 不能全局只留 1 份——恢复完模块 A 再恢复模块 B，会把 A 的回滚点一起删掉，
-     * 用户以为有安全网其实已经被静默丢弃了。
-     *
-     * [keep] 由调用方给：它是个用户可调的额度，而这里不该知道偏好项从哪来。
-     */
-    fun expiredRollbacks(existing: List<BackupEntry>, keep: Int): List<BackupEntry> {
-        val rollbacks = existing.filter { isRollback(it) }
-        if (keep <= 0) return rollbacks
-        return rollbacks
-            .groupBy { it.kind to it.entryId }
-            .values
-            .flatMap { group -> group.sortedBy { it.createdAt }.dropLast(keep) }
-    }
 }
 
 object AutoBackupPolicy {

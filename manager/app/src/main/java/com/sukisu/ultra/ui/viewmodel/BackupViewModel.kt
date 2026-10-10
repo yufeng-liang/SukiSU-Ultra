@@ -63,7 +63,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             autoBackupRecord = repository.lastAutoBackup(),
             moduleRetention = settings.backupRetention,
             bootRetention = settings.backupBootRetention,
-            rollbackRetention = settings.backupRollbackRetention,
         )
     )
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
@@ -193,11 +192,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     fun setBootRetention(value: Int) {
         settings.backupBootRetention = value
         _uiState.update { it.copy(bootRetention = settings.backupBootRetention) }
-    }
-
-    fun setRollbackRetention(value: Int) {
-        settings.backupRollbackRetention = value
-        _uiState.update { it.copy(rollbackRetention = settings.backupRollbackRetention) }
     }
 
     /** 保留额度那一块的展开/收起。 */
@@ -478,7 +472,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     .joinToString(BackupListFormatter.SEPARATOR),
             )
         }
-        // 恢复会在本地落一个回滚点，列表要跟着更新（它自成一堆）。
+        // 恢复会改动源本身，列表要跟着更新。
         refresh()
     }
 

@@ -163,7 +163,6 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onSetAutoBackupCloud = viewModel::setAutoBackupCloud,
         onSetModuleRetention = viewModel::setModuleRetention,
         onSetBootRetention = viewModel::setBootRetention,
-        onSetRollbackRetention = viewModel::setRollbackRetention,
         onToggleRetention = viewModel::toggleRetention,
         onToggleCloud = viewModel::toggleCloud,
         onToggleModules = viewModel::toggleModules,
@@ -249,12 +248,11 @@ fun groupSummary(group: BackupGroup, showsOrigin: Boolean): String = BackupLabel
  */
 @Composable
 fun retentionSummary(state: BackupUiState): String {
-    val counts = listOf(state.moduleRetention, state.bootRetention, state.rollbackRetention)
+    val counts = listOf(state.moduleRetention, state.bootRetention)
         .map { value -> stringResource(R.string.backup_retention_count, value) }
     val labels = listOf(
         stringResource(R.string.backup_retention_module),
         stringResource(R.string.backup_kind_boot),
-        stringResource(R.string.backup_retention_rollback),
     )
     return labels.zip(counts) { label, count -> "$label $count" }
         .joinToString(BackupListFormatter.SEPARATOR)

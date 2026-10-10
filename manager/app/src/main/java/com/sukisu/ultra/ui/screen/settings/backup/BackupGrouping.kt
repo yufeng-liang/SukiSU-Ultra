@@ -21,8 +21,6 @@ data class BackupGroup(
     val label: String,
     /** 这一组里的条目，新的在前。 */
     val rows: List<BackupRow>,
-    /** 整组都是恢复前自动拍下的回滚点。 */
-    val isRollback: Boolean,
 )
 
 /**
@@ -32,13 +30,10 @@ data class BackupGroup(
  * （[com.sukisu.ultra.data.backup.ArchiveNaming.timestamp] 在打包前只取一次），所以它才是
  * "同一次"的可靠标记。用索引里的 createdAt 分堆会把一次备份拆成好几组——那是每个文件各自
  * 取的时刻，彼此差几毫秒。
- *
- * 回滚点（`pre_restore_<时间戳>_<原名>`）自带自己的时间戳，因此它自成一堆，不会混进
- * 它所保护的那次备份里。
  */
 object BackupGrouping {
 
-    /** 归档名里的 `_YYYYMMDD_HHMMSS`；回滚点名字里也有这一段，取到的是恢复那一刻。 */
+    /** 归档名里的 `_YYYYMMDD_HHMMSS`，即备份那一刻的时间戳。 */
     private val SESSION = Regex("_(\\d{8}_\\d{6})")
 
     fun sessionOf(fileName: String): String? = SESSION.find(fileName)?.groupValues?.get(1)
@@ -61,7 +56,6 @@ object BackupGrouping {
                     session = key.session,
                     label = label(newest.createdAt),
                     rows = groupRows.sortedByDescending { instantOf(it.createdAt) },
-                    isRollback = groupRows.all { it.isRollback },
                 )
             }
             .sortedWith(
