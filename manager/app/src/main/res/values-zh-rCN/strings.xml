@@ -778,12 +778,12 @@
     <string name="backup_deleted">已删除 %1$d 项备份</string>
     <string name="backup_delete_confirm_title">删除这次备份？</string>
     <string name="backup_delete_confirm_body">将从%1$s删除这 %2$d 项，删除后无法恢复。</string>
-    <string name="backup_selection_title">已选 %1$d 份</string>
+    <string name="backup_selection_title">已选 %1$d 次备份</string>
     <string name="backup_selection_delete">删除</string>
     <string name="backup_selection_hint">长按任意一行可多选</string>
     <string name="backup_delete_selected_confirm_title">删除选中的备份？</string>
-    <string name="backup_delete_selected_confirm_body">将删除选中的 %1$d 份备份（共 %2$d 项，本机与云端各自的文件一并删除），删除后无法恢复。</string>
-    <string name="backup_deleted_groups">已删除 %1$d 份备份</string>
+    <string name="backup_delete_selected_confirm_body">将删除选中的 %1$d 次备份（共 %2$d 项，本机与云端各自的文件一并删除），删除后无法恢复。</string>
+    <string name="backup_deleted_groups">已删除 %1$d 次备份</string>
     <string name="backup_share_chooser">分享备份</string>
     <string name="backup_progress_title">正在备份</string>
     <string name="backup_progress_target">第 %1$d/%2$d 个目标 · %3$s %4$s</string>
@@ -813,12 +813,12 @@
 
     <!-- 保留额度。三档各自上下限不同（模块 1–20、boot 1–10、回滚点 1–5），说明里不写死数字，
          免得改了 `RetentionLimit` 而文案还在说旧值。 -->
-    <string name="backup_retention_title">保留几份备份</string>
+    <string name="backup_retention_title">保留几次备份</string>
     <string name="backup_retention_summary">超出数量的旧备份会在下次备份时自动删除。</string>
     <string name="backup_retention_module">模块</string>
     <string name="backup_retention_boot">原厂 boot 镜像</string>
     <string name="backup_retention_rollback">恢复点（每项）</string>
-    <string name="backup_retention_rollback_summary">恢复前会自动备份当前状态；每个项目保留最近几份。</string>
+    <string name="backup_retention_rollback_summary">恢复前会自动备份当前状态；每个项目保留最近几次。</string>
     <string name="backup_retention_boot_summary">单张镜像 32–96MB，数量过多会占用较多存储空间。</string>
-    <string name="backup_retention_count">%1$d 份</string>
+    <string name="backup_retention_count">%1$d 次</string>
 </resources>
