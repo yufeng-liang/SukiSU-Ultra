@@ -15,7 +15,7 @@ class SourceErrorGroupsTest {
         )
 
         assertEquals(1, groups.size)
-        assertEquals(listOf("KernelSU", "uonou.github.io"), groups[0].names)
+        assertEquals(listOf("KernelSU", "uonou.github.io"), groups[0].keys)
         assertEquals("HTTP 404", groups[0].message)
     }
 

@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -66,9 +67,13 @@ class RepoSourceRepositoryImpl(
                 ksuApp.getString(com.sukisu.ultra.R.string.module_repo_source_duplicate)
             }
 
+            // connect/read 超时只管单次连接和单次读：一个每 19 秒吐一个字节的源永远不会触发
+            // readTimeout，探测（以及后面的列表刷新）就会被它无限期占住。callTimeout 给整个
+            // 调用封顶，慢源到点即失败。
             val client = httpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
                 .readTimeout(java.time.Duration.ofSeconds(READ_TIMEOUT_SECONDS))
+                .callTimeout(java.time.Duration.ofSeconds(INDEX_CALL_TIMEOUT_SECONDS))
                 .build()
 
             var resolvedUrl: String? = null
@@ -78,12 +83,17 @@ class RepoSourceRepositoryImpl(
                     val request = Request.Builder().url(candidate).build()
                     client.newCall(request).execute().use { response ->
                         if (response.isSuccessful) {
-                            val body = response.body.string()
-                            if (RepoModuleParser.sniffFormat(body) != null) {
-                                resolvedUrl = candidate
-                            } else {
-                                lastError = "unrecognized format"
-                            }
+                            // 只嗅首字符不算数：畸形 JSON、凑巧带 "modules" 的任意 JSON 都会被
+                            // 当成可用仓库落盘，而列表里一条也解析不出来。这里真解析一遍——
+                            // 复用列表用的同一个入口，判决才和用户看到的结果一致。
+                            // 解析通过就算仓库，空索引（[]、modules: []）也是合法仓库。
+                            RepoModuleParser.parse(
+                                body = response.readIndexBody(),
+                                sourceId = "",
+                                sourceName = "",
+                                indexUrl = candidate,
+                            )
+                            resolvedUrl = candidate
                         } else {
                             lastError = "HTTP ${response.code}"
                         }
@@ -108,8 +118,21 @@ class RepoSourceRepositoryImpl(
                 name = (name?.takeIf { it.isNotBlank() } ?: defaultSourceName(url)),
                 url = url,
             )
-            save(existing + source)
-            source
+            // 上面这一串探测最长能等 35 秒，用户完全可能在等的时候删掉一个源、或者改个名字。
+            // 用探测前读到的快照落盘，就等于把窗口里的每一次改动抹掉——那不是"加了个源"，
+            // 是把用户刚做的事回滚了。所以落盘时重读一次最新列表，只把自己并进去。
+            var persisted = source
+            mutate { latest ->
+                val already = latest.firstOrNull { existing -> isSameSource(existing.url, url) }
+                if (already != null) {
+                    // 窗口里正好也有人加了同一个源：留着最早那条，别写第二份。
+                    persisted = already
+                    latest
+                } else {
+                    latest + source
+                }
+            }
+            persisted
         }
     }
 
@@ -317,4 +340,30 @@ internal fun defaultSourceName(url: String): String {
         return "${segments[0]}/${segments[1].removeSuffix(".git")}"
     }
     return host
+}
+
+/**
+ * 索引是模块元数据，正常只有几百 KB。没有上限的话，一个坏地址（或一个被塞满的仓库）就能让
+ * body.string() 把一个几百 MB 的响应整读进内存，那是一次稳妥的 OOM。8 MiB 留了几十倍的余量。
+ */
+internal const val MAX_INDEX_RESPONSE_BYTES = 8L * 1024 * 1024
+
+/**
+ * 整次索引请求（连接 + 重定向 + 读体）的上限。连接/读超时是单项超时，一个每十几秒吐一个
+ * 字节的源永远碰不到它们，探测和列表刷新就被无限期占住；只有整次调用的封顶拦得住。
+ */
+internal const val INDEX_CALL_TIMEOUT_SECONDS = 20L
+
+/** 响应超限。带可读原因，失败时会原样拼进给用户看的提示里。 */
+internal class IndexResponseTooLargeException(limitBytes: Long) :
+    Exception("index response exceeds ${limitBytes / (1024 * 1024)} MiB")
+
+/**
+ * 读索引响应体，最多读 [limitBytes] 字节：peekBody 只多取 1 字节用来判断有没有超限，
+ * 超了就带着理由失败，绝不把整个响应读进内存。索引读取处处都该走这里，免得漏一处就漏一个 OOM。
+ */
+internal fun Response.readIndexBody(limitBytes: Long = MAX_INDEX_RESPONSE_BYTES): String {
+    val bytes = peekBody(limitBytes + 1).bytes()
+    if (bytes.size > limitBytes) throw IndexResponseTooLargeException(limitBytes)
+    return String(bytes, Charsets.UTF_8)
 }

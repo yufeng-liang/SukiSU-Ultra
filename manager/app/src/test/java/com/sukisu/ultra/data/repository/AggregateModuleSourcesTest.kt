@@ -244,4 +244,25 @@ class AggregateModuleSourcesTest {
         assertEquals(listOf("first", "dup", "last"), result.modules.map { it.moduleId })
         assertEquals("c", result.modules[1].sourceId)
     }
+
+    @Test
+    fun `an alias of a folded entry keeps pointing at the surviving module`() {
+        // 第三条把 Alpha/x 和 Beta/y 两条不同的条目折成一条，此后别名键 beta 必须跟着改指过去：
+        // 还指着已被移除的那条的话，第四条（只用别名 Beta）会以为它还在，把已经合并过的模块
+        // 当成新条目追到列表尾部——重复，而且位置错乱。
+        val outcomes = listOf(
+            Result.success(
+                listOf(
+                    module("x", "a", "RepoA", name = "Alpha"),
+                    module("y", "a", "RepoA", name = "Beta"),
+                    module("y", "a", "RepoA", name = "Alpha"),
+                    module("q", "a", "RepoA", name = "Beta"),
+                )
+            ),
+        )
+        val result = aggregateModuleSources(listOf(sourceA), outcomes)
+
+        assertEquals(1, result.modules.size)
+        assertEquals("x", result.modules.single().moduleId)
+    }
 }

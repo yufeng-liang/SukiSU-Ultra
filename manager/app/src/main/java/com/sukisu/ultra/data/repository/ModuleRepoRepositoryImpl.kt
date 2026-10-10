@@ -7,11 +7,23 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import okhttp3.Request
 
 class ModuleRepoRepositoryImpl(
     private val sourceRepo: RepoSourceRepository = RepoSourceRepositoryImpl(),
 ) : ModuleRepoRepository {
+
+    /**
+     * 刷新用的是全局客户端，它只设了连接和读的超时：一个每十几秒吐一个字节的源可以让一次
+     * 刷新拖到永远。这里给整次调用封顶（newBuilder 复制的是共享的连接池与线程池，不会额外
+     * 建连接资源）。懒初始化是为了不在构造时碰 ksuApp。
+     */
+    private val indexClient: OkHttpClient by lazy {
+        ksuApp.okhttpClient.newBuilder()
+            .callTimeout(java.time.Duration.ofSeconds(INDEX_CALL_TIMEOUT_SECONDS))
+            .build()
+    }
 
     override suspend fun fetchModules(): Result<ModuleRepoFetchResult> = withContext(Dispatchers.IO) {
         try {
@@ -36,11 +48,12 @@ class ModuleRepoRepositoryImpl(
     private suspend fun fetchSource(source: RepoSource): Result<List<RepoModule>> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder().url(source.url).build()
-            ksuApp.okhttpClient.newCall(request).execute().use { response ->
+            indexClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     throw Exception("HTTP ${response.code}")
                 }
-                val body = response.body.string()
+                // 索引限个大小读：坏地址指向一个几百 MB 的文件时，整读进内存就是一次 OOM。
+                val body = response.readIndexBody()
                 Result.success(RepoModuleParser.parse(body, source.id, source.name, source.url))
             }
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -84,6 +97,10 @@ fun aggregateModuleSources(
         var entry = modules[target] ?: module
         existing.drop(1).forEach { other ->
             modules.remove(other)?.let { entry = entry.mergedWith(it) }
+            // 被折进来的那条已经从 modules 里消失，但它名下的别名键还指着它。下一次碰到只用
+            // 该别名的模块时，这条陈旧映射会让人以为条目还在——合并过的模块会被当成新条目
+            // 重新追到列表尾部，既重复又错位。所以删除的同时把指向它的键改指到留下的那条。
+            canonicalByKey.entries.filter { it.value == other }.forEach { it.setValue(target) }
         }
         entry = entry.mergedWith(module)
         modules[target] = entry

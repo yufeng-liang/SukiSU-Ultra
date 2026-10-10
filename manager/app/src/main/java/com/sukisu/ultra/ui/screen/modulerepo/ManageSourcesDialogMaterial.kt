@@ -48,9 +48,19 @@ fun ManageSourcesDialogMaterial(
     var urlInput by rememberSaveable { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<RepoSource?>(null) }
     var editingSource by remember { mutableStateOf<RepoSource?>(null) }
-    // Clear the add-field once a source actually landed (success), keep it on failure.
-    LaunchedEffect(state.sources.size) {
-        urlInput = ""
+    // 只有真的新增成功才清空输入框：失败时用户填的内容必须留在原处，否则他要重新敲一遍。
+    // key 用「最后新增成功的地址」而不是源的数量——数量变化表达不了「这一次成功」，删掉一个已有源
+    // 同样会改变数量，会凭空清掉用户正在输入的内容。已处理的地址记在 handledAddedUrl 里，这样对话框
+    // 关掉再打开（effect 重新进入组合）不会又清一次；effect 挂在 show 之下，关掉即停止。
+    val lastAddedSourceUrl = state.lastAddedSourceUrl
+    var handledAddedUrl by remember { mutableStateOf<String?>(null) }
+    if (show) {
+        LaunchedEffect(lastAddedSourceUrl) {
+            if (lastAddedSourceUrl != null && lastAddedSourceUrl != handledAddedUrl) {
+                handledAddedUrl = lastAddedSourceUrl
+                urlInput = ""
+            }
+        }
     }
     val deleteConfirmTitle = stringResource(R.string.module_repo_source_delete_confirm)
     val deleteDialog = rememberConfirmDialog(onConfirm = {
@@ -185,9 +195,9 @@ fun ManageSourcesDialogMaterial(
         },
         confirmButton = {
             TextButton(
+                // 清空输入框交给「新增成功」驱动，失败时保留用户填的内容。
                 onClick = {
                     actions.onAddSource(urlInput, null)
-                    urlInput = ""
                 },
                 enabled = urlInput.isNotBlank() && !state.isAddingSource,
             ) {

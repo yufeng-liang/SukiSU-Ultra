@@ -68,6 +68,7 @@ fun ModuleRepoScreen() {
         onRemoveSource = viewModel::removeSource,
         onSetSourceEnabled = viewModel::setSourceEnabled,
         onRenameSource = viewModel::renameSource,
+        onDismissSourceError = viewModel::dismissSourceError,
     )
 
     when (LocalUiMode.current) {

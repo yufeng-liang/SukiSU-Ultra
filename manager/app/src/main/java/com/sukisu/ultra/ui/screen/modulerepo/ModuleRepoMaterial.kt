@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.InstallMobile
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Button
@@ -97,6 +98,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.model.RepoModule
+import com.sukisu.ultra.data.repository.RepoSource
 import top.yukonga.miuix.kmp.utils.PagerNavigationSpringSpec
 import com.sukisu.ultra.ui.component.ScrollToTopOnChange
 import com.sukisu.ultra.ui.component.dialog.ConfirmDialogHandle
@@ -211,6 +213,9 @@ fun ModuleRepoScreenMaterial(
                         modules = state.searchResults,
                         listState = searchListState,
                         modifier = Modifier.fillMaxSize(),
+                        // 搜索无结果不是「还没配源」，这里没有什么可以添加；地址栏就在上方，再摆一个
+                        // 什么都不做的「添加仓库」只会是死控件。
+                        emptyHint = stringResource(R.string.module_repo_search_no_results),
                         onModuleClick = {
                             closeSearch()
                             actions.onOpenRepoDetail(it)
@@ -249,7 +254,8 @@ fun ModuleRepoScreenMaterial(
                     // sees; it has to lead somewhere instead of just stating the fact.
                     RepoEmptyPrompt(
                         hint = stringResource(R.string.module_repo_sources_empty),
-                        onAddSource = { showSourcesDialog = true },
+                        actionLabel = stringResource(R.string.module_repo_add_repo),
+                        onAction = { showSourcesDialog = true },
                     )
                 } else {
                     LoadingIndicator()
@@ -291,8 +297,12 @@ fun ModuleRepoScreenMaterial(
                         .fillMaxSize()
                         .nestedScroll(scrollBehavior.nestedScrollConnection),
                     sourceErrors = state.sourceErrors,
-                    sourcesEmpty = state.sources.isEmpty(),
-                    onAddSource = { showSourcesDialog = true },
+                    sources = state.sources,
+                    dismissedErrors = state.dismissedSourceErrors,
+                    emptyHint = repoEmptyHint(repoEmptyReason(state.sources)),
+                    emptyActionLabel = repoEmptyAction(repoEmptyReason(state.sources)),
+                    onEmptyAction = { showSourcesDialog = true },
+                    onDismissSourceError = actions.onDismissSourceError,
                     onModuleClick = actions.onOpenRepoDetail
                 )
             }
@@ -314,8 +324,12 @@ private fun RepoModuleList(
     modifier: Modifier = Modifier,
     bottomPadding: Dp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
     sourceErrors: Map<String, String> = emptyMap(),
-    sourcesEmpty: Boolean = false,
-    onAddSource: () -> Unit = {},
+    sources: List<RepoSource> = emptyList(),
+    dismissedErrors: Set<String> = emptySet(),
+    emptyHint: String? = null,
+    emptyActionLabel: String? = null,
+    onEmptyAction: () -> Unit = {},
+    onDismissSourceError: (String) -> Unit = {},
     onModuleClick: (RepoModule) -> Unit,
 ) {
     LazyColumn(
@@ -330,20 +344,26 @@ private fun RepoModuleList(
     ) {
         if (sourceErrors.isNotEmpty()) {
             item(key = "source_errors_banner") {
-                val groups = remember(sourceErrors) { groupSourceErrors(sourceErrors) }
+                // 关掉的通知只针对这一次抓取结果，下一次结果落地时会清空（见 ModuleRepoViewModel）。
+                val visibleErrors = remember(sourceErrors, dismissedErrors) {
+                    sourceErrors.filterValues { message -> message !in dismissedErrors }
+                }
+                val groups = remember(visibleErrors) { groupSourceErrors(visibleErrors) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     groups.forEach { group ->
-                        SourceErrorBanner(names = group.names, message = group.message)
+                        SourceErrorBanner(
+                            keys = group.keys,
+                            sources = sources,
+                            message = group.message,
+                            onDismiss = { onDismissSourceError(group.message) },
+                        )
                     }
                 }
             }
         }
         if (modules.isEmpty()) {
             item(key = "repo_empty_prompt") {
-                RepoEmptyPrompt(
-                    hint = if (sourcesEmpty) stringResource(R.string.module_repo_sources_empty) else null,
-                    onAddSource = onAddSource,
-                )
+                RepoEmptyPrompt(hint = emptyHint, actionLabel = emptyActionLabel, onAction = onEmptyAction)
             }
         }
         items(modules, key = { "${it.sourceId}|${it.moduleId}" }, contentType = { "module" }) { module ->
@@ -463,7 +483,7 @@ private fun RepoModuleList(
  * instead of only stating that the list is empty.
  */
 @Composable
-private fun RepoEmptyPrompt(hint: String?, onAddSource: () -> Unit) {
+private fun RepoEmptyPrompt(hint: String?, actionLabel: String? = null, onAction: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -474,8 +494,11 @@ private fun RepoEmptyPrompt(hint: String?, onAddSource: () -> Unit) {
             Text(text = hint, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp))
         }
-        Button(onClick = onAddSource) {
-            Text(stringResource(R.string.module_repo_add_repo))
+        // actionLabel 为空就是不提供出口（搜索无结果）；有出口时空态才知道该把人送去哪里。
+        if (actionLabel != null) {
+            Button(onClick = onAction) {
+                Text(actionLabel)
+            }
         }
     }
 }
@@ -486,7 +509,12 @@ private fun RepoEmptyPrompt(hint: String?, onAddSource: () -> Unit) {
  * share one notice — the title names them, the message is stated once.
  */
 @Composable
-private fun SourceErrorBanner(names: List<String>, message: String) {
+private fun SourceErrorBanner(
+    keys: List<String>,
+    sources: List<RepoSource>,
+    message: String,
+    onDismiss: () -> Unit,
+) {
     val contentColor = MaterialTheme.colorScheme.onErrorContainer
     TonalCard(containerColor = MaterialTheme.colorScheme.errorContainer) {
         Row(
@@ -503,9 +531,13 @@ private fun SourceErrorBanner(names: List<String>, message: String) {
                     .padding(top = 2.dp)
                     .size(20.dp),
             )
-            Column(modifier = Modifier.padding(start = 12.dp)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp),
+            ) {
                 Text(
-                    text = sourceErrorTitle(names),
+                    text = sourceErrorTitle(keys, sources),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = contentColor,
@@ -518,6 +550,14 @@ private fun SourceErrorBanner(names: List<String>, message: String) {
                     color = contentColor,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.close),
+                    tint = contentColor,
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }
@@ -593,6 +633,7 @@ fun ModuleRepoDetailScreenMaterial(
 
                     1 -> ReleasesPage(
                         detailReleases = state.detailReleases,
+                        hasInstallableArchive = state.module.releases.any { it.assets.isNotEmpty() },
                         innerPadding = paddedInnerPadding,
                         scrollBehavior = scrollBehavior,
                         confirmTitle = confirmTitle,
@@ -699,6 +740,7 @@ private fun ReadmePage(
 @Composable
 fun ReleasesPage(
     detailReleases: List<ReleaseArg>,
+    hasInstallableArchive: Boolean,
     innerPadding: PaddingValues,
     scrollBehavior: TopAppBarScrollBehavior,
     confirmTitle: String,
@@ -721,6 +763,12 @@ fun ReleasesPage(
         ),
         verticalArrangement = Arrangement.spacedBy(13.dp),
     ) {
+        // 索引里根本没有可安装产物时，页面上原来只有一个空列表：没有安装入口，也没有一句解释。
+        if (!hasInstallableArchive) {
+            item(key = "no_installable_archive") {
+                RepoEmptyPrompt(hint = stringResource(R.string.module_repo_no_installable_archive))
+            }
+        }
         if (detailReleases.isNotEmpty()) {
             itemsIndexed(
                 items = detailReleases,

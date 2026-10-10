@@ -44,7 +44,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -78,6 +77,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.repository.RepoSource
 import com.sukisu.ultra.ui.component.ListPopupDefaults
 import top.yukonga.miuix.kmp.utils.PagerNavigationSpringSpec
 import com.sukisu.ultra.ui.component.ScrollToTopOnChange
@@ -123,6 +123,7 @@ import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.FileDownloads
 import top.yukonga.miuix.kmp.icon.extended.HorizontalSplit
 import top.yukonga.miuix.kmp.icon.extended.Link
@@ -149,9 +150,8 @@ fun ModuleRepoScreenMiuix(
     val sourceTint = colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
     val showSourcesDialog = remember { mutableStateOf(false) }
 
-    LaunchedEffect(searchStatus.searchText) {
-        actions.onSearchTextChange(searchStatus.searchText)
-    }
+    // 搜索框每次输入都会通过 onSearchStatusChange 送进 ViewModel（见 SearchBar），这里原先再回写
+    // 一遍是第二条通路，除了让状态多抖一次没有作用，删掉。
 
     val scrollBehavior = MiuixScrollBehavior()
     val dynamicTopPadding by remember {
@@ -274,6 +274,12 @@ fun ModuleRepoScreenMiuix(
                         .fillMaxSize()
                         .overScrollVertical(),
                 ) {
+                    // Material 侧同样只有一句「没有匹配的仓库」，两边行为保持一致。
+                    if (state.searchResults.isEmpty()) {
+                        item(key = "search_empty") {
+                            RepoEmptyPrompt(hint = stringResource(R.string.module_repo_search_no_results))
+                        }
+                    }
                     item {
                         Spacer(Modifier.height(6.dp))
                     }
@@ -464,7 +470,8 @@ fun ModuleRepoScreenMiuix(
                             // new user sees; it has to lead somewhere instead of just stating it.
                             RepoEmptyPrompt(
                                 hint = stringResource(R.string.module_repo_sources_empty),
-                                onAddSource = { showSourcesDialog.value = true },
+                                actionLabel = stringResource(R.string.module_repo_add_repo),
+                                onAction = { showSourcesDialog.value = true },
                             )
                         } else if (pullToRefreshState.refreshState == RefreshState.Idle) {
                             InfiniteProgressIndicator()
@@ -488,9 +495,13 @@ fun ModuleRepoScreenMiuix(
                         ) {
                             if (state.sourceErrors.isNotEmpty()) {
                                 item(key = "source_errors_banner") {
-                                    val groups = remember(state.sourceErrors) {
-                                        groupSourceErrors(state.sourceErrors)
+                                    // 关掉的通知只针对这一次抓取结果，下一次结果落地时会清空。
+                                    val visibleErrors = remember(state.sourceErrors, state.dismissedSourceErrors) {
+                                        state.sourceErrors.filterValues { message ->
+                                            message !in state.dismissedSourceErrors
+                                        }
                                     }
+                                    val groups = remember(visibleErrors) { groupSourceErrors(visibleErrors) }
                                     Column(
                                         modifier = Modifier.padding(bottom = 12.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -500,12 +511,21 @@ fun ModuleRepoScreenMiuix(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .padding(horizontal = 12.dp),
-                                                title = sourceErrorTitle(group.names),
+                                                title = sourceErrorTitle(group.keys, state.sources),
                                                 message = stringResource(
                                                     R.string.module_repo_fetch_failed,
                                                     group.message,
                                                 ),
                                                 icon = Icons.Rounded.ErrorOutline,
+                                                action = {
+                                                    IconButton(onClick = { actions.onDismissSourceError(group.message) }) {
+                                                        Icon(
+                                                            imageVector = MiuixIcons.Close,
+                                                            contentDescription = stringResource(R.string.close),
+                                                            tint = colorScheme.onSurfaceVariantSummary,
+                                                        )
+                                                    }
+                                                },
                                             )
                                         }
                                     }
@@ -514,12 +534,9 @@ fun ModuleRepoScreenMiuix(
                             if (state.modules.isEmpty()) {
                                 item(key = "repo_empty_prompt") {
                                     RepoEmptyPrompt(
-                                        hint = if (state.sources.isEmpty()) {
-                                            stringResource(R.string.module_repo_sources_empty)
-                                        } else {
-                                            null
-                                        },
-                                        onAddSource = { showSourcesDialog.value = true },
+                                        hint = repoEmptyHint(repoEmptyReason(state.sources)),
+                                        actionLabel = repoEmptyAction(repoEmptyReason(state.sources)),
+                                        onAction = { showSourcesDialog.value = true },
                                     )
                                 }
                             }
@@ -679,7 +696,7 @@ fun ModuleRepoScreenMiuix(
  * instead of only stating that the list is empty.
  */
 @Composable
-private fun RepoEmptyPrompt(hint: String?, onAddSource: () -> Unit) {
+private fun RepoEmptyPrompt(hint: String?, actionLabel: String? = null, onAction: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -694,11 +711,14 @@ private fun RepoEmptyPrompt(hint: String?, onAddSource: () -> Unit) {
             )
             Spacer(Modifier.height(12.dp))
         }
-        TextButton(
-            modifier = Modifier.padding(horizontal = 24.dp),
-            text = stringResource(R.string.module_repo_add_repo),
-            onClick = onAddSource,
-        )
+        // actionLabel 为空就是不提供出口（搜索无结果、该模块没有可安装产物）。
+        if (actionLabel != null) {
+            TextButton(
+                modifier = Modifier.padding(horizontal = 24.dp),
+                text = actionLabel,
+                onClick = onAction,
+            )
+        }
     }
 }
 
@@ -780,6 +800,7 @@ private fun ReadmePage(
 @Composable
 fun ReleasesPage(
     detailReleases: List<ReleaseArg>,
+    hasInstallableArchive: Boolean,
     innerPadding: PaddingValues,
     scrollBehavior: ScrollBehavior,
     backdrop: LayerBackdrop?,
@@ -808,6 +829,12 @@ fun ReleasesPage(
             ),
             overscrollEffect = null,
         ) {
+            // 索引里根本没有可安装产物时，页面上原来只有一个空列表：没有安装入口，也没有一句解释。
+            if (!hasInstallableArchive) {
+                item(key = "no_installable_archive") {
+                    RepoEmptyPrompt(hint = stringResource(R.string.module_repo_no_installable_archive))
+                }
+            }
             if (detailReleases.isNotEmpty()) {
                 item {
                     Spacer(Modifier.height(6.dp))
@@ -1343,6 +1370,7 @@ fun ModuleRepoDetailScreenMiuix(
 
                 1 -> ReleasesPage(
                     detailReleases = state.detailReleases,
+                    hasInstallableArchive = state.module.releases.any { it.assets.isNotEmpty() },
                     innerPadding = innerPadding,
                     scrollBehavior = scrollBehavior,
                     backdrop = backdrop,

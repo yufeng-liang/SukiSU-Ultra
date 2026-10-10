@@ -182,21 +182,19 @@ class ModuleRepoViewModel(
                     } else {
                         withContext(Dispatchers.Default) { sortModules(outcome.modules, order) }
                     }
+                    // 新的抓取结果落地时把「已关掉的通知」清空：用户关掉的是这一次的失败，不是表示
+                    // 以后都不想看见，所以每次刷新都重新通知一遍。
                     _uiState.update {
                         it.copy(
                             modules = sorted,
-                            sourceErrors = outcome.sourceErrors,
+                            sourceErrors = resolveSourceErrorKeys(outcome.sourceErrors, current.sources),
+                            dismissedSourceErrors = emptySet(),
                             offline = !hasAnyNetwork(ksuApp)
                         )
                     }
+                    // 失败原因由列表里的错误卡片逐条给出（哪个源、什么原因），这里不再弹一遍 Toast：
+                    // 同一件事说两次，而且 Toast 只带得走一条消息，信息量反而不如卡片。
                     refreshSearchResults()
-                    if (outcome.modules.isEmpty() && outcome.sourceErrors.isNotEmpty()) {
-                        Toast.makeText(
-                            ksuApp,
-                            ksuApp.getString(R.string.module_repo_fetch_failed, outcome.sourceErrors.values.first()),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
                     _uiState.update { it.copy(isRefreshing = false, hasLoadedOnce = true) }
                     runPendingRefresh()
                 }.onFailure { e ->
@@ -258,6 +256,9 @@ class ModuleRepoViewModel(
                 _uiState.update { it.copy(isAddingSource = false, addingSourceUrl = null) }
                 reloadSources()
                 result.onSuccess {
+                    // 先记下这次添加成功（内容就是用户填的原字符串），对话框看到它变化才清空输入框；
+                    // 失败路径不动它，用户填的地址就留在输入框里等着改或重试。
+                    _uiState.update { it.copy(lastAddedSourceUrl = rawUrl) }
                     Toast.makeText(ksuApp, ksuApp.getString(R.string.module_repo_source_added), Toast.LENGTH_SHORT).show()
                     refresh()
                 }.onFailure { e ->
@@ -301,13 +302,35 @@ class ModuleRepoViewModel(
                 candidates = candidatesFor(sources),
                 modules = st.modules.map(::renamed),
                 searchResults = st.searchResults.map(::renamed),
-                sourceErrors = if (previousName == trimmed) {
-                    st.sourceErrors
-                } else {
-                    st.sourceErrors.mapKeys { (key, value) -> if (key == previousName) trimmed else key }
-                },
+                // 错误的键现在是源地址（见 resolveSourceErrorKeys），改名不影响它；展示用的名字是
+                // 渲染时按当前源列表现算的，所以这里不用再跟着改名把键修一遍。
+                sourceErrors = st.sourceErrors,
             )
         }
+    }
+
+    /**
+     * 数据层是按源「名字」上报失败的，而名字允许重复（同一个 host 下的两个索引默认就同名），
+     * 重名时后者会把前者顶掉，界面上根本看不出是哪个源失败了。进界面状态前先把名字换成源地址，
+     * 让每个源各占一个键。名字对不上任何源（源已被删除或改过名）或对应多个源时保留原键，
+     * 由界面在文案里补上能区分的地址。
+     */
+    /** 关掉一条失败通知，直到下一次抓取结果落地为止。 */
+    fun dismissSourceError(message: String) {
+        _uiState.update { it.copy(dismissedSourceErrors = it.dismissedSourceErrors + message) }
+    }
+
+    private fun resolveSourceErrorKeys(
+        sourceErrors: Map<String, String>,
+        sources: List<RepoSource>,
+    ): Map<String, String> {
+        if (sourceErrors.isEmpty()) return sourceErrors
+        val resolved = LinkedHashMap<String, String>(sourceErrors.size)
+        sourceErrors.forEach { (name, message) ->
+            val matched = sources.filter { it.name == name }
+            resolved[if (matched.size == 1) matched.first().url else name] = message
+        }
+        return resolved
     }
 
     private fun runPendingRefresh() {
