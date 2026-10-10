@@ -1,7 +1,13 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
 import android.content.Context
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -35,7 +41,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.rememberSliderState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -60,13 +68,16 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.AutoBackupOutcome
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
+import com.sukisu.ultra.data.backup.RetentionLimit
 import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.ui.component.material.ExpressiveTabRow
 import com.sukisu.ultra.ui.component.material.SegmentedCheckboxItem
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
 import com.sukisu.ultra.ui.component.material.SegmentedSwitchItem
+import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.util.BackupText
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -306,24 +317,13 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
  */
 @Composable
 private fun OriginTagMaterial(origin: BackupOrigin) {
-    val cloud = origin == BackupOrigin.CLOUD
     Text(
         text = stringResource(BackupLabels.origin(origin)),
         style = MaterialTheme.typography.labelSmall,
-        color = if (cloud) {
-            MaterialTheme.colorScheme.onTertiaryContainer
-        } else {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        },
+        color = BackupOriginColors.onContainer(origin),
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(
-                if (cloud) {
-                    MaterialTheme.colorScheme.tertiaryContainer
-                } else {
-                    MaterialTheme.colorScheme.primaryContainer
-                }
-            )
+            .background(BackupOriginColors.container(origin))
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
@@ -408,6 +408,110 @@ private fun ModulePickerListMaterial(state: BackupUiState, actions: BackupAction
             summary = ModuleOptionText.summary(module, disabledLabel),
             checked = module.id in state.selectedModuleIds,
             onCheckedChange = { actions.onToggleModule(module.id) },
+        )
+    }
+}
+
+/**
+ * 保留额度那一块：三个滑块（模块 / boot / 回滚点）。
+ *
+ * 默认收起，理由与 Miuix 那一版相同（见 `RetentionCardMiuix`）。两个主题共用同一份取值与
+ * 提交时机——滑块只在松手时提交，中途不落盘。
+ */
+@Composable
+private fun RetentionCardMaterial(state: BackupUiState, actions: BackupActions) {
+    TonalCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            val rotation by animateFloatAsState(
+                targetValue = if (state.retentionExpanded) 180f else 0f,
+                label = "retentionArrow",
+            )
+            SegmentedListItem(
+                headlineContent = { Text(stringResource(R.string.backup_retention_title)) },
+                supportingContent = { Text(retentionSummary(state)) },
+                trailingContent = {
+                    Icon(
+                        imageVector = Icons.Filled.ExpandMore,
+                        contentDescription = stringResource(R.string.expand),
+                        modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                    )
+                },
+                onClick = actions.onToggleRetention,
+            )
+            AnimatedVisibility(
+                visible = state.retentionExpanded,
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(tween(EXPAND_MS)),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(tween(EXPAND_MS)),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.backup_retention_summary),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    RetentionSliderMaterial(
+                        title = stringResource(R.string.backup_retention_module),
+                        value = state.moduleRetention,
+                        max = RetentionLimit.MAX,
+                        onCommit = actions.onSetModuleRetention,
+                    )
+                    RetentionSliderMaterial(
+                        title = stringResource(R.string.backup_retention_boot),
+                        summary = stringResource(R.string.backup_retention_boot_summary),
+                        value = state.bootRetention,
+                        max = RetentionLimit.MAX_BOOT,
+                        onCommit = actions.onSetBootRetention,
+                    )
+                    RetentionSliderMaterial(
+                        title = stringResource(R.string.backup_retention_rollback),
+                        summary = stringResource(R.string.backup_retention_rollback_summary),
+                        value = state.rollbackRetention,
+                        max = RetentionLimit.MAX_ROLLBACK,
+                        onCommit = actions.onSetRollbackRetention,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 一个额度滑块：标题、当前值、一条 1…[max] 的滑轨。 */
+@Composable
+private fun RetentionSliderMaterial(
+    title: String,
+    value: Int,
+    max: Int,
+    onCommit: (Int) -> Unit,
+    summary: String? = null,
+) {
+    val sliderState = rememberSliderState(
+        value = value.toFloat(),
+        steps = max - RetentionLimit.MIN - 1,
+        trackRange = RetentionLimit.MIN.toFloat()..max.toFloat(),
+    )
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.titleSmall)
+                summary?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.backup_retention_count, sliderState.value.roundToInt()),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            state = sliderState,
+            // 松手才落盘：拖动途中每个整数都写一次偏好项，等于把一次操作变成十几次磁盘写入。
+            onValueChangeFinished = { onCommit(sliderState.value.roundToInt()) },
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
@@ -512,6 +616,9 @@ private fun LazyListScope.backupTabItems(
         }
     }
     locationItems(state)
+    // 保留额度是"设一次就不管"的东西，位置与 Miuix 那一版相同：比它更该先被看到的
+    // （位置、内容、按钮）都在上面，比它更常用的自动备份开关在下面。
+    item { RetentionCardMaterial(state, actions) }
     // 自动备份是"设一次就不管"的开关，属于页面末尾的收尾设置；放在列表上面会把
     // 用户真正要点的备份项挤下去。
     item {

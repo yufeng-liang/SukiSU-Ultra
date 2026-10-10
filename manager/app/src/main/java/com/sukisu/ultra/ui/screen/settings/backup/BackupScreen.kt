@@ -161,6 +161,10 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onSetAutoBackup = viewModel::setAutoBackup,
         onSetAutoBackupLocal = viewModel::setAutoBackupLocal,
         onSetAutoBackupCloud = viewModel::setAutoBackupCloud,
+        onSetModuleRetention = viewModel::setModuleRetention,
+        onSetBootRetention = viewModel::setBootRetention,
+        onSetRollbackRetention = viewModel::setRollbackRetention,
+        onToggleRetention = viewModel::toggleRetention,
         onToggleCloud = viewModel::toggleCloud,
         onToggleModules = viewModel::toggleModules,
         onToggleModule = viewModel::toggleModule,
@@ -220,6 +224,9 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
 /** 进/出备份详情的动画时长。 */
 private const val PAGE_MS = 260
 
+/** 展开/收起动画的时长：太长显得迟钝，太短又成了硬切。两个主题的展开块都用同一个值。 */
+internal const val EXPAND_MS = 220
+
 /**
  * 分组卡片的一行说明：来源（两侧都勾上时才写）· 内容 · 项数。
  *
@@ -231,6 +238,27 @@ fun groupSummary(group: BackupGroup, showsOrigin: Boolean): String = BackupLabel
     kindLabel = stringResource(BackupLabels.groupKind(group)),
     countText = pluralStringResource(R.plurals.backup_group_items, group.rows.size, group.rows.size),
 )
+
+/**
+ * 保留额度收起时的那一行：三个额度现在各是多少。
+ *
+ * 两个主题共用：这是措辞而不是布局，摆两份迟早只改一处。
+ *
+ * `stringResource` 只能在 @Composable 的上下文里调，所以数量在循环外先取好——
+ * `joinToString` 的 transform 是个普通 lambda，在它里面取资源编不过。
+ */
+@Composable
+fun retentionSummary(state: BackupUiState): String {
+    val counts = listOf(state.moduleRetention, state.bootRetention, state.rollbackRetention)
+        .map { value -> stringResource(R.string.backup_retention_count, value) }
+    val labels = listOf(
+        stringResource(R.string.backup_retention_module),
+        stringResource(R.string.backup_kind_boot),
+        stringResource(R.string.backup_retention_rollback),
+    )
+    return labels.zip(counts) { label, count -> "$label $count" }
+        .joinToString(BackupListFormatter.SEPARATOR)
+}
 
 /**
  * 分页标签。恢复页带上"列表里有几份"：切过去之前就知道那边有没有东西，省一次来回。

@@ -14,6 +14,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +63,7 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.AutoBackupOutcome
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
+import com.sukisu.ultra.data.backup.RetentionLimit
 import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BackupText
@@ -76,6 +79,8 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Slider
+import top.yukonga.miuix.kmp.basic.SliderDefaults
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -92,9 +97,7 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
-
-/** 展开/收起动画的时长：太长显得迟钝，太短又成了硬切。 */
-private const val EXPAND_MS = 220
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -398,14 +401,13 @@ private fun ExpandChevron(expanded: Boolean) {
  */
 @Composable
 private fun OriginTagMiuix(origin: BackupOrigin) {
-    val cloud = origin == BackupOrigin.CLOUD
     Text(
         text = stringResource(BackupLabels.origin(origin)),
         fontSize = 11.sp,
-        color = if (cloud) colorScheme.onTertiaryContainer else colorScheme.onPrimaryContainer,
+        color = BackupOriginColors.onContainer(origin),
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(if (cloud) colorScheme.tertiaryContainer else colorScheme.primaryContainer)
+            .background(BackupOriginColors.container(origin))
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
@@ -504,6 +506,113 @@ private fun ModulePickerMiuix(state: BackupUiState, actions: BackupActions) {
 }
 
 /**
+ * 保留额度那一块：三个滑块（模块 / boot / 回滚点）。
+ *
+ * 默认收起：它是"设一次就不管"的东西，三条滑块常驻会把上面真正要用的备份选项顶到屏幕外。
+ * 收起时标题右边写着当前三个值，不改也能看见现在是多少。
+ *
+ * 收起时显示的是**读回来的值**，不是滑块拖到的中间值——滑块的 `onValueChange` 只在松手时
+ * 提交，中间过程不落盘也不进状态，免得一次拖动写出十几个偏好项。
+ */
+@Composable
+private fun RetentionCardMiuix(state: BackupUiState, actions: BackupActions) {
+    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = actions.onToggleRetention)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(text = stringResource(R.string.backup_retention_title), fontSize = 16.sp)
+                Text(
+                    text = retentionSummary(state),
+                    fontSize = 13.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            ExpandChevron(expanded = state.retentionExpanded)
+        }
+        AnimatedVisibility(
+            visible = state.retentionExpanded,
+            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(tween(EXPAND_MS)),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(tween(EXPAND_MS)),
+        ) {
+            Column {
+                Text(
+                    text = stringResource(R.string.backup_retention_summary),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                )
+                RetentionSliderMiuix(
+                    title = stringResource(R.string.backup_retention_module),
+                    value = state.moduleRetention,
+                    max = RetentionLimit.MAX,
+                    onCommit = actions.onSetModuleRetention,
+                )
+                RetentionSliderMiuix(
+                    title = stringResource(R.string.backup_retention_boot),
+                    summary = stringResource(R.string.backup_retention_boot_summary),
+                    value = state.bootRetention,
+                    max = RetentionLimit.MAX_BOOT,
+                    onCommit = actions.onSetBootRetention,
+                )
+                RetentionSliderMiuix(
+                    title = stringResource(R.string.backup_retention_rollback),
+                    summary = stringResource(R.string.backup_retention_rollback_summary),
+                    value = state.rollbackRetention,
+                    max = RetentionLimit.MAX_ROLLBACK,
+                    onCommit = actions.onSetRollbackRetention,
+                )
+            }
+        }
+    }
+}
+
+/** 一个额度滑块：标题、当前值、一条 1…[max] 的滑轨。 */
+@Composable
+private fun RetentionSliderMiuix(
+    title: String,
+    value: Int,
+    max: Int,
+    onCommit: (Int) -> Unit,
+    summary: String? = null,
+) {
+    val dragging = remember(value) { mutableFloatStateOf(value.toFloat()) }
+    Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(text = title, fontSize = 15.sp)
+                summary?.let {
+                    Text(
+                        text = it,
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.backup_retention_count, dragging.floatValue.roundToInt()),
+                fontSize = 14.sp,
+                color = colorScheme.onSurfaceVariantSummary,
+            )
+        }
+        Slider(
+            value = dragging.floatValue,
+            onValueChange = { dragging.floatValue = it.roundToInt().toFloat() },
+            // 松手才落盘：拖动途中每个整数都写一次偏好项，等于把一次操作变成十几次磁盘写入。
+            onValueChangeFinished = { onCommit(dragging.floatValue.roundToInt()) },
+            valueRange = RetentionLimit.MIN.toFloat()..max.toFloat(),
+            hapticEffect = SliderDefaults.SliderHapticEffect.Step,
+        )
+    }
+}
+
+/**
  * 「备份」分页：把选项配好，再按「立即备份」。
  *
  * 列表搬到「恢复」分页之后，这一页就只剩一张表单——它需要的只是一个能滚的容器，
@@ -592,6 +701,9 @@ private fun LazyListScope.backupTabItems(
         )
     }
     locationItems(state)
+    // 保留额度是"设一次就不管"的东西，放在备份按钮和自动备份之间：比它更该先被看到的
+    // （位置、内容、按钮）都在上面，比它更常用的自动备份开关在下面。
+    item { RetentionCardMiuix(state, actions) }
     // 自动备份是"设一次就不管"的开关，属于页面末尾的收尾设置；放在列表上面会把
     // 用户真正要点的备份项挤下去。
     item {
