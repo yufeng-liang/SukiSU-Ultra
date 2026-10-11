@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.onEach
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.ModuleEcoBadge
 import com.sukisu.ultra.ui.component.miuix.effect.BgEffectBackground
 import com.sukisu.ultra.ui.component.miuix.effect.ColorBlendToken
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
@@ -342,6 +343,14 @@ private fun AboutContent(
                 color = colorScheme.onBackground,
                 fontWeight = FontWeight.Bold,
                 fontSize = 35.sp,
+            )
+            ModuleEcoBadge(
+                modifier = Modifier
+                    .padding(top = 7.dp)
+                    .graphicsLayer {
+                        // 和名字、版本号一样随滚动淡出，避免折叠时徽标孤零零留在原地。
+                        alpha = 1 - projectNameProgress
+                    },
             )
             Text(
                 modifier = Modifier

@@ -32,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.ModuleEcoBadge
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
@@ -90,7 +91,9 @@ fun AboutScreenMaterial(
                         fontWeight = FontWeight.Medium,
                         fontSize = MaterialTheme.typography.headlineMedium.fontSize
                     )
+                    ModuleEcoBadge(modifier = Modifier.padding(top = 7.dp))
                     Text(
+                        modifier = Modifier.padding(top = 7.dp),
                         text = state.versionName,
                         fontSize = MaterialTheme.typography.bodyMedium.fontSize
                     )

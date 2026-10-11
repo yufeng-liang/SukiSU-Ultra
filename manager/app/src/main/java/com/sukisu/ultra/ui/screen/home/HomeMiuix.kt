@@ -44,15 +44,20 @@ import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.KernelVersion
 import com.sukisu.ultra.Natives
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.ModuleEcoBadge
 import com.sukisu.ultra.ui.component.WarningLevel
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.component.miuix.WarningCard
@@ -81,6 +87,7 @@ import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.TopAppBarDefaults
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -236,7 +243,43 @@ private fun TopBar(
             },
             scrollBehavior = scrollBehavior
         )
+        EcoBadgeOverlay(scrollBehavior)
     }
+}
+
+/**
+ * 大标题「SukiSU」右侧的「模块生态版」标签。
+ *
+ * miuix 的 TopAppBar 标题槽只收 String（0.9.4），塞不进 composable，所以用覆盖层贴在
+ * 大标题结尾：摆放复刻 miuix 的布局约定（TopAppBarDefaults 公开常量：水平 [TopAppBarDefaults.TitlePadding]
+ * 起、顶部 [TopAppBarDefaults.CollapsedHeight] 起），滚动时跟随大标题的位移与淡出曲线；
+ * 折叠后顶栏改用居中的小标题，标签随之完全隐藏。升级 miuix 时需核对这几条布局约定。
+ */
+@Composable
+private fun EcoBadgeOverlay(scrollBehavior: ScrollBehavior) {
+    val appName = stringResource(R.string.app_name)
+    val textMeasurer = rememberTextMeasurer()
+    val titleStyle = MiuixTheme.textStyles.title1
+    val titleLayout = remember(appName, titleStyle) {
+        textMeasurer.measure(AnnotatedString(appName), titleStyle)
+    }
+    val density = LocalDensity.current
+    val badgeOffsetX = with(density) {
+        TopAppBarDefaults.TitlePadding + titleLayout.size.width.toDp() + 10.dp
+    }
+    val badgeOffsetY = with(density) {
+        // 标签在大标题行内垂直居中；徽标实高约 22dp（12sp 字号 + 上下 3dp 内边距）。
+        TopAppBarDefaults.CollapsedHeight +
+                ((titleLayout.size.height.toDp() - 22.dp).coerceAtLeast(0.dp) / 2)
+    }
+    ModuleEcoBadge(
+        modifier = Modifier
+            .offset(x = badgeOffsetX, y = badgeOffsetY)
+            .graphicsLayer {
+                alpha = 1f - ((scrollBehavior.state.collapsedFraction * 3f).coerceIn(0f, 1f))
+                translationY = scrollBehavior.state.heightOffset
+            },
+    )
 }
 
 @Composable

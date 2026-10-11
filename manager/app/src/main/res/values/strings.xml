@@ -847,6 +847,7 @@
     <string name="module_contribution_unknown">Unable to confirm whether it was accepted</string>
     <string name="module_contribution_settings_title">Module contributions</string>
     <string name="module_contribution_settings_summary">When installing a local module, offer to share modules that are not yet listed</string>
+    <string name="module_eco_badge">Module Ecosystem</string>
 
     <!-- Retention quotas. Each has its own range (modules 1–20, boot 1–10),
          so the wording deliberately avoids naming the numbers. -->
