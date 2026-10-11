@@ -136,7 +136,7 @@ class ModuleContributionController internal constructor(
     private companion object {
         /** 读开关本身也可能炸（SharedPreferences 拿不到时）；炸了按"关"处理，宁可不打扰。 */
         fun readEnabled(settings: SettingsRepository): Boolean =
-            runCatching { settings.isModuleContributionEnabled() }.getOrDefault(true)
+            runCatching { settings.isModuleContributionEnabled() }.getOrDefault(false)
     }
 }
 

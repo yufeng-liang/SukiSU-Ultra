@@ -36,15 +36,32 @@ fun isSoftRebootPreferred(): Boolean =
  *
  * 这两条是纯数据，单独放出来是为了让单测能在 JVM 上直接锁住（[SettingsRepositoryImpl]
  * 要 Android 的 SharedPreferences 才能跑）：key 一旦改名，老用户的选择会静默回到默认值；
- * 默认值一旦翻面，所有人的投稿入口会在一次升级里集体消失或集体冒出来。
+ * 默认值一旦翻面，没表过态的用户会在一次升级里集体失去或得到投稿入口。
  */
 object ModuleContributionPrefs {
     const val KEY = "module_contribution_enabled"
-    const val DEFAULT = true
 
-    /** 没这个 key（老版本升级上来）就按默认开，而不是按"关"——老用户不该在升级后被静音。 */
+    /** 默认关：投稿入口只给主动打开过的人，不默认打扰所有用户。 */
+    const val DEFAULT = false
+
+    /**
+     * 默认值翻面那版发布的 UTC 时间。首次运行新版时查 [android.content.pm.PackageInfo.firstInstallTime]：
+     * 在这之前装过 App 的是存量用户，保留默认开；之后才装的按新默认关。
+     * 存量用户的结论会立刻落盘成 key，之后每次都直接读 key，迁移只发生一次。
+     */
+    const val UPGRADE_CUTOFF_MILLIS = 1791763200000L  // 2026-10-12T00:00:00Z
+
+    /** prefs 里已有 key：用户的显式选择永远赢。 */
     fun resolve(contains: Boolean, stored: Boolean = DEFAULT): Boolean =
         if (contains) stored else DEFAULT
+
+    /**
+     * prefs 里没有 key 时的迁移判定（纯函数，单测锁住）。
+     * firstInstallTime 为 0（查询失败）按存量处理、fail-open 保留入口——新装一定查得到，
+     * 查不到的几乎只能是装了很久的设备；宁多显示一个入口，不静音真实用户。
+     */
+    fun resolveUpgrade(firstInstallTime: Long, cutoff: Long = UPGRADE_CUTOFF_MILLIS): Boolean =
+        firstInstallTime < cutoff
 }
 
 class SettingsRepositoryImpl : SettingsRepository {
@@ -304,10 +321,20 @@ class SettingsRepositoryImpl : SettingsRepository {
 
     override fun setDefaultUmountModules(enabled: Boolean): Boolean = Natives.setDefaultUmountModules(enabled)
 
-    override fun isModuleContributionEnabled(): Boolean = ModuleContributionPrefs.resolve(
-        contains = prefs.contains(ModuleContributionPrefs.KEY),
-        stored = prefs.getBoolean(ModuleContributionPrefs.KEY, ModuleContributionPrefs.DEFAULT),
-    )
+    override fun isModuleContributionEnabled(): Boolean {
+        if (prefs.contains(ModuleContributionPrefs.KEY)) {
+            return prefs.getBoolean(ModuleContributionPrefs.KEY, ModuleContributionPrefs.DEFAULT)
+        }
+        // 没有 key：先按安装时间做一次升级迁移再落盘，之后永远走上面的分支。
+        // 存量用户（翻面前就装过）保留默认开；查不到安装时间也按存量 fail-open。
+        val enabled = ModuleContributionPrefs.resolveUpgrade(firstInstallTime())
+        prefs.edit { putBoolean(ModuleContributionPrefs.KEY, enabled) }
+        return enabled
+    }
+
+    private fun firstInstallTime(): Long = runCatching {
+        ksuApp.packageManager.getPackageInfo(ksuApp.packageName, 0).firstInstallTime
+    }.getOrDefault(0L)
 
     override fun setModuleContributionEnabled(enabled: Boolean) {
         prefs.edit { putBoolean(ModuleContributionPrefs.KEY, enabled) }

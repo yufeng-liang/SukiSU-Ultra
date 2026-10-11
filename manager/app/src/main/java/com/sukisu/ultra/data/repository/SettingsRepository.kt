@@ -95,7 +95,7 @@ interface SettingsRepository {
     fun setDefaultUmountModules(enabled: Boolean): Boolean
 
     /**
-     * 投稿功能的全局开关，默认开。
+     * 投稿功能的全局开关，默认关（存量升级用户由迁移逻辑保留为开）。
      *
      * 关掉之后两处入口一起消失：安装本地模块时不再弹「分享这个模块」的提示，
      * 模块列表里也不再显示投稿按钮。这是用户唯一能一次性关掉投稿打扰的地方。
