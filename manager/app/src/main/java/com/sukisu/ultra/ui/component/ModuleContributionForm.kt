@@ -4,6 +4,8 @@ import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.CoolapkUidLookup
 import com.sukisu.ultra.ui.util.ModulePropInfo
 import com.sukisu.ultra.ui.util.SubmitResult
+import com.sukisu.ultra.ui.util.makeNonce
+import com.sukisu.ultra.ui.util.proofPrefixForId
 
 /**
  * 投稿对话框背后那点纯逻辑。
@@ -119,11 +121,20 @@ data class ContributionForm(
     val uidState: CoolapkUidState = CoolapkUidState.Empty,
     val consentChecked: Boolean = false,
     val submitState: ContributionSubmitState = ContributionSubmitState.Idle,
+    val nonce: String = makeNonce(),
 ) {
 
     /** 核实出来的昵称；没核实通过时为空串（此时也不允许提交）。 */
     val nickname: String
         get() = (uidState as? CoolapkUidState.Verified)?.nickname.orEmpty()
+
+    /**
+     * 所有权口令文本 = `<sha256(模块 id) 前 8 位>-<nonce>`。
+     *
+     * 只存随机部分（[nonce]），前缀每次由当前模块 id 现算——id 一变口令跟着变，
+     * 与 [com.sukisu.ultra.ui.util.proofPrefixForId] 及 Worker 侧同值。
+     */
+    fun proofText(id: String): String = proofPrefixForId(id) + "-" + nonce
 
     /**
      * 出处填了、且酷安 UID 核实通过。

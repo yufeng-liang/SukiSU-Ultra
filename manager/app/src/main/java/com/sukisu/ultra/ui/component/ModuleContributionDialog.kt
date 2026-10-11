@@ -30,7 +30,7 @@ import java.io.File
  */
 class ModuleContributionDialogState internal constructor(
     private val scope: CoroutineScope,
-    private val submit: suspend (File, ModulePropInfo?, String, String, String) -> SubmitResult,
+    private val submit: suspend (File, ModulePropInfo?, String, String, String, String) -> SubmitResult,
     private val lookupUid: suspend (String) -> CoolapkUidLookup,
     private val submittingText: () -> String,
 ) {
@@ -141,7 +141,8 @@ class ModuleContributionDialogState internal constructor(
             val result = runCatching {
                 // 署名用核实出来的昵称，不用输入框里的原文：那是酷安反查的结果，
                 // 也是服务端唯一能证明"昵称属于这个 UID"的来源。
-                submit(zip, currentMeta, snapshot.source, snapshot.uid, snapshot.nickname)
+                // nonce 一并传下去：与模块 id 拼成所有权口令，服务端拿它比对酷安签名。
+                submit(zip, currentMeta, snapshot.source, snapshot.uid, snapshot.nickname, snapshot.nonce)
             }.getOrElse { error ->
                 SubmitResult(false, null, error.message?.takeIf { it.isNotBlank() } ?: "投稿失败")
             }
@@ -168,7 +169,7 @@ class ModuleContributionDialogState internal constructor(
 fun rememberModuleContributionDialog(
     scope: CoroutineScope,
     submittingText: () -> String,
-    submit: suspend (File, ModulePropInfo?, String, String, String) -> SubmitResult,
+    submit: suspend (File, ModulePropInfo?, String, String, String, String) -> SubmitResult,
     lookupUid: suspend (String) -> CoolapkUidLookup,
 ): ModuleContributionDialogState {
     return remember(scope) {

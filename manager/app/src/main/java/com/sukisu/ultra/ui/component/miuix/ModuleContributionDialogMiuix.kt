@@ -17,8 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.DpSize
@@ -118,6 +120,9 @@ fun ModuleContributionDialogMiuix(
                 )
 
                 UidStatusRow(form = form, onRetry = onRetryLookup)
+
+                // 所有权口令：只在读得出模块 id 时显示——口令绑 id，id 变了口令跟着变。
+                form.meta?.let { meta -> ProofRow(form = form, id = meta.id) }
 
                 // 确认说明：不勾就提交不了，且它永远在提交按钮上方
                 Row(
@@ -286,6 +291,44 @@ private fun UidStatusRow(form: ContributionForm, onRetry: () -> Unit) {
             } else {
                 stringResource(R.string.module_contribution_uid_hint)
             },
+            fontSize = 12.sp,
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+    }
+}
+
+/**
+ * 所有权口令行：展示 `<sha256(模块 id) 前 8 位>-<nonce>`，一键复制去填酷安签名。
+ *
+ * 与 Material 那套同一条内容、同一套判据（只在读得出模块 id 时显示）：口令现算自
+ * [ContributionForm.proofText]、绑死 [id]，换 id 跟着变。两套渲染器都要有它，
+ * 只改一套等于另一套主题上这条所有权链断了。
+ */
+@Composable
+private fun ProofRow(form: ContributionForm, id: String) {
+    val clipboard = LocalClipboardManager.current
+    val proof = form.proofText(id)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.module_contribution_proof_title),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = colorScheme.onSurfaceVariantSummary,
+            )
+            TextButton(
+                text = stringResource(R.string.module_contribution_proof_copy),
+                onClick = { clipboard.setText(AnnotatedString(proof)) },
+            )
+        }
+        Text(text = proof, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Text(
+            text = stringResource(R.string.module_contribution_proof_hint),
             fontSize = 12.sp,
             color = colorScheme.onSurfaceVariantSummary,
         )

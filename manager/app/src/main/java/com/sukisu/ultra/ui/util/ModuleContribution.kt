@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.util
 
+import com.sukisu.ultra.data.backup.sha256Hex
 import com.sukisu.ultra.ksuApp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,25 @@ import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.Locale
+
+/** nonce 的字符集：6 位小写字母数字，与 Worker 的 `PROOF_NONCE_RE`（`/^[a-z0-9]{6}$/`）同一形状。 */
+private val NONCE_ALPHABET = ('a'..'z') + ('0'..'9')
+
+/**
+ * 承诺口令的前缀：`sha256(模块 id)` 的前 8 位小写十六进制。
+ *
+ * 与 worker/src/proof.ts、public/scripts/proof.js 是同一套算法的第三份实现——
+ * 三处必须同值，服务端拿它比对用户写进酷安签名的口令。
+ */
+fun proofPrefixForId(id: String): String =
+    id.toByteArray().sha256Hex().take(8)
+
+/** 一次性随机段：6 位小写字母数字。只存这一段，口令前缀现算，杜绝与模块 id 脱钩。 */
+fun makeNonce(): String =
+    (1..6).map { NONCE_ALPHABET[java.security.SecureRandom().nextInt(NONCE_ALPHABET.size)] }.joinToString("")
+
+/** 承诺文本版本。必须与 Worker 的 `PLEDGE_VERSIONS` 完全一致。 */
+private const val PLEDGE_VERSION = "pledge-v1"
 
 /**
  * 模块索引是否已收录这一版。
@@ -192,6 +212,7 @@ object ModuleContribution {
         source: String,
         uid: String,
         nickname: String,
+        nonce: String,
     ): SubmitResult {
         val resolved = meta ?: return failure("读不出模块信息（module.prop 缺失或 id/name 为空）")
         val safeSource = source.trim()
@@ -217,6 +238,8 @@ object ModuleContribution {
             .addFormDataPart("uploader", safeNickname)
             .addFormDataPart("coolapkUid", safeUid)
             .addFormDataPart("sha256", sha256)
+            .addFormDataPart("pledge", PLEDGE_VERSION)
+            .addFormDataPart("nonce", nonce)
             .addFormDataPart(
                 "zip",
                 zip.name.ifBlank { "${resolved.id}-${resolved.versionCode}.zip" },

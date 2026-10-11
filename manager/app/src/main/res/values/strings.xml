@@ -839,6 +839,9 @@
     <string name="module_contribution_uid_required">Verify your Coolapk UID to enable sharing</string>
     <string name="module_contribution_section_info">Module info</string>
     <string name="module_contribution_section_identity">Source &amp; identity</string>
+    <string name="module_contribution_proof_title">Submission passphrase</string>
+    <string name="module_contribution_proof_copy">Copy</string>
+    <string name="module_contribution_proof_hint">Open Coolapk (Me > Edit profile > Signature), paste this string there and save, then come back to submit. It proves the account is yours; it changes with the module ID, and you can change your signature back after the submission succeeds.</string>
     <string name="module_contribution_consent">I understand the file will be stored publicly and anyone can download it. Do not upload content containing personal information or keys.</string>
     <string name="module_contribution_consent_required">Please check the confirmation box first</string>
     <string name="module_contribution_submitting">Submitting…</string>
