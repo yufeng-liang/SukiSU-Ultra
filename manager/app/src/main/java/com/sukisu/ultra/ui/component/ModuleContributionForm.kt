@@ -190,5 +190,12 @@ data class ContributionForm(
             submitState !is ContributionSubmitState.Success
 }
 
-/** 把 [ModulePropInfo] 变成预填好的表单。 */
+/**
+ * 把 [ModulePropInfo] 变成预填好的表单。
+ *
+ * 它看着像个无害的预填工具，其实构造的是**一次新的投稿尝试**：[ContributionForm.nonce] 的默认值
+ * 就是 `makeNonce()`，所以每调用一次都换一个新 nonce，用户先前复制的那串口令跟着作废。
+ * 因此只能在对话框打开（= 新的一次尝试）时用它；会话中途拿来做预填会悄悄旋转口令，
+ * 而酷安签名里留下的还是旧的那串，服务端只会回「没在签名里找到口令」。
+ */
 fun contributionFormOf(meta: ModulePropInfo?): ContributionForm = ContributionForm(meta = meta)

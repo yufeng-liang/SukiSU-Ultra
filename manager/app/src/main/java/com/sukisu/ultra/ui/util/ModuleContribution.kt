@@ -18,10 +18,14 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.security.SecureRandom
 import java.util.Locale
 
 /** nonce 的字符集：6 位小写字母数字，与 Worker 的 `PROOF_NONCE_RE`（`/^[a-z0-9]{6}$/`）同一形状。 */
 private val NONCE_ALPHABET = ('a'..'z') + ('0'..'9')
+
+/** 共用一个实例：`SecureRandom` 自带种子与锁，每次取字符都新建一个纯属浪费（且没有更安全）。 */
+private val NONCE_RANDOM = SecureRandom()
 
 /**
  * 承诺口令的前缀：`sha256(模块 id)` 的前 8 位小写十六进制。
@@ -34,7 +38,7 @@ fun proofPrefixForId(id: String): String =
 
 /** 一次性随机段：6 位小写字母数字。只存这一段，口令前缀现算，杜绝与模块 id 脱钩。 */
 fun makeNonce(): String =
-    (1..6).map { NONCE_ALPHABET[java.security.SecureRandom().nextInt(NONCE_ALPHABET.size)] }.joinToString("")
+    (1..6).map { NONCE_ALPHABET[NONCE_RANDOM.nextInt(NONCE_ALPHABET.size)] }.joinToString("")
 
 /** 承诺文本版本。必须与 Worker 的 `PLEDGE_VERSIONS` 完全一致。 */
 private const val PLEDGE_VERSION = "pledge-v1"

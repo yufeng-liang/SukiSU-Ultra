@@ -2,6 +2,8 @@ package com.sukisu.ultra.ui.component
 
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ModulePropInfo
+import com.sukisu.ultra.ui.util.makeNonce
+import com.sukisu.ultra.ui.util.proofPrefixForId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -272,5 +274,44 @@ class ModuleContributionRulesTest {
         assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("1234"))
         assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("2781460"))
         assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid(" 2781460 "))
+    }
+
+    // ── 所有权口令：这套算法第三份实现的钉子 ────────────────────────────────
+    //
+    // proofPrefixForId / makeNonce 与 contrib/worker/src/proof.ts、
+    // modules-web/public/scripts/proof.js 是同一算法的三份实现，而跨仓库一致性自检是 JS 的，
+    // 结构上够不到 Kotlin —— 这一份今天没人管，漂了要到 App 投稿整批 403 才看得见。
+    // 下面几个十六进制值是用 node:crypto 对着 id 的 UTF-8 字节**独立**算出来的，
+    // 换成从 Kotlin 实现反推就等于自我证明，这条测试也就不再是钉子了。
+    // 它们同时证明 Kotlin 的 `id.toByteArray()` 和 `new TextEncoder().encode(id)` 得到同一串字节。
+
+    @Test
+    fun `the proof prefix matches the hashes computed outside this repo`() {
+        assertEquals("979315af", proofPrefixForId("test_module"))
+        assertEquals("2a97516c", proofPrefixForId("demo"))
+    }
+
+    @Test
+    fun `a nonce is six lowercase alphanumerics and not a constant`() {
+        // 形状必须落在 Worker 的 PROOF_NONCE_RE（/^[a-z0-9]{6}$/）里：
+        // 形状不对的话口令在服务端直接被拒，用户那边只看到一句"没在签名里找到口令"。
+        val nonceRegex = Regex("^[a-z0-9]{6}$")
+        val draws = List(300) { makeNonce() }
+        draws.forEach { nonce ->
+            assertTrue("nonce 形状不合法：$nonce", nonceRegex.matches(nonce))
+        }
+        // 抽样里出现同一个值不算异常（36^6 的空间），但"全是同一个"就是它压根没取随机数。
+        assertTrue("makeNonce 抽 300 次只有一个值，说明它不是随机的", draws.distinct().size > 1)
+    }
+
+    @Test
+    fun `a non ascii module id still yields a stable eight hex prefix`() {
+        // 仓库里真有中文 id 的模块：非 ASCII 也得正常出前缀，且同一个 id 每次出同一串。
+        val id = "系统状态监控"
+        val prefix = proofPrefixForId(id)
+        assertTrue(prefix, Regex("^[0-9a-f]{8}$").matches(prefix))
+        assertEquals(prefix, proofPrefixForId(id))
+        // 外部独立算出的黄金值。只有非 ASCII 才验得出两边编码是不是同一套（ASCII 下 UTF-8 与Latin-1 同字节）。
+        assertEquals("67e75643", prefix)
     }
 }

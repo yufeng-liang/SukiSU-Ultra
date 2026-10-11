@@ -834,7 +834,7 @@
     <string name="module_contribution_section_identity">出处与身份</string>
     <string name="module_contribution_proof_title">投稿口令</string>
     <string name="module_contribution_proof_copy">复制</string>
-    <string name="module_contribution_proof_hint">打开酷安「我的 → 编辑资料 → 签名」，填入这串后保存，再回来提交。这是为了证明账号归你；换模块 ID 会跟着变，提交成功后可改回去。</string>
+    <string name="module_contribution_proof_hint">打开酷安「我的 → 编辑资料 → 签名」，填入这串后保存，再回来提交。这是为了证明账号归你；换模块 ID 会跟着变，每重新发起一次投稿也会换一串——签名里对不上就照当前这串再填一次。提交成功后可改回去。</string>
     <string name="module_contribution_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载。请勿上传包含个人隐私、密钥等敏感信息的内容。</string>
     <string name="module_contribution_consent_required">请先勾选确认</string>
     <string name="module_contribution_submitting">正在提交…</string>
