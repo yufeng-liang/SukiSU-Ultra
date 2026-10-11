@@ -36,6 +36,7 @@ class BackupListFormatterTest {
      */
     private val labels = BackupRowLabels(
         bootTitle = "Stock image",
+        repoConfigTitle = "Repo sources",
         disabled = "Disabled",
         originLabel = { origin -> if (origin == BackupOrigin.CLOUD) "Cloud" else "This device" },
     )

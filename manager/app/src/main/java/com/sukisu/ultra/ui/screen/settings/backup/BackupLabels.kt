@@ -22,8 +22,11 @@ object BackupLabels {
         if (origin == BackupOrigin.CLOUD) R.string.backup_origin_cloud else R.string.backup_origin_local
 
     @StringRes
-    fun kind(kind: BackupKind): Int =
-        if (kind == BackupKind.BOOT) R.string.backup_kind_boot else R.string.backup_kind_module
+    fun kind(kind: BackupKind): Int = when (kind) {
+        BackupKind.BOOT -> R.string.backup_kind_boot
+        BackupKind.REPO_CONFIG -> R.string.backup_kind_repo
+        else -> R.string.backup_kind_module
+    }
 
     /** 分组卡片上"这一组是什么"那一栏。 */
     @StringRes

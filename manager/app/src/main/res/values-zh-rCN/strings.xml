@@ -668,15 +668,17 @@
     <string name="backup_tab_backup">备份</string>
     <string name="backup_tab_restore">恢复</string>
     <string name="backup_tab_restore_count">恢复（%1$d）</string>
-    <string name="backup_entry_summary">模块、原厂boot镜像可备份到本机/云端</string>
+    <string name="backup_entry_summary">模块、原厂boot镜像、仓库源配置可备份到本机/云端</string>
     <string name="backup_kind_module">模块</string>
     <string name="backup_kind_boot">原厂 boot 镜像</string>
+    <string name="backup_kind_repo">仓库源配置</string>
+    <string name="backup_repo_explain">备份已添加的模块仓库源（地址、名称与开关），恢复时整批还原。</string>
     <string name="backup_boot_row_title">原厂镜像</string>
     <string name="backup_boot_explain">备份的是打补丁前的原厂镜像；恢复它设备会回到未 root 状态，需重新打补丁。</string>
     <string name="backup_boot_restore_confirm_title">刷回原厂镜像？</string>
     <string name="backup_boot_restore_confirm_body">当前已打补丁的 boot 会被替换掉，设备回到未 root 状态，需要重新打补丁才有 root。</string>
     <string name="backup_restore_many_confirm_title">恢复这 %1$d 项？</string>
-    <string name="backup_restore_many_confirm_body">选中的模块会被重新安装，覆盖当前已安装的版本。备份里的版本可能比现在旧，恢复之后无法撤销。</string>
+    <string name="backup_restore_many_confirm_body">选中的模块会被重新安装，覆盖当前已安装的版本；仓库源配置会整批替换当前配置。备份里的版本可能比现在旧，恢复之后无法撤销。</string>
     <string name="backup_now">立即备份</string>
     <string name="backup_import">从文件导入</string>
     <string name="backup_restore">恢复</string>
@@ -728,6 +730,7 @@
     <string name="backup_empty_module_cloud">云端还没有备份。点「立即备份」上传到这里。</string>
     <string name="backup_empty_boot_local">本机没有原厂镜像可备份——ksud 只在打补丁时留下它。</string>
     <string name="backup_empty_boot_cloud">云端还没有原厂镜像备份。点「立即备份」上传本机这份。</string>
+    <string name="backup_empty_repo_config">还没有仓库源可备份。先到模块仓库页添加一个源。</string>
 
     <!-- 备份摘要与诊断。这里每一句都会显示给用户：不出现内部术语（PUT/MKCOL/index-read），
          不出现裸露的计数器；但对排查有用的技术细节保留在括号里（HTTP 状态码、截断的哈希、文件名）。 -->
@@ -754,6 +757,7 @@
     <string name="backup_reason_module_install_failed">安装 %1$s 失败。</string>
     <string name="backup_reason_module_disable_failed">%1$s 已安装，但没能恢复它的禁用状态。</string>
     <string name="backup_reason_module_id_unusable">这份备份里的模块标识不可用（%1$s），已拒绝安装。备份可能被别的东西改过。</string>
+    <string name="backup_reason_repo_config_invalid">仓库源配置文件读不出来或格式不对，已拒绝恢复——你现有的源保持原样。</string>
     <string name="backup_reason_no_source">这个版本没有该类内容的备份源。</string>
     <string name="backup_reason_boot_no_meta">这份 boot 备份缺少描述文件，无法安全恢复。</string>
     <string name="backup_reason_boot_foreign">这份 boot 备份属于另一张原厂镜像（sha1 %1$s ≠ %2$s），本机无法使用。</string>

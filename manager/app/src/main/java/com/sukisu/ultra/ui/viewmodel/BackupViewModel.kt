@@ -828,6 +828,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private fun emptyTextFor(origin: BackupOrigin, kind: BackupKind): String = when {
         kind == BackupKind.BOOT && origin == BackupOrigin.CLOUD -> string(R.string.backup_empty_boot_cloud)
         kind == BackupKind.BOOT -> string(R.string.backup_empty_boot_local)
+        kind == BackupKind.REPO_CONFIG -> string(R.string.backup_empty_repo_config)
         origin == BackupOrigin.CLOUD -> string(R.string.backup_empty_module_cloud)
         else -> string(R.string.backup_empty_module_local)
     }
@@ -835,6 +836,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     /** 列表里那几段必须跟着语言走的文案，见 [BackupListFormatter.rows]。 */
     private fun rowLabels() = BackupRowLabels(
         bootTitle = string(R.string.backup_boot_row_title),
+        repoConfigTitle = string(R.string.backup_kind_repo),
         disabled = string(R.string.backup_row_disabled),
         originLabel = { origin -> originLabel(origin) },
     )
@@ -844,7 +846,11 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     )
 
     private fun kindLabel(kind: BackupKind): String = string(
-        if (kind == BackupKind.BOOT) R.string.backup_kind_boot else R.string.backup_kind_module,
+        when (kind) {
+            BackupKind.BOOT -> R.string.backup_kind_boot
+            BackupKind.REPO_CONFIG -> R.string.backup_kind_repo
+            else -> R.string.backup_kind_module
+        },
     )
 
     /**

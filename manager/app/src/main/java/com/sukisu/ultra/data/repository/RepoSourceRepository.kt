@@ -31,6 +31,14 @@ interface RepoSourceRepository {
     fun removeSource(id: String)
     fun setSourceEnabled(id: String, enabled: Boolean)
     fun renameSource(id: String, name: String)
+
+    /**
+     * 用 [sources] 整批替换当前的仓库源列表（备份恢复用）。
+     *
+     * 语义是"替换"而不是"合并"：恢复的是一份完整快照，逐条合并会把已经删掉的源又长回来。
+     * id 沿用备份里的值——它只是 prefs 里的主键，跨设备/跨安装都不需要换新。
+     */
+    fun replaceSources(sources: List<RepoSource>)
 }
 
 class RepoSourceRepositoryImpl(
@@ -137,12 +145,13 @@ class RepoSourceRepositoryImpl(
     }
 
     override fun removeSource(id: String) = mutate { it.filterNot { s -> s.id == id } }
-
     override fun setSourceEnabled(id: String, enabled: Boolean) =
         mutate { list -> list.map { if (it.id == id) it.copy(enabled = enabled) else it } }
 
     override fun renameSource(id: String, name: String) =
         mutate { list -> list.map { if (it.id == id) it.copy(name = name) else it } }
+
+    override fun replaceSources(sources: List<RepoSource>) = save(sources)
 
     private fun mutate(transform: (List<RepoSource>) -> List<RepoSource>) {
         save(transform(loadSources()))

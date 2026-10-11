@@ -35,8 +35,13 @@ data class BackupUiState(
      * 没配好之前它本来也选不了。
      */
     val origins: Set<BackupOrigin> = setOf(BackupOrigin.LOCAL),
-    /** 勾选的内容（模块 / 原厂 boot 镜像）。同样可以同时勾上。 */
-    val kinds: Set<BackupKind> = setOf(BackupKind.MODULE),
+    /**
+     * 勾选的内容（模块 / 原厂 boot 镜像 / 仓库源配置）。同样可以同时勾上。
+     *
+     * 仓库源配置默认勾上：它就几 KB，去重规则保证源没变时重复备份不产生新条目——而"卸载
+     * 重装管理器后仓库源全没了"恰恰是用户最常吃的一次亏，默认兜住比让人记得勾划算。
+     */
+    val kinds: Set<BackupKind> = setOf(BackupKind.MODULE, BackupKind.REPO_CONFIG),
     val rows: List<BackupRow> = emptyList(),
     /**
      * [rows] 按"哪一次备份"分好的组，新的在前。

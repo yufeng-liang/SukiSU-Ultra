@@ -62,6 +62,14 @@ sealed interface BackupReason {
      */
     data class ModuleIdUnusable(val entryId: String) : BackupReason
 
+    /**
+     * 仓库源配置归档解析不出来或字段不合法，拒绝整体覆盖。
+     *
+     * 恢复仓库源配置走的是"整批替换"：解析到一半的残缺列表一旦写下去，用户已有的源就没了。
+     * 所以解析失败、缺 url、url 全空都算失败——宁可让用户拿着这份归档来反馈，也不静默清空。
+     */
+    data class RepoConfigInvalid(val external: String?) : BackupReason
+
     /** 引擎没有这个 kind 的源。 */
     data class NoSource(val kind: BackupKind) : BackupReason
 

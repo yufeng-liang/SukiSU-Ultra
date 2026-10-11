@@ -58,6 +58,8 @@ data class OriginEntry(val origin: BackupOrigin, val entry: BackupEntry)
 data class BackupRowLabels(
     /** boot 行的标题前缀：那一行的 id 是一串 sha1，光看它没人知道这是原厂镜像。 */
     val bootTitle: String,
+    /** 仓库源配置行的标题（这一行没有 meta，标题就是全部说明）。 */
+    val repoConfigTitle: String,
     /** 模块处于禁用状态时缀在副标题里的词。 */
     val disabled: String,
     /** 来源标签：本机 / 云端。 */
@@ -82,12 +84,29 @@ object BackupListFormatter {
         metas: Map<String, ModuleBackupMeta>,
         labels: BackupRowLabels,
     ): List<BackupRow> = entries.map { (origin, entry) ->
-        if (entry.kind == BackupKind.BOOT) {
-            bootRow(origin, entry, labels)
-        } else {
-            moduleRow(origin, entry, metas, labels)
+        when (entry.kind) {
+            BackupKind.BOOT -> bootRow(origin, entry, labels)
+            BackupKind.REPO_CONFIG -> repoConfigRow(origin, entry, labels)
+            else -> moduleRow(origin, entry, metas, labels)
         }
     }
+
+    /**
+     * 仓库源配置行：一份 JSON 里装着全部源，没有逐条的 meta 可讲。
+     *
+     * 标题用固定文案（labels.repoConfigTitle）而不是 entryId——那个 id 是内部主键
+     * "repo-config"，对用户没有信息量；副标题只报大小。
+     */
+    private fun repoConfigRow(origin: BackupOrigin, entry: BackupEntry, labels: BackupRowLabels) = BackupRow(
+        id = rowId(origin, entry),
+        title = labels.repoConfigTitle,
+        subtitle = humanSize(entry.sizeBytes),
+        fileName = entry.fileName,
+        origin = origin,
+        originLabel = labels.originLabel(origin),
+        kind = BackupKind.REPO_CONFIG,
+        createdAt = entry.createdAt,
+    )
 
     /**
      * boot 行的标题不能用 [BackupEntry.entryId]——那是一条 40 位 sha1。

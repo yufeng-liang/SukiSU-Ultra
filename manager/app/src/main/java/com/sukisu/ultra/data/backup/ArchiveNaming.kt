@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter
 enum class BackupKind(val wireName: String) {
     MODULE("module"),
     BOOT("boot"),
+    REPO_CONFIG("repo"),
 }
 
 object ArchiveNaming {
@@ -23,6 +24,8 @@ object ArchiveNaming {
     private const val BOOT_PREFIX = "boot_"
     private const val MODULE_SUFFIX = ".zip"
     private const val BOOT_SUFFIX = ".img"
+    private const val REPO_PREFIX = "repo_"
+    private const val REPO_SUFFIX = ".json"
     private const val BOOT_SHA1_PREFIX_LENGTH = 12
 
     private val TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").withZone(ZoneOffset.UTC)
@@ -62,6 +65,9 @@ object ArchiveNaming {
     fun bootArchiveName(sha1: String, timestamp: String): String =
         "$BOOT_PREFIX${sha1.take(BOOT_SHA1_PREFIX_LENGTH)}_$timestamp$BOOT_SUFFIX"
 
+    fun repoConfigArchiveName(timestamp: String): String =
+        "${REPO_PREFIX}config_$timestamp$REPO_SUFFIX"
+
     fun metaFileNameFor(archiveName: String): String = "$archiveName.meta.json"
 
     /**
@@ -95,6 +101,7 @@ object ArchiveNaming {
     fun kindOf(archiveName: String): BackupKind? = when {
         archiveName.startsWith(MODULE_PREFIX) && archiveName.endsWith(MODULE_SUFFIX) -> BackupKind.MODULE
         archiveName.startsWith(BOOT_PREFIX) && archiveName.endsWith(BOOT_SUFFIX) -> BackupKind.BOOT
+        archiveName.startsWith(REPO_PREFIX) && archiveName.endsWith(REPO_SUFFIX) -> BackupKind.REPO_CONFIG
         else -> null
     }
 }

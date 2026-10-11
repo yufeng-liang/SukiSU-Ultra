@@ -697,6 +697,14 @@ private fun LazyListScope.backupTabItems(
                     checked = BackupKind.BOOT in state.kinds,
                     onCheckedChange = { actions.onToggleKind(BackupKind.BOOT) },
                 )
+                // 仓库源配置整批备份、整批恢复：卸载重装管理器最容易丢的就是它，所以
+                // 默认勾上（见 BackupUiState.kinds），summary 说明备份的是哪些东西。
+                CheckboxPreference(
+                    title = stringResource(R.string.backup_kind_repo),
+                    summary = stringResource(R.string.backup_repo_explain),
+                    checked = BackupKind.REPO_CONFIG in state.kinds,
+                    onCheckedChange = { actions.onToggleKind(BackupKind.REPO_CONFIG) },
+                )
                 // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
                 if (BackupKind.MODULE in state.kinds && state.modules.isNotEmpty()) {
                     ModulePickerMiuix(state = state, actions = actions)

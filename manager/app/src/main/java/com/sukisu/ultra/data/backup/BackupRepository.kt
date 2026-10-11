@@ -3,6 +3,7 @@ package com.sukisu.ultra.data.backup
 import android.content.Context
 import android.net.Uri
 import com.sukisu.ultra.data.repository.ModuleRepositoryImpl
+import com.sukisu.ultra.data.repository.RepoSourceRepositoryImpl
 import com.sukisu.ultra.data.repository.SettingsRepository
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ksuApp
@@ -83,6 +84,10 @@ class BackupRepository(private val context: Context = ksuApp) {
             },
             clock = { Instant.now() },
             staging = workStaging,
+        ),
+        BackupKind.REPO_CONFIG to RepoConfigBackupSource(
+            reader = { RepoSourceRepositoryImpl().loadSources() },
+            writer = { RepoSourceRepositoryImpl().replaceSources(it) },
         ),
     )
 
@@ -220,7 +225,11 @@ class BackupRepository(private val context: Context = ksuApp) {
 
     /** zip 名字带上这一批是什么，用户存下来之后还认得出。 */
     private fun shareZipName(entries: List<BackupEntry>): String {
-        val kind = if (entries.all { it.kind == BackupKind.BOOT }) "boot" else "modules"
+        val kind = when {
+            entries.all { it.kind == BackupKind.BOOT } -> "boot"
+            entries.all { it.kind == BackupKind.REPO_CONFIG } -> "repo-config"
+            else -> "modules"
+        }
         return "SukiSU-Backup-$kind-${ArchiveNaming.timestamp(Instant.now())}.zip"
     }
 

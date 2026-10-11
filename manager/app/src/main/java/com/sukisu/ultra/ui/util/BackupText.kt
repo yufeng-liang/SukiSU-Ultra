@@ -60,6 +60,7 @@ object BackupText {
         is BackupReason.ModuleDisableFailed -> ReasonText(R.string.backup_reason_module_disable_failed, listOf(reason.entryId))
         is BackupReason.ModuleIdUnusable ->
             ReasonText(R.string.backup_reason_module_id_unusable, listOf(Redaction.redactMessage(reason.entryId)))
+        is BackupReason.RepoConfigInvalid -> ReasonText(R.string.backup_reason_repo_config_invalid)
         is BackupReason.NoSource -> ReasonText(R.string.backup_reason_no_source)
         BackupReason.BootNoSidecarMeta -> ReasonText(R.string.backup_reason_boot_no_meta)
         is BackupReason.BootForeignStockImage -> ReasonText(
