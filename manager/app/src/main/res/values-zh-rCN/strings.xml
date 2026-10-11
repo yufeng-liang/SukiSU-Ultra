@@ -677,6 +677,8 @@
     <string name="backup_boot_explain">备份的是打补丁前的原厂镜像；恢复它设备会回到未 root 状态，需重新打补丁。</string>
     <string name="backup_boot_restore_confirm_title">刷回原厂镜像？</string>
     <string name="backup_boot_restore_confirm_body">当前已打补丁的 boot 会被替换掉，设备回到未 root 状态，需要重新打补丁才有 root。</string>
+    <string name="backup_repo_restore_confirm_title">恢复仓库源配置？</string>
+    <string name="backup_repo_restore_confirm_body">当前的仓库源会被整批替换成这份备份里的内容，恢复之后无法撤销。</string>
     <string name="backup_restore_many_confirm_title">恢复这 %1$d 项？</string>
     <string name="backup_restore_many_confirm_body">选中的模块会被重新安装，覆盖当前已安装的版本；仓库源配置会整批替换当前配置。备份里的版本可能比现在旧，恢复之后无法撤销。</string>
     <string name="backup_now">立即备份</string>

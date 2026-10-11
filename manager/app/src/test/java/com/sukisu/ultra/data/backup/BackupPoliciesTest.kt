@@ -114,6 +114,9 @@ class BackupPoliciesTest {
     fun `keep quota differs per kind`() {
         assertEquals(5, RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 5, bootKeep = 2))
         assertEquals(2, RetentionPolicy.keepFor(BackupKind.BOOT, moduleKeep = 5, bootKeep = 2))
+        // 仓库源配置写死 1 份：整批替换的小 JSON，历史没有回退价值，也不进设置页的额度滑块。
+        assertEquals(1, RetentionPolicy.keepFor(BackupKind.REPO_CONFIG, moduleKeep = 5, bootKeep = 2))
+        assertEquals(1, RetentionPolicy.keepFor(BackupKind.REPO_CONFIG, moduleKeep = 0, bootKeep = 0))
     }
 
     @Test

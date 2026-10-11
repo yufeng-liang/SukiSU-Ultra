@@ -1,6 +1,8 @@
 package com.sukisu.ultra.data.backup
 
 import com.sukisu.ultra.data.repository.RepoSource
+import com.sukisu.ultra.data.repository.defaultSourceName
+import com.sukisu.ultra.data.repository.isSameSource
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -94,16 +96,25 @@ class RepoConfigBackupSource(
             }
             return JSONObject()
                 .put("schema", SCHEMA)
-                .put("version", 1)
+                .put("version", VERSION)
                 .put("sources", array)
                 .toString(2)
         }
 
-        /** 结构不对就抛：恢复侧把异常折成 [BackupReason.RepoConfigInvalid]。 */
+        /**
+         * 结构不对就抛：恢复侧把异常折成 [BackupReason.RepoConfigInvalid]。
+         *
+         * schema/version 写了就要读——不认识的归档宁可拒绝，也不能把未来版本的格式当成
+         * 今天的样子静默解析。其余归一化与 prefs 解码路径（RepoSourceRepositoryImpl.decode）
+         * 对齐：空 id 按序补齐、空名按地址取默认名、重复 id 与同址来源只留最先出现的那条——
+         * addSource 拦得住重复配置，整批替换没有那道闸，得在这里拦。
+         */
         fun parse(text: String): List<RepoSource> {
             val root = JSONObject(text)
+            require(root.optString("schema") == SCHEMA) { "unknown schema: ${root.optString("schema")}" }
+            require(root.optInt("version", -1) == VERSION) { "unknown version: ${root.optInt("version", -1)}" }
             val array = root.getJSONArray("sources")
-            return List(array.length()) { i ->
+            val parsed = List(array.length()) { i ->
                 val item = array.getJSONObject(i)
                 RepoSource(
                     id = item.optString("id").ifBlank { "repo-$i" },
@@ -112,8 +123,14 @@ class RepoConfigBackupSource(
                     enabled = item.optBoolean("enabled", true),
                 )
             }
+            val deduped = mutableListOf<RepoSource>()
+            parsed.distinctBy { it.id }.forEach { source ->
+                if (deduped.none { isSameSource(it.url, source.url) }) deduped += source
+            }
+            return deduped.map { it.copy(name = it.name.ifBlank { defaultSourceName(it.url) }) }
         }
 
         private const val SCHEMA = "sukisu.repo-config.backup"
+        private const val VERSION = 1
     }
 }

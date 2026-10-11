@@ -285,7 +285,14 @@ class ModuleRepoViewModel(
      */
     private fun autoBackupRepoConfig() {
         viewModelScope.launch {
-            runCatching { BackupRepository().autoBackupRepoConfig() }
+            try {
+                BackupRepository().autoBackupRepoConfig()
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 引擎内部的失败已折进"上次自动备份"记录；能抛到这里的只剩环境性异常，
+                // 同样火-忘-不管，不弹 toast 打断用户的仓库管理操作。
+            }
         }
     }
 
@@ -330,6 +337,8 @@ class ModuleRepoViewModel(
                 sourceErrors = st.sourceErrors,
             )
         }
+        // 改名也是一次源变更，和增删/开关一样要自动备份（设置页文案承诺的就是"增删改"）。
+        autoBackupRepoConfig()
     }
 
     /**

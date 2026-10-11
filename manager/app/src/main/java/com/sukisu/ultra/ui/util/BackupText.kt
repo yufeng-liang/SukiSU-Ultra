@@ -88,6 +88,9 @@ object BackupText {
         is BackupReason.ModuleInstallFailed -> reason.external
         is BackupReason.ModuleDisableFailed -> reason.external
         is BackupReason.BootFlashFailed -> reason.external
+        // 解析器抛的具体原因（不认识的 schema/version、缺哪个字段），正文只有一句
+        // "读不出来或格式不对"，细节走这里。
+        is BackupReason.RepoConfigInvalid -> reason.external
         else -> null
     }?.takeIf { it.isNotBlank() }?.let { Redaction.redactMessage(it) }
 

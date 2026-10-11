@@ -681,6 +681,8 @@
     <string name="backup_boot_explain">Stock images from before patching; restoring one returns the device to an unrooted state until it is patched again.</string>
     <string name="backup_boot_restore_confirm_title">Flash the stock image back?</string>
     <string name="backup_boot_restore_confirm_body">The patched boot image is replaced, so the device becomes unrooted until it is patched again.</string>
+    <string name="backup_repo_restore_confirm_title">Restore repo sources?</string>
+    <string name="backup_repo_restore_confirm_body">The sources you have now are replaced as a whole by the ones in this backup. Restoring cannot be undone.</string>
     <string name="backup_restore_many_confirm_title">Restore %1$d items?</string>
     <string name="backup_restore_many_confirm_body">The selected modules are installed again over the versions you have now, and repo sources are replaced as a whole. A backup may hold an older version, and restoring cannot be undone.</string>
     <string name="backup_now">Back up now</string>

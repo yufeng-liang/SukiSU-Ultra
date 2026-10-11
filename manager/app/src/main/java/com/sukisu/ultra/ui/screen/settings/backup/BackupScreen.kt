@@ -83,8 +83,9 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     ) { uri -> uri?.let { viewModel.importFrom(it) } }
 
     // 恢复原厂镜像会把当前已打补丁的 boot 换掉，设备直接回到未 root 状态——不可逆、且用户
-    // 未必知道，所以这一项必须问一次。单个模块恢复只是重装那一个模块，不必拦；但详情页一进来
-    // 就是全选，"恢复"一下可能把整组模块按备份里的版本重装一遍，那也要问一次（见下）。
+    // 未必知道，所以这一项必须问一次。单个模块恢复只是重装那一个模块，不必拦；但单条仓库源
+    // 恢复是整批替换（点一下就把现在配的全部源换成归档里的），也要问；详情页一进来就是全选，
+    // "恢复"一下可能把整组模块按备份里的版本重装一遍，同样要问（见下）。
     val confirmDialog = rememberConfirmDialog()
     val confirmScope = rememberCoroutineScope()
     val bootConfirmTitle = stringResource(R.string.backup_boot_restore_confirm_title)
@@ -94,6 +95,8 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     // 标题里要拼条数，而拼的时候在普通 lambda 里：stringResource 只能在 @Composable 里调，
     // 正文先在这里取好。
     val restoreManyConfirmBody = stringResource(R.string.backup_restore_many_confirm_body)
+    val repoRestoreConfirmTitle = stringResource(R.string.backup_repo_restore_confirm_title)
+    val repoRestoreConfirmBody = stringResource(R.string.backup_repo_restore_confirm_body)
 
     val actions = BackupActions(
         onBack = { navigator.pop() },
@@ -119,8 +122,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
                 }
 
                 // 一次恢复好几条：详情页默认全选，这一下会把整组模块按备份里的版本重装一遍
-                // ——备份可能比现在旧，而且恢复没有撤销。只恢复一条时不拦：那正是"把这个模块
-                // 换回这个版本"的本意。
+                // ——备份可能比现在旧，而且恢复没有撤销。多选里带仓库源时正文已说明会整批替换。
                 selection.size > 1 -> confirmScope.launch {
                     val confirmed = confirmDialog.awaitConfirm(
                         title = context.getString(
@@ -128,6 +130,16 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
                             selection.size,
                         ),
                         content = restoreManyConfirmBody,
+                    ) == ConfirmResult.Confirmed
+                    if (confirmed) viewModel.restoreSelected()
+                }
+
+                // 单条仓库源恢复同样是整批替换：只恢复一条不拦的豁免理由（"只动那一个模块"）
+                // 对它不成立，所以单独问一次。
+                selection.singleOrNull()?.kind == BackupKind.REPO_CONFIG -> confirmScope.launch {
+                    val confirmed = confirmDialog.awaitConfirm(
+                        title = repoRestoreConfirmTitle,
+                        content = repoRestoreConfirmBody,
                     ) == ConfirmResult.Confirmed
                     if (confirmed) viewModel.restoreSelected()
                 }

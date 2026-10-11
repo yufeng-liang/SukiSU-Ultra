@@ -104,12 +104,53 @@ class RepoConfigBackupSourceTest {
     fun `restored sources without ids get stable generated ones`() = runBlocking {
         val writer = FakeWriter()
         val (src, _) = source(emptyList(), writer = writer)
-        val text = "{\"sources\":[{\"url\":\"https://example.com/a.json\",\"enabled\":false}]}"
+        val text = "{\"schema\":\"sukisu.repo-config.backup\",\"version\":1," +
+            "\"sources\":[{\"url\":\"https://example.com/a.json\",\"enabled\":false}]}"
 
         val outcome = src.restore(entryOf(), metaJson = null, content = ByteArrayInputStream(text.toByteArray()))
 
         assertTrue(outcome.getOrThrow().success)
-        assertEquals(listOf(RepoSource("repo-0", "", "https://example.com/a.json", enabled = false)), writer.applied)
+        // 空名与 prefs 解码路径同一待遇：按地址取默认名，不让界面摆一行空标题。
+        assertEquals(listOf(RepoSource("repo-0", "example.com", "https://example.com/a.json", enabled = false)), writer.applied)
+    }
+
+    @Test
+    fun `archive with unknown schema or version is rejected`() = runBlocking {
+        val writer = FakeWriter()
+        val (src, _) = source(emptyList(), writer = writer)
+        // 写下去的 schema/version 读取时也要认：别的产物的归档、未来版本的归档都不该被
+        // 当成今天的样子静默解析。
+        val good = "{\"schema\":\"sukisu.repo-config.backup\",\"version\":1," +
+            "\"sources\":[{\"url\":\"https://example.com/a.json\"}]}"
+        val badSchema = good.replace("sukisu.repo-config.backup", "someone.else")
+        val badVersion = good.replace("\"version\":1", "\"version\":2")
+
+        listOf(badSchema, badVersion).forEach { text ->
+            val outcome = src.restore(entryOf(), metaJson = null, content = ByteArrayInputStream(text.toByteArray()))
+            assertTrue(outcome.getOrThrow().let { !it.success && it.reason is BackupReason.RepoConfigInvalid })
+        }
+        assertEquals(null, writer.applied)
+    }
+
+    @Test
+    fun `duplicate ids and same urls collapse into one source`() = runBlocking {
+        val writer = FakeWriter()
+        val (src, _) = source(emptyList(), writer = writer)
+        // addSource 拦得住重复配置，整批替换没有那道闸：重复的 id（prefs 主键，重复会让
+        // 删除/开关一次动到多条）和同址的来源（末尾斜杠算同一个）都只留最先出现的那条。
+        val text = "{\"schema\":\"sukisu.repo-config.backup\",\"version\":1,\"sources\":[" +
+            "{\"id\":\"a\",\"url\":\"https://example.com/a.json\"}," +
+            "{\"id\":\"a\",\"name\":\"dup id\",\"url\":\"https://example.com/b.json\"}," +
+            "{\"id\":\"b\",\"name\":\"dup url\",\"url\":\"https://example.com/a.json/\"}" +
+            "]}"
+
+        val outcome = src.restore(entryOf(), metaJson = null, content = ByteArrayInputStream(text.toByteArray()))
+
+        assertTrue(outcome.getOrThrow().success)
+        assertEquals(
+            listOf(RepoSource("a", "example.com", "https://example.com/a.json", enabled = true)),
+            writer.applied,
+        )
     }
 
     private fun entryOf(artifact: BackupArtifact? = null) = BackupEntry(
