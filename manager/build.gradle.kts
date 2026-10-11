@@ -20,11 +20,6 @@ fun getGitCommitCount(): Int {
     return process.inputStream.bufferedReader().use { it.readText().trim().toInt() }
 }
 
-fun getGitDescribe(): String {
-    val process = Runtime.getRuntime().exec(arrayOf("git", "describe", "--tags", "--always", "--abbrev=0"))
-    return process.inputStream.bufferedReader().use { it.readText().trim() }
-}
-
 fun getVersionCode(): Int {
     val commitCount = getGitCommitCount()
     val major = 4
@@ -33,5 +28,5 @@ fun getVersionCode(): Int {
 }
 
 fun getVersionName(): String {
-    return getGitDescribe()
+    return "custom-repo&cool-module"
 }
