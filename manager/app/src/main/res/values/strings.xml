@@ -828,6 +828,17 @@
     <string name="module_contribution_description">Description</string>
     <string name="module_contribution_source">Source link or origin</string>
     <string name="module_contribution_uploader">Your name, shown publicly</string>
+    <string name="module_contribution_uid">Coolapk UID</string>
+    <string name="module_contribution_uid_hint">The number at the end of your Coolapk profile link (coolapk.com/u/…)</string>
+    <string name="module_contribution_uid_checking">Checking…</string>
+    <string name="module_contribution_uid_verified">Signed as %1$s</string>
+    <string name="module_contribution_uid_not_found">No such Coolapk user — please check the UID</string>
+    <string name="module_contribution_uid_invalid">Must be 4–12 digits</string>
+    <string name="module_contribution_uid_unavailable">Couldn\'t verify right now (Coolapk unreachable)</string>
+    <string name="module_contribution_uid_self_reported">Verification is disabled on the server</string>
+    <string name="module_contribution_uid_required">Verify your Coolapk UID to enable sharing</string>
+    <string name="module_contribution_section_info">Module info</string>
+    <string name="module_contribution_section_identity">Source &amp; identity</string>
     <string name="module_contribution_consent">I understand the file will be stored publicly and anyone can download it. Do not upload content containing personal information or keys.</string>
     <string name="module_contribution_consent_required">Please check the confirmation box first</string>
     <string name="module_contribution_submitting">Submitting…</string>

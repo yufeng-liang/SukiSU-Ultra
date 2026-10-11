@@ -933,7 +933,15 @@ fun ModuleItem(
         }
 
         if (showContribute) {
-            Column(modifier = Modifier.padding(bottom = 8.dp)) {
+            // 「无法确认是否已收录」挂在分享按钮**右侧**：它是这个按钮的注解（"点了会怎样"），
+            // 不是独立的一行内容；挤在下面会把这一格撑高，列表里每一条都白占一行。
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 IconButton(
                     backgroundColor = secondaryContainer,
                     minHeight = 35.dp,
@@ -961,9 +969,10 @@ fun ModuleItem(
                     }
                 }
                 // 查不出来时如实说一声：用户主动点投稿，该知道"是不是已收录我们没查出来"。
+                // 吃满剩余宽度：窄屏上它换行，而不是把按钮挤出屏幕。
                 if (showUnknown) {
                     Text(
-                        modifier = Modifier.padding(start = 2.dp, top = 4.dp),
+                        modifier = Modifier.weight(1f),
                         text = stringResource(R.string.module_contribution_unknown),
                         fontSize = 12.sp,
                         color = colorScheme.onSurfaceVariantSummary,

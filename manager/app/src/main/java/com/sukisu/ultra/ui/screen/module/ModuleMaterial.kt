@@ -876,8 +876,10 @@ private fun ModuleItem(
                         )
                     }
                     // 查不出来时如实说一声：用户主动点投稿，该知道"是不是已收录我们没查出来"。
+                    // 挂在按钮**右侧**并吃满剩余宽度：窄屏上它换行，而不是把按钮挤出屏幕。
                     if (showUnknown) {
                         Text(
+                            modifier = Modifier.weight(1f),
                             text = stringResource(R.string.module_contribution_unknown),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,

@@ -26,6 +26,10 @@ class ModuleContributionTest {
         .getDeclaredMethod("readSubmitResult", okhttp3.Response::class.java)
         .apply { isAccessible = true }
 
+    private val readUidLookup = ModuleContribution::class.java
+        .getDeclaredMethod("readUidLookup", okhttp3.Response::class.java)
+        .apply { isAccessible = true }
+
     private val describe = ModuleContribution::class.java
         .getDeclaredMethod("describe", Throwable::class.java)
         .apply { isAccessible = true }
@@ -51,6 +55,9 @@ class ModuleContributionTest {
 
     private fun described(error: Throwable): String =
         describe.invoke(ModuleContribution, error) as String
+
+    private fun uidOf(code: Int, bodyText: String): CoolapkUidLookup =
+        readUidLookup.invoke(ModuleContribution, response(code, bodyText)) as CoolapkUidLookup
 
     // ── checkRecorded 的解析 ────────────────────────────────────────────────
 
@@ -112,6 +119,46 @@ class ModuleContributionTest {
         }
     }
 
+    // ── lookupCoolapkUser（/user）的解析 ────────────────────────────────────
+
+    @Test
+    fun `the four documented uid states map to their results`() {
+        assertEquals(
+            CoolapkUidLookup.Verified("彧祜"),
+            uidOf(200, """{"status":"verified","uid":"2781460","nickname":"彧祜"}"""),
+        )
+        assertEquals(CoolapkUidLookup.NotFound, uidOf(200, """{"status":"not_found","uid":"99999999"}"""))
+        assertEquals(CoolapkUidLookup.SelfReported, uidOf(200, """{"status":"self_reported","uid":"1"}"""))
+        assertEquals(CoolapkUidLookup.Unavailable, uidOf(200, """{"status":"unavailable"}"""))
+    }
+
+    @Test
+    fun `a verified response without a nickname is not verified`() {
+        // 没有昵称就没有可署名的东西：宁可当"没核实成"，也不能放一个空署名进审核队列。
+        assertEquals(CoolapkUidLookup.Unavailable, uidOf(200, """{"status":"verified","uid":"1"}"""))
+        assertEquals(CoolapkUidLookup.Unavailable, uidOf(200, """{"status":"verified","nickname":"  "}"""))
+    }
+
+    @Test
+    fun `anything unexpected degrades to unavailable never to verified`() {
+        // 服务端承诺任何情况都回 200；收到非 2xx 说明部署版本不对或中间有劫持 ——
+        // 那种时候只能当"这次没查成"，绝不能升格成 verified（那是昵称属于这个 UID 的唯一凭据）。
+        for (code in listOf(500, 404, 302, 403)) {
+            assertEquals("HTTP $code", CoolapkUidLookup.Unavailable, uidOf(code, """{"status":"verified","nickname":"x"}"""))
+        }
+        assertEquals(CoolapkUidLookup.Unavailable, uidOf(200, "not json"))
+        assertEquals(CoolapkUidLookup.Unavailable, uidOf(200, """{"foo":"bar"}"""))
+        assertEquals(CoolapkUidLookup.Unavailable, uidOf(200, ""))
+    }
+
+    @Test
+    fun `the user url carries the uid as a query parameter`() {
+        assertEquals(
+            "https://sukisu-module-api.pages.dev/user?uid=2781460",
+            ModuleContribution.userUrl("2781460"),
+        )
+    }
+
     // ── 异常到人话 ──────────────────────────────────────────────────────────
 
     @Test
@@ -128,26 +175,27 @@ class ModuleContributionTest {
     @Test
     fun `the base url points at the deployed submission service`() {
         // 曾经是 https://REPLACE-ME.workers.dev 这个占位常量（"后端还没部署"的显式标记）。
-        // 服务已部署到 Cloudflare Workers，所以这条改成钉住真实地址：
-        // 谁把它改回占位、或改成非 .workers.dev 的主机，这里就会红。
+        // 现在钉住真实地址：Cloudflare Pages 网关（它转发到 Worker，因为 workers.dev
+        // 在国内被 DNS 投毒 + SNI 阻断，直连必然失败）。谁把它改回占位或改成别的
+        // 主机，这里就会红。
         assertEquals(
-            "https://sukisu-module-submit.lyfsearch.workers.dev",
+            "https://sukisu-module-api.pages.dev",
             ModuleContribution.BASE_URL,
         )
         assertFalse(ModuleContribution.isPlaceholder())
     }
 
     @Test
-    fun `a deployed workers dev host is not treated as a placeholder`() {
-        // 真实服务就部署在 *.workers.dev 上。判据只能是"还带着 REPLACE-ME 标记"，
-        // 不能是"域名长什么样"——曾经写成 !endsWith(".workers.dev")，
-        // 结果是真实地址被判成占位、REPLACE-ME 假地址反而被判成配好了。
-        // 这条钉住新语义：.workers.dev 的合法地址不许被当成占位。
+    fun `a deployed host is not treated as a placeholder`() {
+        // 判据只能是"还带着 REPLACE-ME 标记"，不能是"域名长什么样"——曾经写成
+        // !endsWith(".workers.dev")，结果是真实地址被判成占位、REPLACE-ME 假地址
+        // 反而被判成配好了。地址从 workers.dev 换到 pages.dev 也印证了这一点：
+        // 钉域名形状的判据，换一次入口就错一次。
         assertFalse(
-            "部署在 workers.dev 上的真实地址不该被判成占位",
+            "部署在 pages.dev 上的真实地址不该被判成占位",
             ModuleContribution.isPlaceholder(),
         )
-        assertTrue(ModuleContribution.BASE_URL.endsWith(".workers.dev"))
+        assertTrue(ModuleContribution.BASE_URL.endsWith(".pages.dev"))
     }
 
     // ── id 白名单 ───────────────────────────────────────────────────────────

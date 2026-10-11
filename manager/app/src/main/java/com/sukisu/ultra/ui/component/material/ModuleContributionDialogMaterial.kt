@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.component.material
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,8 +10,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
@@ -26,14 +32,19 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.ContributionForm
 import com.sukisu.ultra.ui.component.ContributionSubmitState
+import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.util.ModulePropInfo
 
 /**
@@ -41,7 +52,7 @@ import com.sukisu.ultra.ui.util.ModulePropInfo
  *
  * 三段式，对应契约里"一屏不可跳过的确认说明"：
  * ① 只读的模块信息（[ModulePropInfo] 解析出来预填，用户不用手抄）；
- * ② 两个必填输入：出处链接、投稿者署名；
+ * ② 出处 + **酷安 UID**：UID 填完自动去服务端反查昵称，核实通过才放行提交；
  * ③ 确认说明 + 勾选框——没勾上时 [onSubmit] 不可能被触发：按钮 disabled，
  *    且 [ContributionForm.canSubmit] 在状态层再挡一道。
  *
@@ -57,7 +68,8 @@ fun ModuleContributionDialogMaterial(
     show: Boolean,
     form: ContributionForm,
     onSourceChange: (String) -> Unit,
-    onUploaderChange: (String) -> Unit,
+    onUidChange: (String) -> Unit,
+    onRetryLookup: () -> Unit,
     onConsentChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
     onDismissRequest: () -> Unit,
@@ -77,7 +89,7 @@ fun ModuleContributionDialogMaterial(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
                     modifier = Modifier.padding(horizontal = 24.dp),
@@ -88,16 +100,27 @@ fun ModuleContributionDialogMaterial(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 380.dp)
+                        .heightIn(max = 420.dp)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     val meta = form.meta
                     if (meta != null) {
-                        MetaSection(meta = meta)
-                        HorizontalDivider(thickness = Dp.Hairline)
+                        SectionLabel(stringResource(R.string.module_contribution_section_info))
+                        // 只读信息放进一层浅底容器：与下面要用户填的两栏在视觉上分开。
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            MetaSection(meta = meta)
+                        }
                     }
+
+                    SectionLabel(stringResource(R.string.module_contribution_section_identity))
 
                     OutlinedTextField(
                         value = form.source,
@@ -108,19 +131,24 @@ fun ModuleContributionDialogMaterial(
                         singleLine = true,
                     )
                     OutlinedTextField(
-                        value = form.uploader,
-                        onValueChange = onUploaderChange,
+                        value = form.uid,
+                        // 只留数字：UID 就是一串数字，让字母压根进不来，比事后报错友好。
+                        onValueChange = { raw -> onUidChange(raw.filter { it.isDigit() }.take(UID_MAX_LEN)) },
                         enabled = !form.isSubmitting,
-                        label = { Text(stringResource(R.string.module_contribution_uploader)) },
+                        label = { Text(stringResource(R.string.module_contribution_uid)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        trailingIcon = { UidTrailingIcon(form.uidState) },
                     )
+
+                    UidStatusRow(form = form, onRetry = onRetryLookup)
 
                     // 确认说明：勾选项排在提交按钮正上方，不划过它就点不到提交
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp),
+                            .padding(top = 2.dp),
                         verticalAlignment = Alignment.Top,
                     ) {
                         Checkbox(
@@ -186,6 +214,124 @@ fun ModuleContributionDialogMaterial(
     }
 }
 
+/** UID 输入框尾部的状态指示：核实中转圈、核实通过打勾，其余不占位。 */
+@Composable
+private fun UidTrailingIcon(state: CoolapkUidState) {
+    when (state) {
+        CoolapkUidState.Checking -> CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+        )
+
+        is CoolapkUidState.Verified -> Icon(
+            modifier = Modifier.size(20.dp),
+            imageVector = Icons.Filled.Check,
+            tint = MaterialTheme.colorScheme.primary,
+            contentDescription = null,
+        )
+
+        CoolapkUidState.NotFound -> Icon(
+            modifier = Modifier.size(20.dp),
+            imageVector = Icons.Filled.Close,
+            tint = MaterialTheme.colorScheme.error,
+            contentDescription = null,
+        )
+
+        else -> Unit
+    }
+}
+
+/** UID 输入框下面那一行回显：把"核实到哪一步了"如实写出来。 */
+@Composable
+private fun UidStatusRow(form: ContributionForm, onRetry: () -> Unit) {
+    when (val state = form.uidState) {
+        is CoolapkUidState.Verified -> StatusLine(
+            icon = Icons.Filled.Check,
+            text = stringResource(R.string.module_contribution_uid_verified, state.nickname),
+            color = MaterialTheme.colorScheme.primary,
+        )
+
+        CoolapkUidState.Checking -> Text(
+            text = stringResource(R.string.module_contribution_uid_checking),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        CoolapkUidState.NotFound -> StatusLine(
+            icon = Icons.Filled.Close,
+            text = stringResource(R.string.module_contribution_uid_not_found),
+            color = MaterialTheme.colorScheme.error,
+        )
+
+        // 「这次没查成」与「查无此人」必须分开说：前者重试就可能好，后者要用户去核对 UID。
+        CoolapkUidState.Unavailable -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.module_contribution_uid_unavailable),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(onClick = onRetry, enabled = !form.isSubmitting) {
+                Icon(
+                    modifier = Modifier.size(16.dp),
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = null,
+                )
+                Text(
+                    modifier = Modifier.padding(start = 4.dp),
+                    text = stringResource(R.string.network_retry),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+
+        CoolapkUidState.SelfReported -> Text(
+            text = stringResource(R.string.module_contribution_uid_self_reported),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        CoolapkUidState.Empty -> Text(
+            text = if (form.uid.isNotBlank() && !form.uidLooksValid) {
+                stringResource(R.string.module_contribution_uid_invalid)
+            } else {
+                stringResource(R.string.module_contribution_uid_hint)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun StatusLine(icon: ImageVector, text: String, color: Color) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            modifier = Modifier.size(16.dp),
+            imageVector = icon,
+            tint = color,
+            contentDescription = null,
+        )
+        Text(text = text, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = color)
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        modifier = Modifier.padding(start = 2.dp, top = 2.dp),
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
 /** 提交进度 / 成功（带 PR 链接）/ 失败（带原因）三种结果。 */
 @Composable
 private fun SubmitStateBlock(state: ContributionSubmitState) {
@@ -247,7 +393,7 @@ private fun SubmitStateBlock(state: ContributionSubmitState) {
  */
 @Composable
 private fun MetaSection(meta: ModulePropInfo) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         MetaLine(
             label = stringResource(R.string.module_contribution_name),
             value = meta.name,
@@ -291,3 +437,6 @@ private fun MetaLine(label: String, value: String, emphasized: Boolean = false) 
 private fun SpacerWidth(width: Dp) {
     androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(width))
 }
+
+/** 与 [com.sukisu.ultra.ui.util.ModuleContribution] 的 `\d{4,12}` 同一条约定。 */
+private const val UID_MAX_LEN = 12

@@ -42,6 +42,31 @@ enum class CheckStatus {
 data class SubmitResult(val ok: Boolean, val prUrl: String?, val message: String)
 
 /**
+ * 酷安 UID 的核实结果（`GET /user?uid=` 的四态 + 本地判定的形状不对）。
+ *
+ * 投稿人身份从"自己填一个署名"改成"填酷安 UID 并核实出昵称"之后，这里就是那道门的全部取值：
+ * 只有 [Verified] 允许提交 —— 昵称由酷安反查得到，不是用户自己声明的字符串。
+ *
+ * [NotFound] 是"酷安明确说没有这个人"，属于**拦人**的结论；[Unavailable] 只是"这次没查成"，
+ * 两者的界面文案必须分开：前者要用户去核对 UID，后者只需要稍后重试。
+ * [SelfReported] 是后端把核实开关关掉了（`COOLAPK_VERIFY=off`），此时拿不到昵称，
+ * 也就没有可提交的署名 —— 与"没查成"一样不放行，但原因不同。
+ */
+sealed interface CoolapkUidLookup {
+    /** 酷安返回了这个 UID 的昵称。唯一允许提交的状态。 */
+    data class Verified(val nickname: String) : CoolapkUidLookup
+
+    /** 酷安明确说没有这个用户。 */
+    object NotFound : CoolapkUidLookup
+
+    /** 后端没有核实能力（核实开关被关掉）。 */
+    object SelfReported : CoolapkUidLookup
+
+    /** 这次没核实成（酷安不可达 / 风控 / 超时）。 */
+    object Unavailable : CoolapkUidLookup
+}
+
+/**
  * 模块投稿的网络层。
  *
  * 这个文件里的每个公开方法都**不抛异常**：网络不可达、超时、HTTP 非 2xx、
@@ -57,12 +82,15 @@ data class SubmitResult(val ok: Boolean, val prUrl: String?, val message: String
 object ModuleContribution {
 
     /**
-     * 投稿服务的地址。占位常量：Worker 部署好之前这里没有真实后端。
+     * 投稿服务的地址：Cloudflare Pages 网关，把请求原样转给 Worker。
      *
-     * 占位域名解析不了，[checkRecorded] 会走"网络失败"分支返回 [CheckStatus.UNKNOWN]，
-     * 也就是静默——换成真地址之前，投稿入口不会打扰任何用户。
+     * 为什么不直接用 Worker 的 `*.workers.dev`：那个后缀在国内被 DNS 投毒 + TLS SNI
+     * 双重阻断（实测四路解析器给出的都是 Facebook/Twitter/Dropbox 的 IP，手工喂真实
+     * CF 边缘 IP 后握手仍被 RST）。用户侧的必然表现是 `/check` 恒为 [CheckStatus.UNKNOWN]
+     * ——每行模块都挂「无法确认是否已收录」——且永远提交不了，而文案指不到网络层。
+     * `*.pages.dev` 可直连，网关只做转发，凭据与业务判断仍在 Worker 上。
      */
-    const val BASE_URL: String = "https://sukisu-module-submit.lyfsearch.workers.dev"
+    const val BASE_URL: String = "https://sukisu-module-api.pages.dev"
 
     /** 8 秒。投稿是安装成功之后的额外一步，等太久会让用户以为卡住了。 */
     private const val TIMEOUT_MS = 8_000L
@@ -88,6 +116,9 @@ object ModuleContribution {
 
     /** id 的长度上限。索引里 id 是归并键，超长的只可能是恶意构造。 */
     private const val MAX_ID_LENGTH = 64
+
+    /** 酷安 UID：4~12 位纯数字（与 Worker / 网页端同一约定）。 */
+    private val UID_RE = Regex("\\d{4,12}")
 
     /**
      * 问服务端"这个 id 的这一版收录了吗"。
@@ -116,24 +147,59 @@ object ModuleContribution {
     }
 
     /**
+     * 问服务端"这个酷安 UID 是谁"。
+     *
+     * 任何失败都返回一个**不放行**的结果（[CoolapkUidLookup.Unavailable] 等），不抛异常：
+     * 调用点在输入框的防抖回调里，抛出去就是一次崩溃或一次没人处理的静默失败。
+     *
+     * 形状不合法的 UID 不打网络请求（[isValidUid] 先挡），直接 [CoolapkUidLookup.NotFound] 之外
+     * 的结果由调用方按"没输入"处理——这里返回 [CoolapkUidLookup.Unavailable] 只为给一个确定取值，
+     * 界面上不会走到（未通过形状校验时界面显示的是"还没填"）。
+     */
+    suspend fun lookupCoolapkUser(uid: String): CoolapkUidLookup {
+        val safeUid = uid.trim()
+        if (!isValidUid(safeUid)) return CoolapkUidLookup.Unavailable
+        val url = userUrl(safeUid)
+        return withContext(Dispatchers.IO) {
+            val call = runCatching { client().newCall(Request.Builder().url(url).get().build()) }
+                .getOrNull() ?: return@withContext CoolapkUidLookup.Unavailable
+            try {
+                withTimeout(TIMEOUT_MS) { execute(call) }.use { response -> readUidLookup(response) }
+            } catch (e: CancellationException) {
+                if (e is TimeoutCancellationException) CoolapkUidLookup.Unavailable else throw e
+            } catch (e: Throwable) {
+                CoolapkUidLookup.Unavailable
+            }
+        }
+    }
+
+    /**
      * 提交一个模块 zip。
      *
      * 任何失败都返回 `ok=false` 且带人类可读的 [SubmitResult.message]，不抛异常。
      *
      * [zip] 会被流式上传（不整体读进内存）；[meta] 为 null 时退化为"读不出模块信息"，
      * 直接失败，不让一条残缺条目进人工审核队列。
+     *
+     * 身份两个字段一起发：`uploader` 是酷安反查出来的昵称（索引里公开展示），
+     * `coolapkUid` 是投稿人自己填的 UID（审核与追责用）。**服务端把 `coolapkUid`
+     * 定为必收字段**，缺失或不是 4~12 位数字一律 400 —— 这一侧先挡一道，
+     * 免得用户白等一次上传。
      */
     suspend fun submitModule(
         zip: File,
         meta: ModulePropInfo?,
         source: String,
-        uploader: String,
+        uid: String,
+        nickname: String,
     ): SubmitResult {
         val resolved = meta ?: return failure("读不出模块信息（module.prop 缺失或 id/name 为空）")
         val safeSource = source.trim()
-        val safeUploader = uploader.trim()
+        val safeUid = uid.trim()
+        val safeNickname = nickname.trim()
         if (safeSource.isEmpty()) return failure("请填写出处链接或来源说明")
-        if (safeUploader.isEmpty()) return failure("请填写投稿者署名")
+        if (!isValidUid(safeUid)) return failure("酷安 UID 必须是 4~12 位数字")
+        if (safeNickname.isEmpty()) return failure("酷安 UID 未核实，拿不到署名")
 
         val sha256 = ModuleProp.zipSha256(zip)
             ?: return failure("读取模块文件失败，无法计算校验值")
@@ -148,7 +214,8 @@ object ModuleContribution {
             .addFormDataPart("author", resolved.author)
             .addFormDataPart("description", resolved.description)
             .addFormDataPart("source", safeSource)
-            .addFormDataPart("uploader", safeUploader)
+            .addFormDataPart("uploader", safeNickname)
+            .addFormDataPart("coolapkUid", safeUid)
             .addFormDataPart("sha256", sha256)
             .addFormDataPart(
                 "zip",
@@ -197,6 +264,34 @@ object ModuleContribution {
             ?.lowercase(Locale.ROOT)
             ?: return CheckStatus.UNKNOWN
         return STATUS_BY_NAME[name] ?: CheckStatus.UNKNOWN
+    }
+
+    /**
+     * `/user` 的应答解析。
+     *
+     * 四态与前端 `api.js` 的 `lookupCoolapkUser` 一一对应，但多一条**服务端契约**上的收口：
+     * 非 2xx 一律按"没核实成"（[CoolapkUidLookup.Unavailable]）处理，而不是"没有核实能力"。
+     * 服务端承诺任何情况都回 200，所以走到这里说明部署版本不对或中间有劫持 —— 那种时候
+     * 只能当"这次没查成"，绝不能升格成 verified（那是"昵称与 UID 对应"的唯一凭据）。
+     *
+     * `verified` 还要求昵称非空：没有昵称就没有可署名的东西，退回 [CoolapkUidLookup.Unavailable]。
+     */
+    private fun readUidLookup(response: Response): CoolapkUidLookup {
+        if (!response.isSuccessful) return CoolapkUidLookup.Unavailable
+        val body = runCatching { response.body.string() }.getOrNull()
+            ?: return CoolapkUidLookup.Unavailable
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return CoolapkUidLookup.Unavailable
+        return when (json.optString("status").trim().lowercase(Locale.ROOT)) {
+            "verified" -> json.optString("nickname").trim()
+                .takeIf { it.isNotEmpty() }
+                ?.let { CoolapkUidLookup.Verified(it) }
+                ?: CoolapkUidLookup.Unavailable
+
+            "not_found" -> CoolapkUidLookup.NotFound
+            "self_reported" -> CoolapkUidLookup.SelfReported
+            else -> CoolapkUidLookup.Unavailable
+        }
     }
 
     private fun readSubmitResult(response: Response): SubmitResult {
@@ -267,11 +362,36 @@ object ModuleContribution {
         id.length in 1..MAX_ID_LENGTH && ID_PATTERN.matches(id)
 
     /**
+     * 合法酷安 UID 的形状：4~12 位纯数字。
+     *
+     * 与 Worker 的 `COOLAPK_UID_RE`、网页端 `api.js` 的 `UID_RE` 是同一条约定 ——
+     * 三处必须一致，否则会出现"App 认为合法、服务端 400 拒掉"的死角。
+     * 形状不对时**不打网络请求**：那只会白耗一次配额，还必然得到一个查不到的结果。
+     */
+    fun isValidUid(uid: String): Boolean = UID_RE.matches(uid.trim())
+
+    /**
+     * `/user` 的完整 URL。
+     *
+     * 与 [checkUrl] 同一套写法（[okhttp3.HttpUrl.Builder] 负责转义）。UID 已经过
+     * [isValidUid] 的纯数字白名单，这里再转一次只是为了让"拼 URL"这件事只有一个出口。
+     */
+    fun userUrl(uid: String): String =
+        okhttp3.HttpUrl.Builder()
+            .scheme("https")
+            .host(HOST)
+            .addPathSegment("user")
+            .addQueryParameter("uid", uid)
+            .build()
+            .toString()
+            .replaceFirst("https://$HOST", BASE_URL.trimEnd('/'))
+
+    /**
      * 保留给调用方自检：地址配好没有。
      *
-     * 判据只能是"还带着没替换的标记"，不能是"域名长什么样"——服务就部署在
-     * `*.workers.dev` 上，把 `!endsWith(".workers.dev")` 当占位标志的话，
-     * 真实地址反而会被判成占位、REPLACE-ME 这种假地址倒会被判成配好了。
+     * 判据只能是"还带着没替换的标记"，不能是"域名长什么样"——地址先是部署在
+     * `*.workers.dev`、后来换成 `*.pages.dev`，两次都是真实地址；把域名形状当占位标志的话，
+     * 真实地址会被判成占位，而 REPLACE-ME 这种假地址倒会被判成配好了。
      */
     fun isPlaceholder(): Boolean =
         BASE_URL.isBlank() ||

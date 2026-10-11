@@ -6,6 +6,7 @@ import com.sukisu.ultra.data.backup.StagingArea
 import com.sukisu.ultra.data.model.Module
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.CoolapkUidLookup
 import com.sukisu.ultra.ui.util.ModuleContribution
 import com.sukisu.ultra.ui.util.ModuleProp
 import com.sukisu.ultra.ui.util.ModulePropInfo
@@ -81,15 +82,28 @@ object ModuleContributionEntry {
     /**
      * 提交投稿。
      *
-     * [source] 与 [uploader] 的非空校验不在这里做（[ModuleContribution.submitModule]
-     * 会挡住并给出中文原因），但表单在 UI 层已经先挡了一道。
+     * 非空/形状校验不在这里做（[ModuleContribution.submitModule] 会挡住并给出中文原因），
+     * 但表单在 UI 层已经先挡了一道。
+     *
+     * [uid] 是投稿人填的酷安 UID，[nickname] 是核实出来的昵称 —— 两者一起发给服务端：
+     * 昵称公开展示，UID 用于审核与追责（服务端把 UID 定为必收字段）。
      */
     suspend fun submit(
         zip: File,
         meta: ModulePropInfo?,
         source: String,
-        uploader: String,
-    ): SubmitResult = ModuleContribution.submitModule(zip, meta, source, uploader)
+        uid: String,
+        nickname: String,
+    ): SubmitResult = ModuleContribution.submitModule(zip, meta, source, uid, nickname)
+
+    /**
+     * 核实一个酷安 UID 是谁。
+     *
+     * 任何失败都收敛成 [CoolapkUidLookup] 的一个取值，不抛异常 —— 调用点在输入框的
+     * 防抖回调里，抛出去就是一次崩溃或一次没人处理的静默失败。
+     */
+    suspend fun lookupUid(uid: String): CoolapkUidLookup =
+        ModuleContribution.lookupCoolapkUser(uid)
 
     /**
      * 把一个 uri 拷成投稿用的 zip。

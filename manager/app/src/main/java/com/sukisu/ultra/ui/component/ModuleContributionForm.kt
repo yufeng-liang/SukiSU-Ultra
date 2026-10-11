@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.component
 
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.CoolapkUidLookup
 import com.sukisu.ultra.ui.util.ModulePropInfo
 import com.sukisu.ultra.ui.util.SubmitResult
 
@@ -67,23 +68,75 @@ sealed interface ContributionSubmitState {
 }
 
 /**
+ * 酷安 UID 输入框的界面状态。
+ *
+ * 比网络层的 [CoolapkUidLookup] 多两个**只属于界面**的取值：[Empty]（还没填或形状不对）
+ * 与 [Checking]（防抖结束、请求在路上）。两者都不是"核实结论"，所以不能混进网络层的类型里
+ * ——否则 [ContributionForm.requiredFilled] 那种判据迟早会把"正在查"当成"查到了"。
+ */
+sealed interface CoolapkUidState {
+    /** 还没填，或填了但不是 4~12 位数字。此时不发请求。 */
+    object Empty : CoolapkUidState
+
+    /** 正在核实（输入停止后的防抖已结束，请求在路上）。 */
+    object Checking : CoolapkUidState
+
+    /** 核实通过：酷安返回了这个 UID 的昵称。**唯一允许提交的状态**。 */
+    data class Verified(val nickname: String) : CoolapkUidState
+
+    /** 酷安明确说没有这个用户。 */
+    object NotFound : CoolapkUidState
+
+    /** 后端没有核实能力（核实开关被关掉）。 */
+    object SelfReported : CoolapkUidState
+
+    /** 这次没核实成（酷安不可达 / 风控 / 超时）。 */
+    object Unavailable : CoolapkUidState
+}
+
+/** 网络层结果 → 界面状态。 */
+fun CoolapkUidLookup.toState(): CoolapkUidState = when (this) {
+    is CoolapkUidLookup.Verified -> CoolapkUidState.Verified(nickname)
+    CoolapkUidLookup.NotFound -> CoolapkUidState.NotFound
+    CoolapkUidLookup.SelfReported -> CoolapkUidState.SelfReported
+    CoolapkUidLookup.Unavailable -> CoolapkUidState.Unavailable
+}
+
+/**
  * 投稿表单的一份快照，两套界面共用。
  *
  * [meta] 是 [com.sukisu.ultra.ui.util.ModuleProp.parseModuleProp] 从 zip 里读出来的，
  * 用来预填展示信息；为 null 表示"读不出模块信息"，此时仍允许填写但提交必然失败
  * （[com.sukisu.ultra.ui.util.ModuleContribution.submitModule] 那层会挡住）。
+ *
+ * 投稿人身份是 [uid] + [uidState] 两个字段，不再是自由填写的署名：昵称由酷安反查得到
+ * （见 [CoolapkUidState.Verified]），用户能控制的只有 UID 那一串数字。
  */
 data class ContributionForm(
     val meta: ModulePropInfo? = null,
     val source: String = "",
-    val uploader: String = "",
+    val uid: String = "",
+    val uidState: CoolapkUidState = CoolapkUidState.Empty,
     val consentChecked: Boolean = false,
     val submitState: ContributionSubmitState = ContributionSubmitState.Idle,
 ) {
 
-    /** 出处链接与投稿者署名两项必填（前后空白不算填了）。 */
+    /** 核实出来的昵称；没核实通过时为空串（此时也不允许提交）。 */
+    val nickname: String
+        get() = (uidState as? CoolapkUidState.Verified)?.nickname.orEmpty()
+
+    /**
+     * 出处填了、且酷安 UID 核实通过。
+     *
+     * "核实通过"必须是**酷安反查到的**，不是"填了 4~12 位数字"——后者只是形状，
+     * 谁都能填一串不存在的数字，那和原来的自由署名没有区别。
+     */
     val requiredFilled: Boolean
-        get() = source.trim().isNotEmpty() && uploader.trim().isNotEmpty()
+        get() = source.trim().isNotEmpty() && uidState is CoolapkUidState.Verified
+
+    /** UID 形状已经合法、正在或已经查过（界面据此决定要不要显示状态行）。 */
+    val uidLooksValid: Boolean
+        get() = com.sukisu.ultra.ui.util.ModuleContribution.isValidUid(uid)
 
     /**
      * 能不能提交。

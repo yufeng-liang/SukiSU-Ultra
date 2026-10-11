@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.component
 
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ModulePropInfo
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,6 +13,10 @@ import org.junit.Test
  * 这里锁的是"用户会不会被打扰"和"用户有没有被知情"两件事的边界：
  * 规则写反，不是少一次投稿，而是每个用户每次安装都收到一次分享提示，
  * 或者文件在他不知情的情况下被传到公开仓库。
+ *
+ * 身份那一栏从"自由署名"改成"酷安 UID + 核实"之后，多了一条同样要紧的边界：
+ * **没核实通过就不能提交**——否则这串数字和原来的自由署名没有区别，
+ * 而服务端拿它当追责锚点用。
  */
 class ModuleContributionRulesTest {
 
@@ -23,6 +28,21 @@ class ModuleContributionRulesTest {
         author: String = "someone",
         description: String = "desc",
     ) = ModulePropInfo(id, name, version, versionCode, author, description)
+
+    /** 一份"该填的都填了、UID 也核实通过了"的表单。 */
+    private fun verifiedForm(
+        source: String = "https://a.example",
+        nickname: String = "酷友",
+        consent: Boolean = true,
+        submitState: ContributionSubmitState = ContributionSubmitState.Idle,
+    ) = ContributionForm(
+        meta = meta(),
+        source = source,
+        uid = "2781460",
+        uidState = CoolapkUidState.Verified(nickname),
+        consentChecked = consent,
+        submitState = submitState,
+    )
 
     // ── 列表按钮的显示 ──────────────────────────────────────────────────────
 
@@ -60,40 +80,75 @@ class ModuleContributionRulesTest {
         assertFalse(ModuleContributionRules.showUnknownHint(null))
     }
 
-    // ── 表单的两项必填 ──────────────────────────────────────────────────────
+    // ── 出处必填 + UID 必须核实通过 ─────────────────────────────────────────
 
     @Test
-    fun `both source and uploader are required`() {
-        val meta = meta()
-        assertFalse(ContributionForm(meta = meta).requiredFilled)
-        assertFalse(ContributionForm(meta = meta, source = "https://a.example").requiredFilled)
-        assertFalse(ContributionForm(meta = meta, uploader = "me").requiredFilled)
-        assertTrue(
-            ContributionForm(meta = meta, source = "https://a.example", uploader = "me").requiredFilled
+    fun `source and a verified uid are both required`() {
+        assertFalse("什么都没填", ContributionForm(meta = meta()).requiredFilled)
+        assertFalse(
+            "只有出处",
+            ContributionForm(meta = meta(), source = "https://a.example").requiredFilled,
+        )
+        assertFalse(
+            "填了 UID 但还没核实",
+            ContributionForm(meta = meta(), source = "https://a.example", uid = "2781460").requiredFilled,
+        )
+        assertTrue(verifiedForm().requiredFilled)
+    }
+
+    @Test
+    fun `a uid that failed verification never counts as filled`() {
+        // 四种"没核实通过"的取值，一个都不能放行。
+        val notVerified = listOf(
+            CoolapkUidState.Checking,
+            CoolapkUidState.NotFound,
+            CoolapkUidState.Unavailable,
+            CoolapkUidState.SelfReported,
+            CoolapkUidState.Empty,
+        )
+        for (state in notVerified) {
+            val form = ContributionForm(
+                meta = meta(),
+                source = "https://a.example",
+                uid = "2781460",
+                uidState = state,
+                consentChecked = true,
+            )
+            assertFalse("$state 不该被当成填好了", form.requiredFilled)
+            assertFalse("$state 不该能提交", form.canSubmit)
+        }
+    }
+
+    @Test
+    fun `the nickname comes from the verified lookup, never from the input box`() {
+        // 署名只能来自酷安反查的结果：输入框里的只有 UID。
+        assertEquals("酷友", verifiedForm(nickname = "酷友").nickname)
+        assertEquals("", ContributionForm(uid = "2781460").nickname)
+        assertEquals(
+            "",
+            ContributionForm(uid = "2781460", uidState = CoolapkUidState.Unavailable).nickname,
         )
     }
 
     @Test
     fun `whitespace alone does not count as filled`() {
-        val filled = ContributionForm(source = "   ", uploader = "\t\n", consentChecked = true)
-        assertFalse("纯空白不算填了：否则一条空出处就能进审核队列", filled.requiredFilled)
-        assertFalse(filled.canSubmit)
+        val blankSource = verifiedForm(source = "   ")
+        assertFalse("纯空白不算填了：否则一条空出处就能进审核队列", blankSource.requiredFilled)
+        assertFalse(blankSource.canSubmit)
     }
 
     // ── 确认勾选：未勾选不能提交 ────────────────────────────────────────────
 
     @Test
     fun `submitting is impossible without the consent checkbox`() {
-        val filled = ContributionForm(source = "https://a.example", uploader = "me")
-        assertFalse("未勾选确认时绝不能提交——这是用户知情的关键", filled.canSubmit)
-
-        val checked = filled.copy(consentChecked = true)
-        assertTrue(checked.canSubmit)
+        val unchecked = verifiedForm(consent = false)
+        assertFalse("未勾选确认时绝不能提交——这是用户知情的关键", unchecked.canSubmit)
+        assertTrue(unchecked.copy(consentChecked = true).canSubmit)
     }
 
     @Test
     fun `the consent checkbox alone never enables submitting`() {
-        // 只勾确认、两项必填空着，也不该能提交。
+        // 只勾确认、出处与 UID 都空着，也不该能提交。
         assertFalse(ContributionForm(consentChecked = true).canSubmit)
     }
 
@@ -101,11 +156,7 @@ class ModuleContributionRulesTest {
 
     @Test
     fun `a second submit is blocked while one is in flight`() {
-        val ready = ContributionForm(
-            source = "https://a.example",
-            uploader = "me",
-            consentChecked = true,
-        )
+        val ready = verifiedForm()
         assertTrue(ready.canSubmit)
 
         val submitting = ready.copy(submitState = ContributionSubmitState.Submitting("…"))
@@ -124,33 +175,24 @@ class ModuleContributionRulesTest {
     fun `a failed submit can be retried`() {
         // 失败后必须还能再点一次：网络抖一下就把提交入口永久关死，
         // 等于让用户重新打包 zip、重填必填项——而这次失败服务端很可能根本没收到。
-        val ready = ContributionForm(
-            source = "https://a.example",
-            uploader = "me",
-            consentChecked = true,
-        )
-        val failed = ready.copy(
+        val failed = verifiedForm(
             submitState = ContributionSubmitState.Failed("网络不可用，投稿未完成"),
         )
         assertTrue("失败之后必须能重试", failed.canSubmit)
         assertTrue(failed.isFailed)
         assertFalse(failed.isSubmitting)
         // 成功那一次不能重试：它已经进队列了。
-        assertFalse(ready.copy(submitState = ContributionSubmitState.Success("ok", null)).isFailed)
+        assertFalse(
+            verifiedForm(submitState = ContributionSubmitState.Success("ok", null)).isFailed
+        )
     }
 
     @Test
     fun `a retry is still blocked while the new attempt is in flight`() {
         // 重试不等于放过连点：重新提交之后照样锁住。
-        val failed = ContributionForm(
-            source = "https://a.example",
-            uploader = "me",
-            consentChecked = true,
+        val retrying = verifiedForm(
             submitState = ContributionSubmitState.Failed("投稿超时（8 秒），请稍后再试"),
-        )
-        val retrying = failed.copy(
-            submitState = ContributionSubmitState.Submitting("正在提交…"),
-        )
+        ).copy(submitState = ContributionSubmitState.Submitting("正在提交…"))
         assertFalse(retrying.canSubmit)
         assertTrue(retrying.isSubmitting)
     }
@@ -164,7 +206,7 @@ class ModuleContributionRulesTest {
         assertFalse(empty.consentMissing)
         assertFalse(empty.copy(consentChecked = true).consentMissing)
 
-        val filled = ContributionForm(source = "https://a.example", uploader = "me")
+        val filled = verifiedForm(consent = false)
         assertTrue(filled.consentMissing)
         assertFalse(filled.copy(consentChecked = true).consentMissing)
 
@@ -180,32 +222,15 @@ class ModuleContributionRulesTest {
     @Test
     fun `the failed flag is only set on a failure`() {
         assertFalse(ContributionForm().isFailed)
-        assertFalse(
-            ContributionForm(submitState = ContributionSubmitState.Idle).isFailed
-        )
-        assertFalse(
-            ContributionForm(
-                submitState = ContributionSubmitState.Submitting("…")
-            ).isFailed
-        )
-        assertFalse(
-            ContributionForm(
-                submitState = ContributionSubmitState.Success("ok", null)
-            ).isFailed
-        )
-        assertTrue(
-            ContributionForm(
-                submitState = ContributionSubmitState.Failed("网络不可用，投稿未完成")
-            ).isFailed
-        )
+        assertFalse(ContributionForm(submitState = ContributionSubmitState.Idle).isFailed)
+        assertFalse(ContributionForm(submitState = ContributionSubmitState.Submitting("…")).isFailed)
+        assertFalse(ContributionForm(submitState = ContributionSubmitState.Success("ok", null)).isFailed)
+        assertTrue(ContributionForm(submitState = ContributionSubmitState.Failed("网络不可用，投稿未完成")).isFailed)
     }
 
     @Test
     fun `a failure carries the reason and never a pr url`() {
-        val failed = ContributionForm(
-            source = "https://a.example",
-            uploader = "me",
-            consentChecked = true,
+        val failed = verifiedForm(
             submitState = ContributionSubmitState.Failed("网络不可用，投稿未完成"),
         )
         // 失败之后 canSubmit 重新为真：这一条锁的就是"失败不能把提交入口永久关死"。
@@ -220,9 +245,12 @@ class ModuleContributionRulesTest {
     fun `the form is prefilled from the parsed module info`() {
         val form = contributionFormOf(meta())
         assertTrue(form.meta != null)
-        assertEqualsId("test_module", form.meta?.id)
-        // 预填只填展示信息，出处与署名必须由用户自己给（那两项是必填的）。
+        assertEquals("test_module", form.meta?.id)
+        // 预填只填展示信息：出处与 UID 必须由用户自己给（那两项是必填的），
+        // UID 更不能替用户预填——那是"这条投稿是谁的"唯一凭据。
         assertFalse(form.requiredFilled)
+        assertEquals("", form.uid)
+        assertEquals(CoolapkUidState.Empty, form.uidState)
     }
 
     @Test
@@ -232,7 +260,17 @@ class ModuleContributionRulesTest {
         assertFalse(form.canSubmit)
     }
 
-    private fun assertEqualsId(expected: String, actual: String?) {
-        org.junit.Assert.assertEquals(expected, actual)
+    // ── UID 形状（与 Worker / 网页端同一约定）──────────────────────────────
+
+    @Test
+    fun `only 4 to 12 digits count as a well shaped uid`() {
+        assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid(""))
+        assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("123"))
+        assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("abc"))
+        assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("2781460x"))
+        assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("1234567890123"))
+        assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("1234"))
+        assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("2781460"))
+        assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid(" 2781460 "))
     }
 }

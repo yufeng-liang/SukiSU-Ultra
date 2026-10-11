@@ -821,6 +821,17 @@
     <string name="module_contribution_description">描述</string>
     <string name="module_contribution_source">出处链接或来源说明</string>
     <string name="module_contribution_uploader">你的署名，会公开展示</string>
+    <string name="module_contribution_uid">酷安 UID</string>
+    <string name="module_contribution_uid_hint">个人主页链接末尾那串数字（coolapk.com/u/…）</string>
+    <string name="module_contribution_uid_checking">正在核实…</string>
+    <string name="module_contribution_uid_verified">将以 %1$s 署名</string>
+    <string name="module_contribution_uid_not_found">酷安查无此人，请核对 UID</string>
+    <string name="module_contribution_uid_invalid">需要 4~12 位数字</string>
+    <string name="module_contribution_uid_unavailable">暂时无法核实（酷安不可达）</string>
+    <string name="module_contribution_uid_self_reported">服务端未开启核实</string>
+    <string name="module_contribution_uid_required">核实酷安 UID 后才能分享</string>
+    <string name="module_contribution_section_info">模块信息</string>
+    <string name="module_contribution_section_identity">出处与身份</string>
     <string name="module_contribution_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载。请勿上传包含个人隐私、密钥等敏感信息的内容。</string>
     <string name="module_contribution_consent_required">请先勾选确认</string>
     <string name="module_contribution_submitting">正在提交…</string>

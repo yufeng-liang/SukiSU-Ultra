@@ -1,43 +1,56 @@
 package com.sukisu.ultra.ui.component.miuix
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.ContributionForm
 import com.sukisu.ultra.ui.component.ContributionSubmitState
+import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.util.ModulePropInfo
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Close
+import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
 /**
  * Miuix 风格的投稿对话框。
  *
- * 结构与 Material 那套一一对应（只读信息 → 两个必填输入 → 确认勾选 → 提交按钮），
- * 只换控件：确认勾选在滚动区**之内但排在提交按钮正上方**，任何屏高下都要划过它才能提交。
+ * 三段，与 Material 那套一一对应：**模块信息（只读）→ 出处与身份 → 确认勾选 → 提交**。
+ * 只换控件、不换规则：能提交的条件（[ContributionForm.canSubmit]）只有一份，
+ * 在 [com.sukisu.ultra.ui.component.ContributionForm] 里。
+ *
+ * 身份那一栏是「酷安 UID」而不是自由署名：用户填完 UID 后自动去服务端反查昵称，
+ * 只有 [CoolapkUidState.Verified] 才放行提交（见 [UidStatusRow] 的四种回显）。
  *
  * [OverlayDialog] 的 `onDismissRequest` 在提交中被忽略（[busyDismiss]）：
  * zip 还在传的时候关掉对话框会让人以为"没传上去"，而实际上服务端可能已经收下。
@@ -47,7 +60,8 @@ fun ModuleContributionDialogMiuix(
     show: Boolean,
     form: ContributionForm,
     onSourceChange: (String) -> Unit,
-    onUploaderChange: (String) -> Unit,
+    onUidChange: (String) -> Unit,
+    onRetryLookup: () -> Unit,
     onConsentChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
     onDismissRequest: () -> Unit,
@@ -56,42 +70,60 @@ fun ModuleContributionDialogMiuix(
         show = show,
         title = stringResource(R.string.module_contribution_dialog_title),
         onDismissRequest = { if (!form.isSubmitting) onDismissRequest() },
-        insideMargin = DpSize(0.dp, 0.dp),
+        // 纵向留 24dp（内容区只补左右）：否则表单和底部按钮会贴住对话框上下边框。
+        insideMargin = DpSize(0.dp, 24.dp),
         content = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    .heightIn(max = 460.dp)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                val meta = form.meta
-                if (meta != null) {
-                    MetaSection(meta = meta)
-                    HorizontalDivider(thickness = 0.5.dp, color = colorScheme.outline.copy(alpha = 0.5f))
+                form.meta?.let { meta ->
+                    SectionLabel(stringResource(R.string.module_contribution_section_info))
+                    // 只读信息放在一层浅底容器里：它是"这次要传上去的是什么"，
+                    // 与下面两栏要用户填的东西视觉上分开，别混成一堆灰字。
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(colorScheme.surfaceContainer)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        MetaSection(meta = meta)
+                    }
                 }
+
+                SectionLabel(stringResource(R.string.module_contribution_section_identity))
 
                 TextField(
                     value = form.source,
                     onValueChange = onSourceChange,
                     enabled = !form.isSubmitting,
                     label = stringResource(R.string.module_contribution_source),
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 TextField(
-                    value = form.uploader,
-                    onValueChange = onUploaderChange,
+                    value = form.uid,
+                    // 只留数字：UID 就是一串数字，让字母压根进不来，比事后报错友好。
+                    onValueChange = { raw -> onUidChange(raw.filter { it.isDigit() }.take(UID_MAX_LEN)) },
                     enabled = !form.isSubmitting,
-                    label = stringResource(R.string.module_contribution_uploader),
+                    label = stringResource(R.string.module_contribution_uid),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                UidStatusRow(form = form, onRetry = onRetryLookup)
 
                 // 确认说明：不勾就提交不了，且它永远在提交按钮上方
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp),
+                        .padding(top = 2.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
                     Checkbox(
@@ -195,9 +227,101 @@ fun ModuleContributionDialogMiuix(
     )
 }
 
+/** UID 输入框下面那一行回显：把"核实到哪一步了"如实写出来。 */
+@Composable
+private fun UidStatusRow(form: ContributionForm, onRetry: () -> Unit) {
+    when (val state = form.uidState) {
+        is CoolapkUidState.Verified -> StatusLine(
+            icon = MiuixIcons.Ok,
+            text = stringResource(R.string.module_contribution_uid_verified, state.nickname),
+            color = colorScheme.primary,
+        )
+
+        CoolapkUidState.Checking -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CircularProgressIndicator(progress = null, size = 16.dp, strokeWidth = 2.dp)
+            Text(
+                text = stringResource(R.string.module_contribution_uid_checking),
+                fontSize = 13.sp,
+                color = colorScheme.onSurfaceVariantSummary,
+            )
+        }
+
+        CoolapkUidState.NotFound -> StatusLine(
+            icon = MiuixIcons.Close,
+            text = stringResource(R.string.module_contribution_uid_not_found),
+            color = colorScheme.error,
+        )
+
+        // 「这次没查成」与「查无此人」必须分开说：前者重试就可能好，后者要用户去核对 UID。
+        CoolapkUidState.Unavailable -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.module_contribution_uid_unavailable),
+                fontSize = 13.sp,
+                color = colorScheme.error,
+            )
+            TextButton(
+                text = stringResource(R.string.network_retry),
+                onClick = onRetry,
+                enabled = !form.isSubmitting,
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+            )
+        }
+
+        CoolapkUidState.SelfReported -> Text(
+            text = stringResource(R.string.module_contribution_uid_self_reported),
+            fontSize = 13.sp,
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+
+        CoolapkUidState.Empty -> Text(
+            text = if (form.uid.isNotBlank() && !form.uidLooksValid) {
+                stringResource(R.string.module_contribution_uid_invalid)
+            } else {
+                stringResource(R.string.module_contribution_uid_hint)
+            },
+            fontSize = 12.sp,
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+    }
+}
+
+@Composable
+private fun StatusLine(icon: ImageVector, text: String, color: androidx.compose.ui.graphics.Color) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            modifier = Modifier.size(16.dp),
+            imageVector = icon,
+            tint = color,
+            contentDescription = null,
+        )
+        Text(text = text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = color)
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        modifier = Modifier.padding(top = 2.dp, start = 2.dp),
+        text = text,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        color = colorScheme.onSurfaceVariantSummary,
+    )
+}
+
 @Composable
 private fun MetaSection(meta: ModulePropInfo) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         MetaLine(
             label = stringResource(R.string.module_contribution_name),
             value = meta.name,
@@ -222,10 +346,7 @@ private fun MetaSection(meta: ModulePropInfo) {
 
 @Composable
 private fun MetaLine(label: String, value: String, emphasized: Boolean = false) {
-    Row(
-        modifier = Modifier.padding(vertical = 1.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = "$label: ",
             fontSize = if (emphasized) 15.sp else 13.sp,
@@ -236,7 +357,10 @@ private fun MetaLine(label: String, value: String, emphasized: Boolean = false) 
             text = value,
             fontSize = if (emphasized) 15.sp else 13.sp,
             fontWeight = if (emphasized) FontWeight.Medium else FontWeight.Normal,
-            color = colorScheme.onSurfaceVariantSummary,
+            color = if (emphasized) colorScheme.onSurface else colorScheme.onSurfaceVariantSummary,
         )
     }
 }
+
+/** 与 [com.sukisu.ultra.ui.util.ModuleContribution] 的 `\d{4,12}` 同一条约定。 */
+private const val UID_MAX_LEN = 12

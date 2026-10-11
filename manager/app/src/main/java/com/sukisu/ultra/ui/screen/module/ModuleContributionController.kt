@@ -157,9 +157,10 @@ fun rememberModuleContributionController(
     val dialog = rememberModuleContributionDialog(
         scope = scope,
         submittingText = submittingText,
-        submit = { zip, meta, source, uploader ->
-            ModuleContributionEntry.submit(zip, meta, source, uploader)
+        submit = { zip, meta, source, uid, nickname ->
+            ModuleContributionEntry.submit(zip, meta, source, uid, nickname)
         },
+        lookupUid = { uid -> ModuleContributionEntry.lookupUid(uid) },
     )
     return remember(scope, settings) {
         ModuleContributionController(scope, settings, dialog)

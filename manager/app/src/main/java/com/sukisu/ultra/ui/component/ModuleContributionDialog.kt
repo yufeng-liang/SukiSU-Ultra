@@ -9,9 +9,13 @@ import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.material.ModuleContributionDialogMaterial
 import com.sukisu.ultra.ui.component.miuix.ModuleContributionDialogMiuix
+import com.sukisu.ultra.ui.util.CoolapkUidLookup
+import com.sukisu.ultra.ui.util.ModuleContribution
 import com.sukisu.ultra.ui.util.ModulePropInfo
 import com.sukisu.ultra.ui.util.SubmitResult
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -26,7 +30,8 @@ import java.io.File
  */
 class ModuleContributionDialogState internal constructor(
     private val scope: CoroutineScope,
-    private val submit: suspend (File, ModulePropInfo?, String, String) -> SubmitResult,
+    private val submit: suspend (File, ModulePropInfo?, String, String, String) -> SubmitResult,
+    private val lookupUid: suspend (String) -> CoolapkUidLookup,
     private val submittingText: () -> String,
 ) {
 
@@ -40,6 +45,9 @@ class ModuleContributionDialogState internal constructor(
 
     private var currentMeta: ModulePropInfo? = null
 
+    /** 正在跑的那次 UID 核实。新输入进来时取消它，避免旧结果覆盖新输入的状态。 */
+    private var lookupJob: Job? = null
+
     /**
      * 打开投稿对话框。
      *
@@ -50,12 +58,15 @@ class ModuleContributionDialogState internal constructor(
         currentMeta = meta
         // 每次打开都重置：上一次的成功/失败提示不该残留到下一次投稿，
         // 勾选更是必须重来——它是"这一次上传"的知情确认，不是一次性的永久授权。
+        // UID 也一起清掉：那是上一个模块的投稿人身份，留着会让下一条投稿署上别人的名。
+        lookupJob?.cancel()
         form = ContributionForm(meta = meta)
         file = zip
     }
 
     fun close() {
         if (form.isSubmitting) return
+        lookupJob?.cancel()
         file = null
     }
 
@@ -63,8 +74,49 @@ class ModuleContributionDialogState internal constructor(
         form = form.copy(source = value)
     }
 
-    fun updateUploader(value: String) {
-        form = form.copy(uploader = value)
+    /**
+     * 改了 UID 输入框。
+     *
+     * 形状不合法（不是 4~12 位数字）时**不发请求**，状态回到 [CoolapkUidState.Empty]：
+     * 边打字边打服务端只会白耗配额，而且每个中间态都必然查不到，界面会一路闪"查无此人"。
+     *
+     * 形状合法则等 [UID_DEBOUNCE_MS] 再查一次（用户还在继续打字就取消上一次）。
+     * 这与网页端 `app.js` 的 500ms 防抖是同一条规则。
+     */
+    fun updateUid(value: String) {
+        val cleaned = value.trim()
+        lookupJob?.cancel()
+        if (!ModuleContribution.isValidUid(cleaned)) {
+            form = form.copy(uid = cleaned, uidState = CoolapkUidState.Empty)
+            return
+        }
+        form = form.copy(uid = cleaned, uidState = CoolapkUidState.Checking)
+        lookupJob = scope.launch {
+            delay(UID_DEBOUNCE_MS)
+            runLookup(cleaned)
+        }
+    }
+
+    /**
+     * 「暂时无法核实」时用户点重试：立刻再查一次，不再等防抖。
+     *
+     * 没有这个入口，一次风控/网络抖动就只能靠用户重新敲一遍 UID —— 而那是同一个请求。
+     */
+    fun retryUidLookup() {
+        val uid = form.uid.trim()
+        if (!ModuleContribution.isValidUid(uid) || form.isSubmitting) return
+        lookupJob?.cancel()
+        form = form.copy(uidState = CoolapkUidState.Checking)
+        lookupJob = scope.launch { runLookup(uid) }
+    }
+
+    private suspend fun runLookup(uid: String) {
+        val result = runCatching { lookupUid(uid) }
+            .getOrElse { CoolapkUidLookup.Unavailable }
+        // 结果回来时用户可能已经改了输入：只认"当前输入仍然是这次查的那个 UID"的结果，
+        // 否则会把 A 的核实结论挂到 B 的输入框上（署名与实际 UID 对不上，正是要防的事）。
+        if (form.uid.trim() != uid) return
+        form = form.copy(uidState = result.toState())
     }
 
     fun updateConsent(checked: Boolean) {
@@ -87,7 +139,9 @@ class ModuleContributionDialogState internal constructor(
                 submitState = ContributionSubmitState.Submitting(submittingText()),
             )
             val result = runCatching {
-                submit(zip, currentMeta, snapshot.source, snapshot.uploader)
+                // 署名用核实出来的昵称，不用输入框里的原文：那是酷安反查的结果，
+                // 也是服务端唯一能证明"昵称属于这个 UID"的来源。
+                submit(zip, currentMeta, snapshot.source, snapshot.uid, snapshot.nickname)
             }.getOrElse { error ->
                 SubmitResult(false, null, error.message?.takeIf { it.isNotBlank() } ?: "投稿失败")
             }
@@ -103,16 +157,22 @@ class ModuleContributionDialogState internal constructor(
 
     /** 保留给调用方：对话框此时是否开着。 */
     val isOpen: Boolean get() = file != null
+
+    private companion object {
+        /** 输入停止多久后去核实。与网页端 `app.js` 的 500ms 一致。 */
+        const val UID_DEBOUNCE_MS = 500L
+    }
 }
 
 @Composable
 fun rememberModuleContributionDialog(
     scope: CoroutineScope,
     submittingText: () -> String,
-    submit: suspend (File, ModulePropInfo?, String, String) -> SubmitResult,
+    submit: suspend (File, ModulePropInfo?, String, String, String) -> SubmitResult,
+    lookupUid: suspend (String) -> CoolapkUidLookup,
 ): ModuleContributionDialogState {
     return remember(scope) {
-        ModuleContributionDialogState(scope, submit, submittingText)
+        ModuleContributionDialogState(scope, submit, lookupUid, submittingText)
     }
 }
 
@@ -125,7 +185,8 @@ fun ModuleContributionHost(state: ModuleContributionDialogState) {
             show = show,
             form = state.form,
             onSourceChange = state::updateSource,
-            onUploaderChange = state::updateUploader,
+            onUidChange = state::updateUid,
+            onRetryLookup = state::retryUidLookup,
             onConsentChange = state::updateConsent,
             onSubmit = state::submit,
             onDismissRequest = state::close,
@@ -135,7 +196,8 @@ fun ModuleContributionHost(state: ModuleContributionDialogState) {
             show = show,
             form = state.form,
             onSourceChange = state::updateSource,
-            onUploaderChange = state::updateUploader,
+            onUidChange = state::updateUid,
+            onRetryLookup = state::retryUidLookup,
             onConsentChange = state::updateConsent,
             onSubmit = state::submit,
             onDismissRequest = state::close,
