@@ -840,7 +840,7 @@
     <string name="module_contribution_unknown">无法确认是否已收录</string>
     <string name="module_contribution_settings_title">模块投稿</string>
     <string name="module_contribution_settings_summary">安装本地模块时，提示分享尚未收录的模块</string>
-    <string name="module_eco_badge">模块生态版</string>
+    <string name="module_eco_badge">模块仓库版</string>
 
     <!-- 保留额度。两档上下限不同（模块 1–20、boot 1–10），说明里不写死数字，
          免得改了 `RetentionLimit` 而文案还在说旧值。 -->

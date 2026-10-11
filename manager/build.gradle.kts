@@ -28,5 +28,5 @@ fun getVersionCode(): Int {
 }
 
 fun getVersionName(): String {
-    return "custom-repo&cool-module"
+    return "custom-repo&backup"
 }
