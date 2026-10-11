@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,8 @@ import com.sukisu.ultra.ui.theme.isInDarkTheme
  * 颜色固定不取主题色板——两套主题（Miuix / Material）都没有绿色语义槽，这里用同一套绿：
  * 浅色深绿底白字、深色亮绿底墨绿字，两种主题下都有足够对比度。
  * BasicText 而非主题 Text：这个组件要同时活在两套主题里，不依赖任何一方。
+ * 关掉 includeFontPadding 并显式给 lineHeight，否则字体内建的上半留白会让
+ * 圆角胶囊里文字偏下、上下留白不对称。
  */
 @Composable
 fun ModuleEcoBadge(modifier: Modifier = Modifier) {
@@ -31,10 +34,12 @@ fun ModuleEcoBadge(modifier: Modifier = Modifier) {
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(if (dark) Color(0xFF4BB75D) else Color(0xFF139242))
-            .padding(horizontal = 10.dp, vertical = 3.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp),
         style = TextStyle(
-            fontSize = 12.sp,
+            fontSize = 14.sp,
+            lineHeight = 19.sp,
             fontWeight = FontWeight.Medium,
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
             color = if (dark) Color(0xFF04240D) else Color.White,
         ),
     )

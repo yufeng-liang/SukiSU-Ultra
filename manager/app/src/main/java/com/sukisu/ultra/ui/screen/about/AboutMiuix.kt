@@ -315,7 +315,7 @@ private fun AboutContent(
             }
             Text(
                 modifier = Modifier
-                    .padding(top = 12.dp, bottom = 5.dp)
+                    .padding(top = 12.dp, bottom = 8.dp)
                     .onGloballyPositioned { coordinates ->
                         if (projectNameY != 0f) return@onGloballyPositioned
                         val y = coordinates.positionInWindow().y
@@ -345,16 +345,15 @@ private fun AboutContent(
                 fontSize = 35.sp,
             )
             ModuleEcoBadge(
-                modifier = Modifier
-                    .padding(top = 7.dp)
-                    .graphicsLayer {
-                        // 和名字、版本号一样随滚动淡出，避免折叠时徽标孤零零留在原地。
-                        alpha = 1 - projectNameProgress
-                    },
+                modifier = Modifier.graphicsLayer {
+                    // 和名字、版本号一样随滚动淡出，避免折叠时徽标孤零零留在原地。
+                    alpha = 1 - projectNameProgress
+                },
             )
             Text(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(top = 8.dp)
                     .graphicsLayer {
                         alpha = 1 - versionCodeProgress
                         scaleX = 1 - (versionCodeProgress * 0.05f)

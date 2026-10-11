@@ -86,14 +86,14 @@ fun AboutScreenMaterial(
                         )
                     }
                     Text(
-                        modifier = Modifier.padding(top = 12.dp),
+                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
                         text = state.appName,
                         fontWeight = FontWeight.Medium,
                         fontSize = MaterialTheme.typography.headlineMedium.fontSize
                     )
-                    ModuleEcoBadge(modifier = Modifier.padding(top = 7.dp))
+                    ModuleEcoBadge()
                     Text(
-                        modifier = Modifier.padding(top = 7.dp),
+                        modifier = Modifier.padding(top = 8.dp),
                         text = state.versionName,
                         fontSize = MaterialTheme.typography.bodyMedium.fontSize
                     )

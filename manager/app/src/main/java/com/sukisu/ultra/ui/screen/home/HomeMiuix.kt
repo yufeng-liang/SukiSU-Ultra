@@ -269,10 +269,10 @@ private fun EcoBadgeOverlay(scrollBehavior: ScrollBehavior) {
     }
     val badgeOffsetY = with(density) {
         // TopAppBar 自己吃掉了 systemBars 顶部 inset，大标题顶 = 状态栏高 + CollapsedHeight；
-        // 徽标在大标题行内垂直居中，徽标实高约 22dp（12sp 字号 + 上下 3dp 内边距）。
+        // 徽标在大标题行内垂直居中，徽标实高约 27dp（14sp 字号 + 上下 4dp 内边距）。
         WindowInsets.systemBars.asPaddingValues().calculateTopPadding() +
                 TopAppBarDefaults.CollapsedHeight +
-                ((titleLayout.size.height.toDp() - 22.dp).coerceAtLeast(0.dp) / 2)
+                ((titleLayout.size.height.toDp() - 27.dp).coerceAtLeast(0.dp) / 2)
     }
     ModuleEcoBadge(
         modifier = Modifier
