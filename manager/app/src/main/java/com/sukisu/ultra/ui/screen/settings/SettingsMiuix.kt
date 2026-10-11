@@ -48,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.repository.ModuleContributionPrefs
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.KsuIsValid
 import com.sukisu.ultra.ui.component.dialog.rememberLoadingDialog
@@ -152,20 +153,23 @@ fun SettingPagerMiuix(
                             )
                         }
                         // 关掉后：装本地模块不再弹分享提示，模块列表也不再显示投稿按钮。
-                        SwitchPreference(
-                            title = stringResource(id = R.string.module_contribution_settings_title),
-                            summary = stringResource(id = R.string.module_contribution_settings_summary),
-                            startAction = {
-                                Icon(
-                                    Icons.Rounded.Share,
-                                    modifier = Modifier.padding(end = 6.dp),
-                                    contentDescription = stringResource(id = R.string.module_contribution_settings_title),
-                                    tint = colorScheme.onBackground
-                                )
-                            },
-                            checked = uiState.moduleContributionEnabled,
-                            onCheckedChange = actions.onSetModuleContributionEnabled
-                        )
+                        // 投稿功能风险未解决暂时下线（ModuleContributionPrefs.SUSPENDED），开关一并隐藏。
+                        if (!ModuleContributionPrefs.SUSPENDED) {
+                            SwitchPreference(
+                                title = stringResource(id = R.string.module_contribution_settings_title),
+                                summary = stringResource(id = R.string.module_contribution_settings_summary),
+                                startAction = {
+                                    Icon(
+                                        Icons.Rounded.Share,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        contentDescription = stringResource(id = R.string.module_contribution_settings_title),
+                                        tint = colorScheme.onBackground
+                                    )
+                                },
+                                checked = uiState.moduleContributionEnabled,
+                                onCheckedChange = actions.onSetModuleContributionEnabled
+                            )
+                        }
                     }
 
                     Card(

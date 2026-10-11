@@ -41,6 +41,12 @@ fun isSoftRebootPreferred(): Boolean =
 object ModuleContributionPrefs {
     const val KEY = "module_contribution_enabled"
 
+    /**
+     * 投稿功能存在尚未解决的风险，暂时全量下线：模块页入口、安装后提示、设置页开关一起隐藏，
+     * 开关无论存成什么都不生效。风险解决后改回 false 即可整体恢复，存储约定保持不动。
+     */
+    const val SUSPENDED = true
+
     /** 默认关：投稿入口只给主动打开过的人，不默认打扰所有用户。 */
     const val DEFAULT = false
 

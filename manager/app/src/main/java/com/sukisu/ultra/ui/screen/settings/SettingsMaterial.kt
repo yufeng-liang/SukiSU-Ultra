@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.repository.ModuleContributionPrefs
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.KsuIsValid
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
@@ -128,20 +129,23 @@ fun SettingPagerMaterial(
             }
 
             // 投稿开关不挂在 KsuIsValid 里：它是"要不要被打扰"的偏好，不是内核能力，
-            // 没 root 时也得能关。
-            SegmentedColumn(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
-                content = listOf {
-                    // 关掉后：装本地模块不再弹分享提示，模块列表也不再显示投稿按钮。
-                    SegmentedSwitchItem(
-                        icon = Icons.Filled.Share,
-                        title = stringResource(id = R.string.module_contribution_settings_title),
-                        summary = stringResource(id = R.string.module_contribution_settings_summary),
-                        checked = uiState.moduleContributionEnabled,
-                        onCheckedChange = actions.onSetModuleContributionEnabled
-                    )
-                }
-            )
+            // 没 root 时也得能关。投稿功能风险未解决暂时下线（ModuleContributionPrefs.SUSPENDED），
+            // 整块开关一起隐藏。
+            if (!ModuleContributionPrefs.SUSPENDED) {
+                SegmentedColumn(
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
+                    content = listOf {
+                        // 关掉后：装本地模块不再弹分享提示，模块列表也不再显示投稿按钮。
+                        SegmentedSwitchItem(
+                            icon = Icons.Filled.Share,
+                            title = stringResource(id = R.string.module_contribution_settings_title),
+                            summary = stringResource(id = R.string.module_contribution_settings_summary),
+                            checked = uiState.moduleContributionEnabled,
+                            onCheckedChange = actions.onSetModuleContributionEnabled
+                        )
+                    }
+                )
+            }
 
             SegmentedColumn(
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),

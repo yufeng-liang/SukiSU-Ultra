@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.sukisu.ultra.data.model.Module
+import com.sukisu.ultra.data.repository.ModuleContributionPrefs
 import com.sukisu.ultra.data.repository.SettingsRepository
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.component.ModuleContributionDialogState
@@ -134,9 +135,11 @@ class ModuleContributionController internal constructor(
     private fun statusKey(module: Module): String = "${module.id}:${module.versionCode}"
 
     private companion object {
-        /** 读开关本身也可能炸（SharedPreferences 拿不到时）；炸了按"关"处理，宁可不打扰。 */
+        /** 读开关本身也可能炸（SharedPreferences 拿不到时）；炸了按"关"处理，宁可不打扰。
+         *  投稿功能风险未解决全量下线期间（[ModuleContributionPrefs.SUSPENDED]），无论开关存什么一律按关。 */
         fun readEnabled(settings: SettingsRepository): Boolean =
-            runCatching { settings.isModuleContributionEnabled() }.getOrDefault(false)
+            !ModuleContributionPrefs.SUSPENDED &&
+                    runCatching { settings.isModuleContributionEnabled() }.getOrDefault(false)
     }
 }
 
