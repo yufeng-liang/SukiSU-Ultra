@@ -199,16 +199,23 @@ class ModuleRepoViewModel(
                     runPendingRefresh()
                 }.onFailure { e ->
                     Log.e(TAG, "fetch modules failed", e)
+                    // Only blame the network when it is really unavailable;
+                    // otherwise the index server itself may be down (e.g. HTTP 404/5xx).
+                    val offlineNow = !hasAnyNetwork(ksuApp)
                     Toast.makeText(
                         ksuApp,
-                        ksuApp.getString(R.string.network_offline), Toast.LENGTH_SHORT
+                        ksuApp.getString(
+                            if (offlineNow) R.string.network_offline
+                            else R.string.module_repo_unavailable
+                        ),
+                        Toast.LENGTH_SHORT
                     ).show()
                     _uiState.update {
                         it.copy(
                             isRefreshing = false,
                             hasLoadedOnce = true,
                             error = e,
-                            offline = !hasAnyNetwork(ksuApp)
+                            offline = offlineNow
                         )
                     }
                     runPendingRefresh()

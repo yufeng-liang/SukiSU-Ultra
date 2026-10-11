@@ -9,7 +9,10 @@ on:
       - '.github/workflows/build-lkm.yml'
       - '.github/workflows/ddk-lkm.yml'
       - '.github/workflows/ksud.yml'
+      - '.github/workflows/ksud-extra.yml'
+      - '.github/workflows/ksuinit.yml'
       - '.github/scripts/setup-rust-build.sh'
+      - '.github/riscv64-cargo.toml'
       - 'repack_apk.py'
       - 'manager/**'
       - 'kernel/**'
@@ -24,7 +27,10 @@ on:
       - '.github/workflows/build-lkm.yml'
       - '.github/workflows/ddk-lkm.yml'
       - '.github/workflows/ksud.yml'
+      - '.github/workflows/ksud-extra.yml'
+      - '.github/workflows/ksuinit.yml'
       - '.github/scripts/setup-rust-build.sh'
+      - '.github/riscv64-cargo.toml'
       - 'repack_apk.py'
       - 'manager/**'
       - 'kernel/**'
@@ -143,7 +149,7 @@ jobs:
           - target: aarch64-linux-android
           - target: x86_64-linux-android
           - target: armv7-linux-androideabi
-
+          - target: riscv64-linux-android
     uses: ./.github/workflows/ksud.yml
 
     with:
@@ -492,7 +498,12 @@ jobs:
         with:
           name: ksud-x86_64-linux-android
           path: artifacts/ksud-x86_64-linux-android
-
+      
+      - name: Download RISC-V ksud
+        uses: actions/download-artifact@v8
+        with:
+          name: ksud-riscv64-linux-android
+          path: artifacts/ksud-riscv64-linux-android
 
       # --------------------------------------------------------
       # Place Manager APK and ksud artifacts
@@ -515,11 +526,10 @@ jobs:
           cp -f "$APK" \
             manager/app/build/outputs/apk/release/
 
-
           mkdir -p target/aarch64-linux-android/release
           mkdir -p target/armv7-linux-androideabi/release
           mkdir -p target/x86_64-linux-android/release
-
+          mkdir -p target/riscv64-linux-android/release
 
           ARM64_KSUD=$(find artifacts/ksud-aarch64-linux-android \
             -type f -name ksud | head -n 1)
@@ -530,11 +540,13 @@ jobs:
           X86_64_KSUD=$(find artifacts/ksud-x86_64-linux-android \
             -type f -name ksud | head -n 1)
 
+          RISCV64_KSUD=$(find artifacts/ksud-riscv64-linux-android \
+            -type f -name ksud | head -n 1)
 
           test -n "$ARM64_KSUD"
           test -n "$ARM_KSUD"
           test -n "$X86_64_KSUD"
-
+          test -n "$RISCV64_KSUD"
 
           cp -f "$ARM64_KSUD" \
             target/aarch64-linux-android/release/ksud
@@ -544,6 +556,9 @@ jobs:
 
           cp -f "$X86_64_KSUD" \
             target/x86_64-linux-android/release/ksud
+
+          cp -f "$RISCV64_KSUD" \
+            target/riscv64-linux-android/release/ksud
 
 
       # --------------------------------------------------------
@@ -618,6 +633,7 @@ jobs:
             -a arm64-v8a \
             -a armeabi-v7a \
             -a x86_64 \
+            -a riscv64 \
             -K "$SIGN_KEYSTORE_FILE" \
             -A "$SIGN_KEY_ALIAS" \
             -P "$SIGN_KEYSTORE_PASSWORD" \

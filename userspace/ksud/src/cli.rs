@@ -796,13 +796,13 @@ pub fn run() -> Result<()> {
     log::info!("command: {:?}", cli.command);
 
     let result = match cli.command {
-        Commands::PostFsData => init_event::on_post_data_fs(),
+        Commands::PostFsData => init_event::on_post_fs_data(),
         Commands::BootCompleted => {
             init_event::on_boot_completed();
             Ok(())
         }
 
-        Commands::SoftReboot => init_event::soft_reboot(),
+        Commands::SoftReboot => crate::soft_reboot::soft_reboot(),
 
         Commands::Insmod { module, params } => debug::insmod(&module, &params),
 
@@ -1220,12 +1220,10 @@ pub fn run() -> Result<()> {
                         SusfsModuleCmd::Install => {
                             susfs_module::install_module()?;
                             println!("SuSFS module installed successfully");
-                            Ok(())
                         }
                         SusfsModuleCmd::Remove => {
                             susfs_module::remove_module()?;
                             println!("SuSFS module removed successfully");
-                            Ok(())
                         }
                         SusfsModuleCmd::Status => {
                             if susfs_module::is_module_installed() {
@@ -1233,42 +1231,37 @@ pub fn run() -> Result<()> {
                             } else {
                                 println!("not installed");
                             }
-                            Ok(())
                         }
                     }
+                    Ok(())
                 }
                 Susfs::Config { command } => {
                     use crate::susfs_config;
                     match command {
                         SusfsConfigCmd::Get { key } => {
                             println!("{}", susfs_config::get(&key)?);
-                            Ok(())
                         }
                         SusfsConfigCmd::Set { key, value } => {
                             susfs_config::set(&key, &value)?;
                             println!("ok");
-                            Ok(())
                         }
                         SusfsConfigCmd::Remove { key } => {
                             susfs_config::remove(&key)?;
                             println!("ok");
-                            Ok(())
                         }
                         SusfsConfigCmd::Clear => {
                             susfs_config::clear()?;
                             println!("ok");
-                            Ok(())
                         }
                         SusfsConfigCmd::Reset => {
                             susfs_config::reset_to_defaults()?;
                             println!("ok");
-                            Ok(())
                         }
                         SusfsConfigCmd::List => {
                             println!("{}", susfs_config::export_json()?);
-                            Ok(())
                         }
                     }
+                    Ok(())
                 }
             };
             Ok(())
