@@ -672,7 +672,7 @@
     <string name="backup_kind_module">模块</string>
     <string name="backup_kind_boot">原厂 boot 镜像</string>
     <string name="backup_kind_repo">仓库源配置</string>
-    <string name="backup_repo_explain">备份已添加的模块仓库源（地址、名称与开关），恢复时整批还原。</string>
+    <string name="backup_repo_explain">备份已添加的模块仓库源（地址、名称与开关），恢复时整批还原，只保留最新一份。</string>
     <string name="backup_boot_row_title">原厂镜像</string>
     <string name="backup_boot_explain">备份的是打补丁前的原厂镜像；恢复它设备会回到未 root 状态，需重新打补丁。</string>
     <string name="backup_boot_restore_confirm_title">刷回原厂镜像？</string>
@@ -730,7 +730,7 @@
     <string name="backup_empty_module_cloud">云端还没有备份。点「立即备份」上传到这里。</string>
     <string name="backup_empty_boot_local">本机没有原厂镜像可备份——ksud 只在打补丁时留下它。</string>
     <string name="backup_empty_boot_cloud">云端还没有原厂镜像备份。点「立即备份」上传本机这份。</string>
-    <string name="backup_empty_repo_config">还没有仓库源可备份。先到模块仓库页添加一个源。</string>
+    <string name="backup_empty_repo_config">还没有仓库源的备份。先在「备份」页勾上仓库源配置并点「立即备份」，备份会显示在这里。</string>
 
     <!-- 备份摘要与诊断。这里每一句都会显示给用户：不出现内部术语（PUT/MKCOL/index-read），
          不出现裸露的计数器；但对排查有用的技术细节保留在括号里（HTTP 状态码、截断的哈希、文件名）。 -->
@@ -771,7 +771,7 @@
     <string name="backup_reason_external">未预期的失败：%1$s</string>
 
     <string name="backup_auto_title">自动备份</string>
-    <string name="backup_auto_summary">安装模块成功后自动备份一次模块，备份到下面勾选的位置。</string>
+    <string name="backup_auto_summary">安装模块成功后自动备份一次模块；仓库源有增删改时也会自动备份仓库源配置。备份到下面勾选的位置。</string>
     <string name="backup_auto_last">上次自动备份：%1$s</string>
     <string name="backup_auto_never">尚未执行</string>
     <string name="backup_auto_off">已关闭</string>

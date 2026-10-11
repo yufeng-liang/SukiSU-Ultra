@@ -735,7 +735,7 @@
     <string name="backup_empty_module_cloud">Nothing on the server yet. Back up now uploads the modules here.</string>
     <string name="backup_empty_boot_local">No stock image to back up - ksud only leaves one behind when it patches.</string>
     <string name="backup_empty_boot_cloud">No stock image on the server yet. Back up now uploads the one on this device.</string>
-    <string name="backup_empty_repo_config">No repo sources to back up yet. Add one on the module repo page first.</string>
+    <string name="backup_empty_repo_config">No repo source backups yet. Tick "Repo sources" on the Back up tab and back up once - the backup will show up here.</string>
 
     <!-- Backup summaries and diagnostics. Every string here is shown to the user, so no
          internal vocabulary (PUT/MKCOL/index-read) and no bare counters. Technical details
@@ -777,7 +777,7 @@
     <string name="backup_reason_external">Unexpected failure: %1$s</string>
 
     <string name="backup_auto_title">Automatic backup</string>
-    <string name="backup_auto_summary">Back up modules once after a module is installed successfully, to the destinations checked below.</string>
+    <string name="backup_auto_summary">Back up modules once after a module is installed successfully, and back up repo sources whenever they change, to the destinations checked below.</string>
     <string name="backup_auto_last">Last automatic backup: %1$s</string>
     <string name="backup_auto_never">not run yet</string>
     <string name="backup_auto_off">off</string>

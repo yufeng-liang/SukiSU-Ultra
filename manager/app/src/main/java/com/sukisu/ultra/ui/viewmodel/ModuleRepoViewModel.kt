@@ -16,6 +16,7 @@ import com.sukisu.ultra.data.repository.ModuleRepoRepository
 import com.sukisu.ultra.data.repository.ModuleRepoRepositoryImpl
 import com.sukisu.ultra.data.repository.RepoSource
 import com.sukisu.ultra.data.repository.RepoSourceRepository
+import com.sukisu.ultra.data.backup.BackupRepository
 import com.sukisu.ultra.data.repository.RepoSourceRepositoryImpl
 import com.sukisu.ultra.data.repository.SettingsRepository
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
@@ -268,6 +269,7 @@ class ModuleRepoViewModel(
                     _uiState.update { it.copy(lastAddedSourceUrl = rawUrl) }
                     Toast.makeText(ksuApp, ksuApp.getString(R.string.module_repo_source_added), Toast.LENGTH_SHORT).show()
                     refresh()
+                    autoBackupRepoConfig()
                 }.onFailure { e ->
                     Toast.makeText(ksuApp, e.message ?: e.javaClass.simpleName, Toast.LENGTH_SHORT).show()
                 }
@@ -275,16 +277,30 @@ class ModuleRepoViewModel(
         }
     }
 
+    /**
+     * 仓库源有增删改时触发一次自动备份（与模块自动备份共用总开关与目的地开关）。
+     *
+     * 火-忘-不管：失败只在"上次自动备份"记录里可见，不弹 toast 打断用户的仓库管理操作。
+     * 内容没变时（比如把开关开了又关回去）会被去重跳过，无成本。
+     */
+    private fun autoBackupRepoConfig() {
+        viewModelScope.launch {
+            runCatching { BackupRepository().autoBackupRepoConfig() }
+        }
+    }
+
     fun removeSource(id: String) {
         sourceRepo.removeSource(id)
         reloadSources()
         refresh()
+        autoBackupRepoConfig()
     }
 
     fun setSourceEnabled(id: String, enabled: Boolean) {
         sourceRepo.setSourceEnabled(id, enabled)
         reloadSources()
         refresh()
+        autoBackupRepoConfig()
     }
 
     fun renameSource(id: String, name: String) {

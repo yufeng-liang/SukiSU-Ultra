@@ -56,11 +56,14 @@ object RetentionPolicy {
     /**
      * 按 kind 取额度：模块、boot 各一份，取值都由 [RetentionLimit] 钳过。
      *
-     * 钳位放在这里而不是只放在界面上：这些额度是从 SharedPreferences 读出来的，手改过、从旧
-     * 版本升上来、或被别的进程写过都有可能，而额度 0 意味着"下一次备份把自己的成果当场删光"。
+     * 仓库源配置固定只留 1 份：它是整批替换的小 JSON，历史版本没有回退价值——要回退
+     * 仓库源，用户改回来就是了。写死在这里而不是塞进设置页，避免额度卡片多一行没人动的滑块。
      */
-    fun keepFor(kind: BackupKind, moduleKeep: Int, bootKeep: Int): Int =
-        if (kind == BackupKind.BOOT) RetentionLimit.clampBoot(bootKeep) else RetentionLimit.clampModule(moduleKeep)
+    fun keepFor(kind: BackupKind, moduleKeep: Int, bootKeep: Int): Int = when (kind) {
+        BackupKind.BOOT -> RetentionLimit.clampBoot(bootKeep)
+        BackupKind.REPO_CONFIG -> 1
+        else -> RetentionLimit.clampModule(moduleKeep)
+    }
 }
 
 /**
@@ -99,6 +102,12 @@ internal fun backupRetentionNow(readModule: () -> Int, readBoot: () -> Int): Pai
 object AutoBackupPolicy {
     /** 自动备份只覆盖模块，且必须显式开启；boot 镜像体积大且变化少，不做自动上传。 */
     fun shouldRun(enabled: Boolean, kind: BackupKind): Boolean = enabled && kind == BackupKind.MODULE
+
+    /**
+     * 仓库源有增删改时是否自动备份仓库源配置：跟模块自动备份共用同一个总开关。
+     * 归档只有几百字节，且内容没变时会被去重跳过，多触发一次没有成本。
+     */
+    fun shouldRunOnRepoSourceChange(enabled: Boolean): Boolean = enabled
 
     /**
      * 这一次自动备份要写哪几处。

@@ -272,6 +272,36 @@ class BackupRepository(private val context: Context = ksuApp) {
     /** 上一次自动备份的结果。没跑过、或记录坏了都返回 null。 */
     fun lastAutoBackup(): AutoBackupRecord? = AutoBackupRecordJson.parse(settings.backupAutoLastRecord)
 
+    /**
+     * 仓库源发生变化（增删改）后调用。未开启自动备份时返回 null。
+     *
+     * 与 [autoBackupAfterInstall] 共用同一个自动备份总开关和目的地开关。归档是几百字节的
+     * 确定性 JSON：源没变时被去重跳过，多触发一次只在结果里记一行 skipped；保留额度固定
+     * 1 份（见 [RetentionPolicy.keepFor]），有变化时新的顶掉旧的。
+     */
+    suspend fun autoBackupRepoConfig(): AutoBackupRecord? = withContext(Dispatchers.IO) {
+        if (!AutoBackupPolicy.shouldRunOnRepoSourceChange(settings.backupAutoAfterInstall)) {
+            return@withContext null
+        }
+        val targets = AutoBackupPolicy.targets(
+            local = settings.backupAutoLocal,
+            cloud = settings.backupAutoCloud,
+            cloudConfigured = cloudConfigured(),
+        )
+        if (!targets.any) return@withContext null
+        val local = if (targets.local) localEngine().backup(BackupKind.REPO_CONFIG) else null
+        val cloud = if (targets.cloud) cloudEngine().backup(BackupKind.REPO_CONFIG) else null
+        val record = AutoBackupRecord(
+            atEpochMs = System.currentTimeMillis(),
+            outcome = AutoBackupPolicy.classify(local, cloud),
+            writtenCount = (local?.written?.size ?: 0) + (cloud?.written?.size ?: 0),
+            failures = local?.failures.orEmpty() + cloud?.failures.orEmpty(),
+            skippedCount = (local?.skipped?.size ?: 0) + (cloud?.skipped?.size ?: 0),
+        )
+        settings.backupAutoLastRecord = AutoBackupRecordJson.render(record)
+        record
+    }
+
     /** 读某条备份的边车元数据，用于列表展示（名称/版本/禁用状态）。 */
     suspend fun readMeta(origin: BackupOrigin, entry: BackupEntry): ModuleBackupMeta? = withContext(Dispatchers.IO) {
         val metaName = entry.metaFileName ?: return@withContext null

@@ -461,6 +461,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         if (selected.isEmpty()) return@launch
         _uiState.update { it.copy(loading = true, message = null) }
         var restored = 0
+        // 恢复了什么决定要不要提示重启：仓库源配置只是整批替换 prefs，仓库页每次打开都现读，
+        // 不需要重启；模块和 boot 才需要。只恢复了仓库源时提示"重启生效"是一句谎话。
+        val restoredKinds = mutableSetOf<BackupKind>()
         val failures = mutableListOf<String>()
         selected.forEach { row ->
             val entry = entryOf(row) ?: return@forEach
@@ -468,6 +471,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 onSuccess = { outcome ->
                     if (outcome.success) {
                         restored++
+                        restoredKinds += row.kind
                     } else {
                         failures += BackupText.restoreFailure(context(), outcome.reason)
                     }
@@ -482,7 +486,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     add(restoreCountMessage(restored, failures.size))
                     // 恢复"成功"只是文件到位：模块要重启才加载，刷回去的原厂 boot 也要重启才真正
                     // 离开 KSU。只说"N 项已恢复"会让用户以为已经在跑了。
-                    if (restored > 0) add(string(R.string.reboot_to_apply))
+                    if (restored > 0 && restoredKinds.any { it != BackupKind.REPO_CONFIG }) {
+                        add(string(R.string.reboot_to_apply))
+                    }
                     addAll(failures.distinct())
                 }.joinToString(BackupListFormatter.SEPARATOR),
             )
