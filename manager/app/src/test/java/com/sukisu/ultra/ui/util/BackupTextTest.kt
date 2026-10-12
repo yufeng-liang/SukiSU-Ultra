@@ -29,33 +29,83 @@ class BackupTextTest {
 
     @Test
     fun `a backup that wrote nothing but skipped everything says so`() {
-        // 按了「立即备份」，看到"已写入 0 项 · 跳过 3 项"像是失败；这里要的是那句话本身：
-        // "内容和已有的备份一样"。
-        val parts = BackupText.summaryParts(
-            BackupRunResult(
+        // 按了「立即备份」，看到"已备份 0 项"像是失败；这一格要的是那句话本身："内容和已有的
+        // 备份一样"。格子里写短形式（"已是最新（3 项）"），"已是最新"是什么意思由表下面
+        // 那条释义说一次（见 anyUnchanged）。
+        val cell = BackupText.outcomeCell(
+            kind = BackupKind.MODULE,
+            result = BackupRunResult(
                 kind = BackupKind.MODULE,
                 written = emptyList(),
                 skipped = listOf("a.zip", "b.zip", "c.zip"),
             ),
-            location = "/sdcard/Download/SukiSU-Backup",
         )
 
-        assertEquals(listOf(ReasonText(R.string.backup_summary_all_skipped, listOf(3))), parts)
+        assertEquals(ReasonText(R.string.backup_result_unchanged, listOf(3)), cell)
     }
 
     @Test
     fun `a partly skipped backup still reports both counts`() {
-        val parts = BackupText.summaryParts(
-            BackupRunResult(kind = BackupKind.MODULE, written = listOf("a.zip"), skipped = listOf("b.zip")),
+        val cell = BackupText.outcomeCell(
+            kind = BackupKind.MODULE,
+            result = BackupRunResult(kind = BackupKind.MODULE, written = listOf("a.zip"), skipped = listOf("b.zip")),
+        )
+
+        assertEquals(ReasonText(R.string.backup_result_partial, listOf(1, 1)), cell)
+    }
+
+    @Test
+    fun `a target with nothing to back up names the kind it looked at`() {
+        // boot 和模块的"没有可备的东西"是两件事：前者是 ksud 还没留下原厂镜像，后者是用户
+        // 一个模块都没勾。同一句话套给两边，用户会去查错方向。
+        val nothing = BackupRunResult(kind = BackupKind.BOOT)
+
+        assertEquals(
+            ReasonText(R.string.backup_nothing_boot),
+            BackupText.outcomeCell(BackupKind.BOOT, nothing),
+        )
+        assertEquals(
+            ReasonText(R.string.backup_nothing_module),
+            BackupText.outcomeCell(BackupKind.MODULE, nothing),
+        )
+    }
+
+    @Test
+    fun `a target that only failed gets the short failure cell`() {
+        // 原因（HTTP 状态码、文件路径）比"结果"那一列宽得多，塞进格子会把列宽撑歪：
+        // 格子写"失败"，原因整行宽度排在表下面。
+        val failed = BackupRunResult(
+            kind = BackupKind.MODULE,
+            failures = listOf(BackupFailure(path = "", storage = WebDavBackupStorage.ID, reason = BackupReason.CloudNotConfigured)),
         )
 
         assertEquals(
-            listOf(
-                ReasonText(R.string.backup_summary_written, listOf(1)),
-                ReasonText(R.string.backup_summary_skipped, listOf(1)),
-            ),
-            parts,
+            ReasonText(R.string.backup_result_failed),
+            BackupText.outcomeCell(BackupKind.MODULE, failed),
         )
+    }
+
+    @Test
+    fun `a target that wrote some and failed some reports what it wrote`() {
+        val mixed = BackupRunResult(
+            kind = BackupKind.MODULE,
+            written = listOf("a.zip", "b.zip"),
+            failures = listOf(BackupFailure(path = "c.zip", storage = LocalBackupStorage.ID, reason = BackupReason.WriteFailed("c.zip", null))),
+        )
+
+        assertEquals(
+            ReasonText(R.string.backup_summary_written, listOf(2)),
+            BackupText.outcomeCell(BackupKind.MODULE, mixed),
+        )
+    }
+
+    @Test
+    fun `the up-to-date note is only needed when a cell says it`() {
+        val unchanged = BackupRunResult(kind = BackupKind.MODULE, skipped = listOf("a.zip"))
+        val written = BackupRunResult(kind = BackupKind.MODULE, written = listOf("a.zip"))
+
+        assertEquals(true, BackupText.anyUnchanged(listOf(written, unchanged)))
+        assertEquals(false, BackupText.anyUnchanged(listOf(written)))
     }
 
     @Test

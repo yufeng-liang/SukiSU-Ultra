@@ -717,10 +717,8 @@
     <string name="backup_module_select_all">Select all</string>
     <string name="backup_module_none">No modules installed.</string>
     <string name="backup_module_unavailable">Module list unavailable; all modules will be backed up.</string>
-    <string name="backup_saved_to">backed up to %1$s</string>
     <string name="backup_location_local">Local backups are in %1$s</string>
     <string name="backup_location_cloud">Cloud backups are in %1$s</string>
-    <string name="backup_target_line">%1$s %2$s: %3$s</string>
     <string name="backup_pick_a_target">Pick at least one location and one kind of content.</string>
     <string name="backup_empty_mixed">No backups in the selected locations yet. Back up now creates one.</string>
     <string name="backup_origin_plan">Backing up to %1$s</string>
@@ -745,8 +743,6 @@
          internal vocabulary (PUT/MKCOL/index-read) and no bare counters. Technical details
          that help a bug report (status codes, truncated hashes, file names) stay, in brackets. -->
     <string name="backup_summary_written">%1$d backed up</string>
-    <string name="backup_summary_skipped">%1$d skipped</string>
-    <string name="backup_summary_all_skipped">these %1$d items match backups you already have — nothing new to back up</string>
     <string name="backup_failure_line">%1$s: %2$s</string>
     <string name="backup_storage_local">Local</string>
     <string name="backup_storage_cloud">Cloud</string>
@@ -825,7 +821,19 @@
     <string name="backup_progress_files">file %1$d of %2$d</string>
     <string name="backup_progress_packing">Packing %1$d of %2$d</string>
     <string name="backup_progress_preparing">Preparing…</string>
+    <!-- A target has two stages: packing (produce the archives) then transferring (write to the
+         target). The dialog lists both rows and highlights the current one, so each row has to
+         read on its own as "what this step is doing and how far along it is". -->
+    <string name="backup_progress_stage_line">Step %1$d/%2$d · %3$s</string>
+    <string name="backup_stage_transferring">Transferring</string>
+    <string name="backup_stage_done">Done</string>
+    <string name="backup_stage_waiting">Waiting</string>
     <string name="backup_result_title">Backup finished</string>
+    <!-- Result table: one row per target, the right column being that target's outcome. -->
+    <string name="backup_result_unchanged">Up to date (%1$d)</string>
+    <string name="backup_result_partial">%1$d backed up, %2$d up to date</string>
+    <string name="backup_result_failed">Failed</string>
+    <string name="backup_result_note">"Up to date" means the content matches a backup you already have, so nothing was written again</string>
     <string name="backup_result_average_speed">Average %1$s/s</string>
     <string name="backup_done">Done</string>
     <string name="module_contribution_submit">Share this module</string>

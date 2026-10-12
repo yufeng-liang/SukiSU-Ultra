@@ -151,6 +151,41 @@ class BackupListFormatterTest {
         assertEquals("cloud is not configured", BackupListFormatter.mergeMessages(null, "cloud is not configured"))
     }
 
+    private fun resultRow(origin: BackupOrigin, kind: BackupKind) =
+        BackupResultRow(origin = origin, kind = kind, outcome = "")
+
+    @Test
+    fun `the result table lists the local side first whatever the input order was`() {
+        // 结果表的表头（本地 / 云端）是按分组顺序写的，而分组顺序要是跟着输入走，同一张表
+        // 两次跑出来的排法可能相反。本机在前是这一页其余地方一致的排法（列表、位置选择）。
+        val groups = resultGroups(
+            listOf(
+                resultRow(BackupOrigin.CLOUD, BackupKind.MODULE),
+                resultRow(BackupOrigin.LOCAL, BackupKind.MODULE),
+                resultRow(BackupOrigin.CLOUD, BackupKind.REPO_CONFIG),
+                resultRow(BackupOrigin.LOCAL, BackupKind.REPO_CONFIG),
+            ),
+        )
+
+        assertEquals(2, groups.size)
+        assertEquals(listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.map { it.first().origin })
+        // 同一侧里原本的顺序不动：内容是用户勾的顺序。
+        assertEquals(listOf(BackupKind.MODULE, BackupKind.REPO_CONFIG), groups.first().map { it.kind })
+    }
+
+    @Test
+    fun `a run that only wrote one side is one group`() {
+        val groups = resultGroups(
+            listOf(
+                resultRow(BackupOrigin.LOCAL, BackupKind.MODULE),
+                resultRow(BackupOrigin.LOCAL, BackupKind.REPO_CONFIG),
+            ),
+        )
+
+        assertEquals(1, groups.size)
+        assertEquals(2, groups.single().size)
+    }
+
     private companion object {
         val SEP = BackupListFormatter.SEPARATOR
     }

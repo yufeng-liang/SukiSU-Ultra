@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -45,7 +46,9 @@ fun BackupProgressDialogMaterial(
         text = {
             Column {
                 if (run.done) {
-                    Text(run.result.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                    run.resultTable?.let { table ->
+                        ResultTableMaterial(table)
+                    } ?: Text(run.result.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                     // 跑完之后瞬时速度就没意义了，用户想知道的是"这一份到底传了多久、平均多快"。
                     averageLine(run)?.let { average ->
                         Text(
@@ -76,12 +79,20 @@ fun BackupProgressDialogMaterial(
                             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                         )
                     }
-                    Text(
-                        text = if (run.packing) packingLine(run) else transferLine(run),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
+                    // 条只画得了当前这一步，所以两个阶段都列出来：哪一步在走、一共几步、这一步
+                    // 走了多少，一行说清。没到的那一步淡着，扫一眼就知道现在在哪。
+                    stageLines(run).forEach { stage ->
+                        Text(
+                            text = stage.text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (stage.active) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
                 }
             }
         },
@@ -100,6 +111,114 @@ fun BackupProgressDialogMaterial(
                 }
             }
         },
+    )
+}
+
+/**
+ * 结果表：一行一个目标，按来源分组，两列对齐。
+ *
+ * "哪一侧、哪类内容、结果如何"三件事在一行里说完。以前是一串
+ * "本地 模块：这 10 项与已有备份内容相同，未重复备份 · 云端 模块：已备份 10 项 · …"：
+ * 每条都带着自己的来源和内容，并排四条读起来像四句话，而用户要的是"哪边写了、哪边没写"
+ * 这个对照——分组之后同一侧竖着对齐，扫一眼就有答案。
+ *
+ * 失败原因不占右列：它比"结果"长得多（HTTP 状态码、文件路径），塞进去会把列宽撑歪，
+ * 所以整行宽度排在表下面，前面加一行"失败"。
+ */
+@Composable
+private fun ResultTableMaterial(result: BackupResult) {
+    Column {
+        resultGroups(result.rows).forEachIndexed { index, rows ->
+            Text(
+                text = stringResource(BackupLabels.origin(rows.first().origin)),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = if (index == 0) 0.dp else 12.dp),
+            )
+            rows.forEach { row ->
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    Text(
+                        text = stringResource(BackupLabels.kind(row.kind)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        // 两列按比例分：右列起点在每一行都一样，这才有表格的样子。
+                        modifier = Modifier.weight(0.42f),
+                    )
+                    Text(
+                        text = row.outcome,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(0.58f),
+                    )
+                }
+            }
+        }
+        if (result.failures.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.backup_result_failed),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            result.failures.forEach { line ->
+                Text(
+                    text = line,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+        // 表里出现"已是最新"才解释这个词（见 BackupText.anyUnchanged）：四格里有两格写着同一句
+        // 短话，用户需要知道它到底指什么，而这句话只需要说一遍。
+        result.note?.let { note ->
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 一个目标要走的阶段数：打包（产出归档）→ 传输（写到目标）。
+ *
+ * 和引擎里能报出来的两段一一对应（[BackupSource.export] 的 `onPacking` 与存储写入的
+ * `onProgress`）。引擎要是多出一段，这个数也要跟着改，否则"阶段 2/2"会说谎。
+ */
+private const val PROGRESS_STAGES = 2
+
+/** 阶段表里的一行：[text] 形如"阶段 1/2 · 正在打包 3/10"，[active] 是正在走的那一步。 */
+data class StageLine(val text: String, val active: Boolean)
+
+/**
+ * 两个阶段的当前状态。
+ *
+ * 进度条只能画一个阶段：上传到 45% 时用户看到的只是一根条，分不清这是在打包还是在传，
+ * 更不知道后面还有几步。两行都写出来，当前那一行用正文色、没到的那一行用次要色。
+ *
+ * 传输阶段没有字节可报时（源里没有可备的东西，这次没东西可传）只写"正在传输"，
+ * 不写"0 B / 0 B"——那是这一整轮改动要消掉的那句"看着像卡死"。
+ */
+@Composable
+internal fun stageLines(run: BackupRunState): List<StageLine> {
+    val separator = BackupListFormatter.SEPARATOR
+    val packingState = if (run.packing) packingLine(run) else stringResource(R.string.backup_stage_done)
+    val transferState = when {
+        run.packing -> stringResource(R.string.backup_stage_waiting)
+        run.totalBytes <= 0L -> stringResource(R.string.backup_stage_transferring)
+        else -> stringResource(R.string.backup_stage_transferring) + separator + transferLine(run)
+    }
+    return listOf(
+        StageLine(
+            text = stringResource(R.string.backup_progress_stage_line, 1, PROGRESS_STAGES, packingState),
+            active = run.packing,
+        ),
+        StageLine(
+            text = stringResource(R.string.backup_progress_stage_line, 2, PROGRESS_STAGES, transferState),
+            active = !run.packing,
+        ),
     )
 }
 

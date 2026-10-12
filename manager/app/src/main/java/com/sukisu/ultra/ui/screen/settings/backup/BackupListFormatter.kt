@@ -77,6 +77,15 @@ internal fun oneCopyPerContent(rows: List<BackupRow>): List<BackupRow> {
     return rows.sortedBy { it.origin.ordinal }.filter { seen.add(it.kind to it.fileName) }
 }
 
+/**
+ * 结果表按来源分好组，本机在前。
+ *
+ * 弹窗要先写一行来源表头（本地 / 云端）再列这一侧的几格，所以分组顺序必须定下来：
+ * 集合和 map 都不保证顺序，靠 `groupBy` 的插入序等于靠输入顺序——输入顺序变了表就跟着翻。
+ */
+internal fun resultGroups(rows: List<BackupResultRow>): List<List<BackupResultRow>> =
+    rows.groupBy { it.origin }.entries.sortedBy { it.key.ordinal }.map { it.value }
+
 /** 「恢复勾选」按下之后要先问哪一句。 */
 internal enum class RestoreConfirm {
     /** 不用问，直接恢复。 */

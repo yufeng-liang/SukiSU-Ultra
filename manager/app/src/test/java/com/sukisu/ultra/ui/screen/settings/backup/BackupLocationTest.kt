@@ -23,29 +23,4 @@ class BackupLocationTest {
             BackupLocation.full(BackupOrigin.CLOUD, "  https://dav.jianguoyun.com/dav/SukiSU-Backup  "),
         )
     }
-
-    @Test
-    fun `short keeps only the last directory`() {
-        assertEquals("SukiSU-Backup", BackupLocation.short("/sdcard/Download/SukiSU-Backup"))
-        assertEquals("SukiSU-Backup", BackupLocation.short("https://dav.jianguoyun.com/dav/SukiSU-Backup"))
-    }
-
-    @Test
-    fun `a trailing slash does not produce an empty short form`() {
-        // 用户在地址栏末尾多打一个 `/` 是很常见的，这里取到空串就会变成"存到 "。
-        assertEquals("dav", BackupLocation.short("https://dav.example.com/dav/"))
-        assertEquals("SukiSU-Backup", BackupLocation.short("/sdcard/Download/SukiSU-Backup/"))
-    }
-
-    @Test
-    fun `an address with no path falls back to the host`() {
-        assertEquals("dav.example.com", BackupLocation.short("https://dav.example.com"))
-        assertEquals("dav.example.com", BackupLocation.short("https://dav.example.com/"))
-    }
-
-    @Test
-    fun `a blank location stays blank rather than becoming a slash`() {
-        assertEquals("", BackupLocation.short(""))
-        assertEquals("", BackupLocation.short("   "))
-    }
 }

@@ -288,6 +288,14 @@ data class BackupRunState(
     val done: Boolean = false,
     val result: String? = null,
     /**
+     * 跑完之后的结果表（正常跑完才有；取消时只有 [result] 那一句话）。
+     *
+     * 弹窗把它排成"来源分组 + 内容/结果两列"：以前是一串
+     * "本地 模块：这 10 项与已有备份内容相同，未重复备份 · 云端 模块：已备份 10 项 · …"，
+     * 同一句跳过说明重复到每一行，用户得逐行读才知道哪边写了、哪边没写。
+     */
+    val resultTable: BackupResult? = null,
+    /**
      * 这一次是用户取消的。
      *
      * 和"失败"分开：取消是用户自己要的，结果里不该出现失败清单，也不该再报平均速度——那份只
@@ -305,6 +313,35 @@ data class BackupTargetResult(
     val origin: BackupOrigin,
     val kind: BackupKind,
     val result: BackupRunResult,
+)
+
+/**
+ * 结果表里的一行：这一次往哪一侧（[origin]）备了什么（[kind]），结果如何（[outcome]）。
+ *
+ * 一行一个目标，弹窗按来源分组、排成"内容 / 结果"两列。短句只说这一格的结果
+ * （[com.sukisu.ultra.ui.util.BackupText.outcomeCell]），失败原因排在表下面——
+ * 那是整行宽度的东西，挤进右列会把列宽撑歪。
+ */
+@Immutable
+data class BackupResultRow(
+    val origin: BackupOrigin,
+    val kind: BackupKind,
+    val outcome: String,
+)
+
+/**
+ * 一次备份跑完之后的全部结果。
+ *
+ * 表格只装"哪一侧、哪类内容、结果如何"；失败清单和释义分开拿，是因为它们在界面上不占表格的列
+ * （失败原因整行宽度、释义只出现一次）。
+ */
+@Immutable
+data class BackupResult(
+    val rows: List<BackupResultRow>,
+    /** 表下面的失败清单（已本地化、已去重）。 */
+    val failures: List<String> = emptyList(),
+    /** 表下面那条释义，没有就不写。 */
+    val note: String? = null,
 )
 
 @Immutable

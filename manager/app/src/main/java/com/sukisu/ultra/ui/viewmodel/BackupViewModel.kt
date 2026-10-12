@@ -21,7 +21,8 @@ import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.screen.settings.backup.BackupGroup
 import com.sukisu.ultra.ui.screen.settings.backup.BackupGrouping
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
-import com.sukisu.ultra.ui.screen.settings.backup.BackupLocation
+import com.sukisu.ultra.ui.screen.settings.backup.BackupResult
+import com.sukisu.ultra.ui.screen.settings.backup.BackupResultRow
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRow
 import com.sukisu.ultra.ui.screen.settings.backup.BackupTab
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRowLabels
@@ -668,7 +669,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { current ->
             current.copy(
                 loading = false,
-                backupRun = current.backupRun?.copy(done = true, result = backupMessage(results)),
+                backupRun = current.backupRun?.copy(done = true, resultTable = backupResult(results)),
             )
         }
         refresh()
@@ -893,65 +894,33 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         if (origin == BackupOrigin.CLOUD) R.string.backup_origin_cloud else R.string.backup_origin_local,
     )
 
-    private fun kindLabel(kind: BackupKind): String = string(
-        when (kind) {
-            BackupKind.BOOT -> R.string.backup_kind_boot
-            BackupKind.REPO_CONFIG -> R.string.backup_kind_repo
-            else -> R.string.backup_kind_module
-        },
-    )
-
     /**
-     * 一次备份的结果。
+     * 一次备份的结果，排成弹窗要的那张表。
      *
-     * 只勾了一组时就是 [BackupText.summary] 原样（"已写入 N 项 · 跳过 M 项 · 存到 X"）；
-     * 勾了多组时每行前面加"来源 · 内容"——否则四条"已写入 N 项"并排，用户分不清哪条是哪边。
+     * 一行一个目标（来源 × 内容），弹窗按来源分组、排成"内容 / 结果"两列。以前是一串
+     * "本地 模块：这 10 项与已有备份内容相同，未重复备份 · 云端 模块：已备份 10 项 · …"：
+     * 同一句跳过说明重复到每一行，四条并排看不出哪边写了、哪边没写。
+     *
+     * 失败清单不占表格的列：原因（HTTP 状态码、文件路径）比"结果"那一列宽得多，塞进去会把
+     * 列宽撑歪，所以整行宽度排在表下面。两侧同时失败时文字一样，只留一遍。
      */
-    private fun backupMessage(results: List<BackupTargetResult>): String {
-        val multiple = results.size > 1
-        return results.joinToString(MULTI_TARGET_SEPARATOR) { target ->
-            val body = targetBody(target, multiple)
-            if (multiple) {
-                string(
-                    R.string.backup_target_line,
-                    originLabel(target.origin),
-                    kindLabel(target.kind),
-                    body,
+    private fun backupResult(results: List<BackupTargetResult>): BackupResult {
+        val app = context()
+        return BackupResult(
+            rows = results.map { target ->
+                BackupResultRow(
+                    origin = target.origin,
+                    kind = target.kind,
+                    outcome = BackupText.render(app, BackupText.outcomeCell(target.kind, target.result)),
                 )
-            } else {
-                body
-            }
-        }
-    }
-
-    /**
-     * 单个目标的摘要。
-     *
-     * 一项都没写、也没跳过、也没有失败，说明源里根本没有可备的东西（boot 就是这种情况：
-     * ksud 只在打补丁时留下原厂镜像）。"已写入 0 项 · 跳过 0 项"对用户等于什么都没说。
-     */
-    private fun targetBody(target: BackupTargetResult, multiple: Boolean): String {
-        val result = target.result
-        if (result.written.isEmpty() && result.skipped.isEmpty() && result.failures.isEmpty()) {
-            return string(
-                if (target.kind == BackupKind.BOOT) {
-                    R.string.backup_nothing_boot
-                } else {
-                    R.string.backup_nothing_module
-                },
-            )
-        }
-        return BackupText.summary(
-            context = context(),
-            result = result,
-            // 多目标时不再缀位置：几行并排会超出 snackbar 的两行上限，后面那行连失败原因一起
-            // 被截掉；位置常驻在按钮下面那一行里，不缺这一句。
-            location = if (multiple) {
-                null
-            } else {
-                BackupLocation.short(BackupLocation.full(target.origin, _uiState.value.cloudSavedUrl))
             },
-            compact = multiple,
+            failures = BackupText.allFailureLines(app, results.map { it.result }),
+            // 表里出现"已是最新"才解释这个词：没出现时这句话是噪音。
+            note = if (BackupText.anyUnchanged(results.map { it.result })) {
+                app.getString(R.string.backup_result_note)
+            } else {
+                null
+            },
         )
     }
 
@@ -974,14 +943,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         getApplication<Application>().getString(resId, *formatArgs)
 
     private companion object {
-        /**
-         * 多个目标的提示各占一行。
-         *
-         * 不用 [BackupListFormatter.SEPARATOR]：那个分隔符是"同一条消息里的几段"，用它把
-         * "本地写了 11 项"和"云端写了 11 项"连起来会读成一条，而这是两件事。
-         */
-        const val MULTI_TARGET_SEPARATOR = "\n"
-
         /** 速度采样的最小间隔：比这更密的采样除以很小的 dt 会得到假的峰值。 */
         const val SPEED_SAMPLE_MS = 400L
     }

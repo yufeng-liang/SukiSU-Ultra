@@ -6,6 +6,7 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.AutoBackupOutcome
 import com.sukisu.ultra.data.backup.AutoBackupRecord
 import com.sukisu.ultra.data.backup.BackupFailure
+import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupReason
 import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.HttpOperation
@@ -121,28 +122,47 @@ object BackupText {
     }
 
     /**
-     * 一次备份的摘要。
+     * 结果表里"这一格"写什么。
      *
-     * 失败行按文本去重：凭据被拒时每一个文件都会给出同一句话，重复五遍会把 snackbar
-     * 变成一堵墙，而用户需要的信息只有一句。具体哪几个文件失败了在备份列表里能看到。
+     * 一格只讲这一侧这一类内容的结果：写了几个、跳过几个、有没有可备的。失败原因不进格子——
+     * 那是整行宽度的东西（HTTP 状态码、文件路径），挤进表格右列会把列宽撑歪，而一次失败往往
+     * 每个文件一句；它们排在表下面（见 [allFailureLines]）。
      *
-     * [location] 是这次写进去的位置（短形式）。只在**真的写进去了**的时候才说：整次失败时
-     * 一句"存到 X"会让人以为文件在那儿，而那里什么都没有。
+     * "全跳过"和"写了 0 项"必须分开说：前者是"内容跟已有的备份一样，这次没白按、也没费流量"，
+     * 后者在用户眼里就是失败。这两句话以前挤在同一行里（"已写入 0 项 · 跳过 3 项"），
+     * 表格把每格缩短之后反而说得更清楚。
      *
-     * [compact] 用于"一行一个目标"的场合（位置/内容勾了多个）。snackbar 只给两行，一行长了
-     * 就把后面那行连同失败原因整段截掉，所以这里省掉"跳过 0 项"——跳过为 0 是正常情况，
-     * 写出来只占宽度。非 0 时照旧显示，那才是用户要知道的。
+     * 拆成纯函数是为了能进 JVM 单测：`Context.getString` 在单测里跑不了，而这里会出错的正是
+     * "哪种组合该出哪一句"。
      */
-    fun summary(context: Context, result: BackupRunResult, location: String? = null, compact: Boolean = false): String {
-        val parts = summaryParts(result, location, compact).map { part -> render(context, part) }
-        // 失败原因必须跟着摘要一起出来：只报"已写入 0 项"而不说为什么，用户只看到"没成功"，
-        // 分不清是凭据错了、网断了还是盘满了。
-        val failures = failureLines(result).map { failure(context, it) }
-        return (parts + failures).joinToString(BackupListFormatter.SEPARATOR)
+    fun outcomeCell(kind: BackupKind, result: BackupRunResult): ReasonText = when {
+        // 一项没写、没跳过、也没失败：源里根本没有可备的东西（boot 就是这种情况：ksud 只在
+        // 打补丁时留下原厂镜像）。
+        result.written.isEmpty() && result.skipped.isEmpty() && result.failures.isEmpty() ->
+            ReasonText(if (kind == BackupKind.BOOT) R.string.backup_nothing_boot else R.string.backup_nothing_module)
+        // 写了也跳了：两句都说，否则"已备份 8 项"会让人以为另外 2 项丢了。
+        result.written.isNotEmpty() && result.skipped.isNotEmpty() ->
+            ReasonText(R.string.backup_result_partial, listOf(result.written.size, result.skipped.size))
+        result.written.isNotEmpty() -> ReasonText(R.string.backup_summary_written, listOf(result.written.size))
+        result.skipped.isNotEmpty() -> ReasonText(R.string.backup_result_unchanged, listOf(result.skipped.size))
+        // 只剩失败：格子写不下原因，写一句"失败"，原因在表下面。
+        else -> ReasonText(R.string.backup_result_failed)
     }
 
+    /** 结果里有没有"已是最新"那一格。有才需要在表下面解释这个词，没有就是多余的说明。 */
+    fun anyUnchanged(results: List<BackupRunResult>): Boolean =
+        results.any { it.written.isEmpty() && it.skipped.isNotEmpty() }
+
     /**
-     * 摘要里要列出的失败。
+     * 表下面的失败清单：整行宽度，跨目标去重。
+     *
+     * 两侧同时失败（凭据被拒就是这种）时两行文字一模一样，只说一遍。
+     */
+    fun allFailureLines(context: Context, results: List<BackupRunResult>): List<String> =
+        results.flatMap { failureLines(it) }.map { failure(context, it) }.distinct()
+
+    /**
+     * 一次目标里要列出的失败。
      *
      * 同一个位置、同一个文件、同一个原因只留一条：凭据被拒时每一个文件都会给出同一句话
      * （原因里没有文件名），重复 11 遍就把结果框变成一堵墙。**不同文件**的失败不能并掉——
@@ -152,28 +172,6 @@ object BackupText {
      */
     fun failureLines(result: BackupRunResult): List<BackupFailure> =
         result.failures.distinctBy { failure -> Triple(failure.storage, failure.path, failure.reason) }
-
-    /**
-     * [summary] 的纯形式：资源 id + 参数，取字符串交给 [render]。
-     *
-     * 拆出来是为了能进 JVM 单测——`Context.getString` 在单测里跑不了，而这里会出错的正是
-     * "什么时候该出现哪一段"（跳过为 0 要不要写、没写进去要不要报位置）。
-     */
-    fun summaryParts(result: BackupRunResult, location: String? = null, compact: Boolean = false): List<ReasonText> {
-        // 一项都没写、但都跳过了：这不是"写了 0 项"（那像是失败），是"这些内容和已有的备份一样"。
-        // 用户刚按下「立即备份」，得让他知道这次没白按——确实没有新东西可存，也没浪费流量。
-        if (result.written.isEmpty() && result.skipped.isNotEmpty() && result.failures.isEmpty()) {
-            return listOf(ReasonText(R.string.backup_summary_all_skipped, listOf(result.skipped.size)))
-        }
-        val parts = mutableListOf(ReasonText(R.string.backup_summary_written, listOf(result.written.size)))
-        if (result.skipped.isNotEmpty() || !compact) {
-            parts += ReasonText(R.string.backup_summary_skipped, listOf(result.skipped.size))
-        }
-        if (location != null && result.written.isNotEmpty()) {
-            parts += ReasonText(R.string.backup_saved_to, listOf(location))
-        }
-        return parts
-    }
 
     /** 恢复失败的提示。 */
     fun restoreFailure(context: Context, reason: BackupReason?): String =

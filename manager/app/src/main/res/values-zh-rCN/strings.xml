@@ -712,10 +712,8 @@
     <string name="backup_module_select_all">全选</string>
     <string name="backup_module_none">没有已安装的模块。</string>
     <string name="backup_module_unavailable">无法读取模块列表，将备份全部模块。</string>
-    <string name="backup_saved_to">备份在 %1$s</string>
     <string name="backup_location_local">本机备份在 %1$s</string>
     <string name="backup_location_cloud">云端备份在 %1$s</string>
-    <string name="backup_target_line">%1$s %2$s：%3$s</string>
     <string name="backup_pick_a_target">请至少勾选一个位置和一种内容。</string>
     <string name="backup_empty_mixed">勾选的位置还没有备份。点「立即备份」即可创建一份。</string>
     <string name="backup_origin_plan">备份写到 %1$s</string>
@@ -739,8 +737,6 @@
     <!-- 备份摘要与诊断。这里每一句都会显示给用户：不出现内部术语（PUT/MKCOL/index-read），
          不出现裸露的计数器；但对排查有用的技术细节保留在括号里（HTTP 状态码、截断的哈希、文件名）。 -->
     <string name="backup_summary_written">已备份 %1$d 项</string>
-    <string name="backup_summary_skipped">跳过 %1$d 项</string>
-    <string name="backup_summary_all_skipped">这 %1$d 项与已有备份内容相同，未重复备份</string>
     <string name="backup_failure_line">%1$s：%2$s</string>
     <string name="backup_storage_local">本地</string>
     <string name="backup_storage_cloud">云端</string>
@@ -818,7 +814,18 @@
     <string name="backup_progress_files">第 %1$d/%2$d 个文件</string>
     <string name="backup_progress_packing">正在打包 %1$d/%2$d</string>
     <string name="backup_progress_preparing">正在准备…</string>
+    <!-- 一个目标分两个阶段：打包（产出归档）→ 传输（写到目标）。弹窗把两行都列出来，
+         当前那一行高亮，所以每一行都要能单独读成"这一步在做什么、走了多少"。 -->
+    <string name="backup_progress_stage_line">阶段 %1$d/%2$d · %3$s</string>
+    <string name="backup_stage_transferring">正在传输</string>
+    <string name="backup_stage_done">已完成</string>
+    <string name="backup_stage_waiting">等待中</string>
     <string name="backup_result_title">备份完成</string>
+    <!-- 结果表：一行一个目标，右列是这一格的结果。 -->
+    <string name="backup_result_unchanged">已是最新（%1$d 项）</string>
+    <string name="backup_result_partial">已备份 %1$d 项，%2$d 项已是最新</string>
+    <string name="backup_result_failed">失败</string>
+    <string name="backup_result_note">「已是最新」＝与已有备份内容相同，没有重复备份</string>
     <string name="backup_result_average_speed">平均 %1$s/s</string>
     <string name="backup_done">完成</string>
     <string name="module_contribution_submit">分享此模块</string>
