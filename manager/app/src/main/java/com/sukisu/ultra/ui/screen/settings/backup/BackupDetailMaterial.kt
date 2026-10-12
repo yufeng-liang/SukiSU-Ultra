@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -22,7 +23,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -110,13 +110,18 @@ fun BackupDetailMaterial(
                             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                             // 删除是这一页最重的一件事，但它不是主按钮：淡红底配正红字，实心大红
                             // 会盖过上面那两个真正要按的按钮；只写红字又容易被当成说明文字。
-                            TextButton(
+                            //
+                            // 用 FilledTonalButton 而不是带底色的 TextButton：后者是按"只有文字"
+                            // 排的（内边距、圆角都是给小字按钮的），铺满整行之后像一块贴歪的色块。
+                            // 文字色也要换成 onErrorContainer——error 配 errorContainer 是红字压
+                            // 红底，对比度低，看着就是"配色脏"。
+                            FilledTonalButton(
                                 onClick = actions.onDeleteGroup,
                                 enabled = !busy,
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.textButtonColors(
+                                colors = ButtonDefaults.filledTonalButtonColors(
                                     containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
                                 ),
                             ) {
                                 Text(stringResource(R.string.backup_detail_delete))
