@@ -61,6 +61,8 @@ fun ModuleRepoScreen() {
                 alternateSourceNames = module.alternateSourceNames,
                 readmeUrl = module.mmrl?.readmeUrl,
                 webUrl = module.mmrl?.supportUrl,
+                registryBaseUrl = module.registry?.baseUrl,
+                registryDetailUrl = module.registry?.detailUrl,
             )
             navigator.push(Route.ModuleRepoDetail(args))
         },

@@ -12,6 +12,8 @@ class CandidateSourceUrlsTest {
             listOf(
                 "https://uonou.github.io/mmrl-repo/json/modules.json",
                 "https://uonou.github.io/mmrl-repo/modules.json",
+                "https://uonou.github.io/mmrl-repo/api/v1/index.json",
+                "https://uonou.github.io/mmrl-repo/api/v1/modules.json",
             ),
             candidateSourceUrls("https://uonou.github.io/mmrl-repo")
         )
@@ -20,8 +22,28 @@ class CandidateSourceUrlsTest {
     @Test
     fun `trailing slash is normalized`() {
         assertEquals(
-            listOf("https://example.com/repo/json/modules.json", "https://example.com/repo/modules.json"),
+            listOf(
+                "https://example.com/repo/json/modules.json",
+                "https://example.com/repo/modules.json",
+                "https://example.com/repo/api/v1/index.json",
+                "https://example.com/repo/api/v1/modules.json",
+            ),
             candidateSourceUrls("https://example.com/repo/")
+        )
+    }
+
+    @Test
+    fun `a registry site resolves to the documents it serves`() {
+        // modules.kernelsu.org answers neither convention: its index is under api/v1, and that
+        // document only points at the module list, so both have to be tried.
+        assertEquals(
+            listOf(
+                "https://modules.kernelsu.org/json/modules.json",
+                "https://modules.kernelsu.org/modules.json",
+                "https://modules.kernelsu.org/api/v1/index.json",
+                "https://modules.kernelsu.org/api/v1/modules.json",
+            ),
+            candidateSourceUrls("https://modules.kernelsu.org")
         )
     }
 
@@ -99,6 +121,8 @@ class CandidateSourceUrlsTest {
             listOf(
                 "https://github.com/uonou/json/modules.json",
                 "https://github.com/uonou/modules.json",
+                "https://github.com/uonou/api/v1/index.json",
+                "https://github.com/uonou/api/v1/modules.json",
             ),
             candidateSourceUrls("https://github.com/uonou")
         )

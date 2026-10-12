@@ -5,7 +5,7 @@ package com.sukisu.ultra.data.repository
  * hunting for the address.
  *
  * [moduleCount] is how many modules the manager can actually install from that index — entries
- * whose format the parser cannot read are not counted — as reviewed on 2026-10-08. It is a
+ * whose format the parser cannot read are not counted — as reviewed on 2026-10-12. It is a
  * snapshot, not a live figure, and it is what the list is ordered by.
  */
 data class RepoCandidate(
@@ -21,9 +21,12 @@ data class RepoCandidate(
  * mirrors that add nothing (`Googlers-Repo/mmar`, `juliazero/mrbj`) are left out even though they
  * resolve.
  *
- * Both index formats the manager reads are represented. An MMRL index lists every published
+ * All three index formats the manager reads are represented. An MMRL index lists every published
  * version; a KernelSU-array index such as `qianyumeng0228/ShizuSU-Modules` carries only the newest
- * release, which [repoModuleReleases] turns into a single release so the module can be installed.
+ * release, which [repoModuleReleases] turns into a single release so the module can be installed;
+ * the registry index of `KernelSU Modules` carries a version but no address at all, its releases
+ * being read from a document per module when one is opened.
+ *
  * Indexes that carry no module id or no download address are left out because nothing could be
  * installed from them: the Magisk v1 indexes (`Magisk-Modules-Alt-Repo/json`,
  * `Magisk-Modules-Repo/submission`), whose entries have only `zip_url`, and the KernelSU-Next
@@ -93,6 +96,11 @@ val defaultRepoCandidates: List<RepoCandidate> = listOf(
     RepoCandidate(
         name = "Yukari0201/mmrl-repo",
         url = "https://yukari0201.github.io/mmrl-repo/json/modules.json",
+        moduleCount = 18,
+    ),
+    RepoCandidate(
+        name = "KernelSU Modules",
+        url = "https://modules.kernelsu.org/api/v1/index.json",
         moduleCount = 18,
     ),
     RepoCandidate(

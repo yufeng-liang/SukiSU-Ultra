@@ -8,7 +8,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import okhttp3.Request
 
 class ModuleRepoRepositoryImpl(
     private val sourceRepo: RepoSourceRepository = RepoSourceRepositoryImpl(),
@@ -47,15 +46,16 @@ class ModuleRepoRepositoryImpl(
 
     private suspend fun fetchSource(source: RepoSource): Result<List<RepoModule>> = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder().url(source.url).build()
-            indexClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw Exception("HTTP ${response.code}")
-                }
-                // 索引限个大小读：坏地址指向一个几百 MB 的文件时，整读进内存就是一次 OOM。
-                val body = response.readIndexBody()
-                Result.success(RepoModuleParser.parse(body, source.id, source.name, source.url))
-            }
+            // 注册表索引只指向模块清单，fetchIndexModules 会替它走完那一跳；超时与响应体上限
+            // 都在里面。
+            Result.success(
+                fetchIndexModules(
+                    client = indexClient,
+                    indexUrl = source.url,
+                    sourceId = source.id,
+                    sourceName = source.name,
+                )
+            )
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
             throw e
         } catch (e: Exception) {

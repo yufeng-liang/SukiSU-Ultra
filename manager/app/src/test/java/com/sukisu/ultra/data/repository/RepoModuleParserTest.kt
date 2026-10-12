@@ -224,4 +224,146 @@ class RepoModuleParserTest {
             module.mmrl!!.versions.single().zipUrlFallback,
         )
     }
+
+    private val registryIndexJson = """
+        {
+          "schemaVersion": 1,
+          "buildId": "70d4a7bbd921a57b",
+          "repoCommit": "a2ad01cee2a31469b4ce1676b7be097e53dc8be0",
+          "generatedAt": "2026-10-12T09:19:47.073Z",
+          "modules": "api/v1/modules.json"
+        }
+    """.trimIndent()
+
+    private val registryModulesJson = """
+        {
+          "schemaVersion": 1,
+          "buildId": "70d4a7bbd921a57b",
+          "modules": [
+            {
+              "id": "CertBridge",
+              "name": "证书桥",
+              "summary": "把 PEM 注入系统信任库",
+              "authors": [{"name": "许小墨", "url": "https://github.com/Eikeitsu"}],
+              "tags": ["system", "security"],
+              "metamodule": false,
+              "icon": "assets/2ed88922ec2dff12.png",
+              "stable": {
+                "version": "v5.1.2",
+                "versionCode": 50107,
+                "publishedAt": "2026-10-11T16:18:27Z"
+              },
+              "stars": 26,
+              "starsRepository": "Eikeitsu/CertBridge",
+              "detail": "api/v1/modules/CertBridge.json",
+              "updatedAt": "2026-10-11T17:51:03.255Z"
+            },
+            {
+              "id": "no_detail_module",
+              "name": "No Detail",
+              "stable": {"version": "v1", "versionCode": 1}
+            }
+          ]
+        }
+    """.trimIndent()
+
+    @Test
+    fun `sniffFormat tells a registry list from an mmrl one`() {
+        assertEquals(RepoFormat.KERNELSU_V1, RepoModuleParser.sniffFormat(registryModulesJson))
+        // The pointer document names its module list instead of carrying it.
+        assertEquals(RepoFormat.KERNELSU_V1, RepoModuleParser.sniffFormat(registryIndexJson))
+        assertEquals(RepoFormat.MMRL, RepoModuleParser.sniffFormat(mmrlJson))
+    }
+
+    @Test
+    fun `registryIndexPointer reads the pointer document and only that`() {
+        assertEquals("api/v1/modules.json", RepoModuleParser.registryIndexPointer(registryIndexJson))
+        // An MMRL index has a modules array; optString would hand back its serialized text.
+        assertNull(RepoModuleParser.registryIndexPointer(mmrlJson))
+        assertNull(RepoModuleParser.registryIndexPointer(registryModulesJson))
+    }
+
+    @Test
+    fun `parseKsuV1 maps module fields and locates the detail document`() {
+        val modules = RepoModuleParser.parseKsuV1(
+            registryModulesJson, "src1", "Src1", "https://modules.kernelsu.org/api/v1/modules.json",
+        )
+        assertEquals(2, modules.size)
+        val cert = modules[0]
+        assertEquals("CertBridge", cert.moduleId)
+        assertEquals("证书桥", cert.moduleName)
+        assertEquals("许小墨", cert.authors)
+        assertEquals("https://github.com/Eikeitsu", cert.authorList.single().link)
+        assertEquals("把 PEM 注入系统信任库", cert.summary)
+        assertEquals("v5.1.2", cert.latestRelease)
+        assertEquals(50107L, cert.latestVersionCode)
+        assertEquals("2026-10-11T16:18:27Z", cert.latestReleaseTime)
+        assertEquals(26, cert.stargazerCount)
+        assertEquals("src1", cert.sourceId)
+
+        // The index carries no download address: it is read per module, when one is opened.
+        assertNull(cert.latestAsset)
+        assertNull(cert.mmrl)
+
+        // `detail` is relative to the site root, not to the document that named it.
+        assertEquals("https://modules.kernelsu.org/", cert.registry?.baseUrl)
+        assertEquals("https://modules.kernelsu.org/api/v1/modules/CertBridge.json", cert.registry?.detailUrl)
+    }
+
+    @Test
+    fun `parseKsuV1 keeps a module whose detail path is missing`() {
+        val modules = RepoModuleParser.parseKsuV1(
+            registryModulesJson, "", "", "https://modules.kernelsu.org/api/v1/modules.json",
+        )
+        val noDetail = modules.first { it.moduleId == "no_detail_module" }
+        assertNull(noDetail.registry)
+        assertEquals("v1", noDetail.latestRelease)
+    }
+
+    @Test
+    fun `parseKsuV1 skips entries without an id`() {
+        val json = """{"schemaVersion": 1, "modules": [{"name": "broken"}, {"id": "ok"}]}"""
+        assertEquals(listOf("ok"), RepoModuleParser.parseKsuV1(json, "", "").map { it.moduleId })
+    }
+
+    @Test
+    fun `parseKsuV1 tolerates a registry served from a non-default port`() {
+        val modules = RepoModuleParser.parseKsuV1(
+            registryModulesJson, "", "", "http://registry.example.com:8080/api/v1/modules.json",
+        )
+        assertEquals(
+            "http://registry.example.com:8080/api/v1/modules/CertBridge.json",
+            modules.first().registry?.detailUrl,
+        )
+    }
+
+    @Test
+    fun `parse dispatches a registry list to the v1 parser`() {
+        val modules = RepoModuleParser.parse(registryModulesJson, "s", "S", "https://modules.kernelsu.org/api/v1/modules.json")
+        assertEquals("CertBridge", modules.first().moduleId)
+        assertNotNull(modules.first().registry)
+        // MMRL parsing would have found no versions and still claimed the module; the formats are
+        // told apart so that a registry module is not mistaken for an MMRL one with nothing in it.
+        assertNull(modules.first().mmrl)
+    }
+
+    @Test
+    fun `registryBaseUrl keeps the site root and rejects what has none`() {
+        assertEquals("https://modules.kernelsu.org/", registryBaseUrl("https://modules.kernelsu.org/api/v1/index.json"))
+        assertEquals("https://example.com:8443/", registryBaseUrl("https://example.com:8443/x/y.json"))
+        assertNull(registryBaseUrl("not a url"))
+        assertNull(registryBaseUrl("file:///tmp/modules.json"))
+    }
+
+    @Test
+    fun `registryDocumentUrl resolves against the site root`() {
+        assertEquals(
+            "https://modules.kernelsu.org/api/v1/modules/CertBridge.json",
+            registryDocumentUrl("https://modules.kernelsu.org/", "api/v1/modules/CertBridge.json"),
+        )
+        assertEquals(
+            "https://modules.kernelsu.org/api/v1/modules/CertBridge.json",
+            registryDocumentUrl("https://modules.kernelsu.org/", "/api/v1/modules/CertBridge.json"),
+        )
+    }
 }

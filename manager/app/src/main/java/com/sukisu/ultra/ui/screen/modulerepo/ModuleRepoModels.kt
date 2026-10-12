@@ -44,9 +44,20 @@ data class RepoModuleArg(
     /** Other repositories publishing the same module, merged away by deduplication. */
     val alternateSourceNames: List<String> = emptyList(),
     val readmeUrl: String? = null,
-    val webUrl: String? = null
+    val webUrl: String? = null,
+    /** Site root of a KernelSU v1 registry, when the module came from one. */
+    val registryBaseUrl: String? = null,
+    /** That registry's document for this module, which carries its releases. */
+    val registryDetailUrl: String? = null,
 ) : Parcelable {
-    val isMmrl: Boolean get() = sourceId.isNotEmpty()
+    /**
+     * The index listed this module's releases itself, so its readme is markdown that still has to
+     * be rendered. A registry module is not one of those: its index has no releases, and the page
+     * it serves is already HTML.
+     */
+    val isMmrl: Boolean get() = sourceId.isNotEmpty() && registryDetailUrl == null
+
+    val isRegistry: Boolean get() = registryDetailUrl != null
 }
 
 /**
@@ -55,6 +66,8 @@ data class RepoModuleArg(
  * An MMRL index lists every published version, so all of them become releases. A KernelSU-array
  * index carries only the newest one, and it has to be turned into a single release: without it
  * such a module reaches its detail page with no assets at all, and so with no way to install it.
+ * A registry index carries none of either — its releases are read from the module's own document
+ * when the page opens — so it legitimately yields nothing here.
  */
 internal fun repoModuleReleases(module: RepoModule): List<ReleaseArg> {
     module.mmrl?.let { mmrl ->

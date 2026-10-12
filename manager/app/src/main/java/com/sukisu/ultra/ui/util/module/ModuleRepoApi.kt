@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.util.module
 
+import com.sukisu.ultra.data.repository.registryDocumentUrl
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.screen.modulerepo.RepoModuleArg
 import com.sukisu.ultra.ui.util.isNetworkAvailable
@@ -12,6 +13,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 data class ModuleDetail(
     val readme: String,
@@ -44,6 +46,9 @@ data class ReleaseAssetInfo(
 
 private const val MAX_CHANGELOG_FETCHES = 30
 
+/** Site root of the KernelSU module registry, which serves its documents under `api/v1`. */
+private const val KERNELSU_REGISTRY_BASE = "https://modules.kernelsu.org/"
+
 fun sanitizeVersionString(version: String): String {
     return version.replace(Regex("[^a-zA-Z0-9.\\-_]"), "_")
 }
@@ -55,7 +60,7 @@ fun stripTicks(s: String): String {
 
 fun fetchReleaseDescriptionHtml(moduleId: String, latestTag: String): String? {
     if (!isNetworkAvailable(ksuApp)) return null
-    val url = "https://modules.kernelsu.org/module/$moduleId.json"
+    val url = "$KERNELSU_REGISTRY_BASE/api/v1/modules/$moduleId.json"
     return runCatching {
         ksuApp.okhttpClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
             if (!resp.isSuccessful) null else {
@@ -65,11 +70,11 @@ fun fetchReleaseDescriptionHtml(moduleId: String, latestTag: String): String? {
                 var fallbackHtml: String? = null
                 for (i in 0 until releasesArray.length()) {
                     val r = releasesArray.optJSONObject(i) ?: continue
-                    val descHtml = r.optString("descriptionHTML", "")
+                    val descHtml = r.optString("changelogHtml", "")
                     if (fallbackHtml == null && descHtml.isNotBlank()) {
                         fallbackHtml = descHtml
                     }
-                    val rname = r.optString("name", r.optString("tagName", r.optString("version", "")))
+                    val rname = r.optString("tag", r.optString("name", r.optString("version", "")))
                     if (rname == latestTag && descHtml.isNotBlank()) {
                         return@use descHtml
                     }
@@ -83,6 +88,7 @@ fun fetchReleaseDescriptionHtml(moduleId: String, latestTag: String): String? {
 
 suspend fun fetchModuleDetail(module: RepoModuleArg): ModuleDetail? {
     if (!hasAnyNetwork(ksuApp)) return null
+    module.registryDetailUrl?.let { return fetchRegistryModuleDetail(module, it) }
     return if (module.isMmrl) {
         fetchMmrlModuleDetail(module)
     } else {
@@ -123,83 +129,121 @@ private suspend fun fetchMmrlModuleDetail(module: RepoModuleArg): ModuleDetail? 
     )
 }
 
-/** Legacy KernelSU repository detail endpoint, keyed by module id. */
+/**
+ * KernelSU registry detail document, keyed by module id.
+ *
+ * The old `/module/<id>.json` this used to read has been gone since the registry was rebuilt in
+ * October 2026; the document now lives under `api/v1` and carries the same things under different
+ * names.
+ */
 suspend fun fetchModuleDetailById(moduleId: String): ModuleDetail? {
     if (!isNetworkAvailable(ksuApp)) return null
-    val url = "https://modules.kernelsu.org/module/$moduleId.json"
-    return try {
-        ksuApp.okhttpClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-            if (!resp.isSuccessful) return@use null
-            val body = resp.body.string()
-            val obj = JSONObject(body)
-            val readme = obj.optString("readme", "")
-            val readmeHtml = obj.optString("readmeHTML", "")
-            val homepageUrl = stripTicks(obj.optString("homepageUrl", ""))
-            val sourceUrl = stripTicks(obj.optString("sourceUrl", ""))
-            val url = stripTicks(obj.optString("url", ""))
-            val lr = obj.optJSONObject("latestRelease")
-            var latestTag: String
-            var latestTime = ""
-            var latestAssetName: String? = null
-            var latestAssetUrl: String? = null
-            if (lr != null) {
-                latestTag = lr.optString("name", lr.optString("version", ""))
-                latestTime = lr.optString("time", "")
-                var urlDl = lr.optString("downloadUrl", "")
-                urlDl = stripTicks(urlDl)
-                if (urlDl.isNotEmpty()) {
-                    latestAssetName = urlDl.substringAfterLast('/')
-                    latestAssetUrl = urlDl
-                }
-            } else {
-                latestTag = obj.optString("latestRelease", "")
-            }
+    val url = "$KERNELSU_REGISTRY_BASE/api/v1/modules/$moduleId.json"
+    return fetchRegistryModuleDetail(
+        detailUrl = url,
+        baseUrl = KERNELSU_REGISTRY_BASE,
+        moduleId = moduleId,
+    )
+}
 
-            val releasesArray = obj.optJSONArray("releases")
-            val releases = if (releasesArray != null) {
-                (0 until releasesArray.length()).mapNotNull { rIdx ->
-                    val r = releasesArray.optJSONObject(rIdx) ?: return@mapNotNull null
-                    val rname = r.optString("name", r.optString("tagName", r.optString("version", "")))
-                    val publishedAt = r.optString("publishedAt", "")
-                    val descHtml = r.optString("descriptionHTML", "")
-                    val assetsArray = r.optJSONArray("releaseAssets") ?: JSONArray()
-                    val assets = (0 until assetsArray.length()).mapNotNull { aIdx ->
-                        val a = assetsArray.optJSONObject(aIdx) ?: return@mapNotNull null
-                        val aname = a.optString("name", "")
-                        var adl = a.optString("downloadUrl", "")
-                        adl = stripTicks(adl)
-                        val asz = a.optLong("size", 0L)
-                        val dcnt = a.optInt("downloadCount", 0)
-                        if (aname.isEmpty() || adl.isEmpty()) null else ReleaseAssetInfo(aname, adl, asz, dcnt)
-                    }
-                    ReleaseInfo(
-                        name = rname,
-                        tagName = r.optString("tagName", rname),
-                        publishedAt = publishedAt,
-                        descriptionHTML = descHtml,
-                        assets = assets
-                    )
-                }
-            } else emptyList()
+/** A registry module opened from a repository source, whose detail address the index supplied. */
+private suspend fun fetchRegistryModuleDetail(module: RepoModuleArg, detailUrl: String): ModuleDetail? =
+    fetchRegistryModuleDetail(
+        detailUrl = detailUrl,
+        baseUrl = module.registryBaseUrl ?: KERNELSU_REGISTRY_BASE,
+        moduleId = module.moduleId,
+    )
 
-            return@use ModuleDetail(
-                readme = readme,
-                readmeHtml = readmeHtml,
-                latestTag = latestTag,
-                latestTime = latestTime,
-                latestAssetName = latestAssetName,
-                latestAssetUrl = latestAssetUrl,
-                releases = releases,
-                homepageUrl = homepageUrl,
-                sourceUrl = sourceUrl,
-                url = url
+private suspend fun fetchRegistryModuleDetail(
+    detailUrl: String,
+    baseUrl: String,
+    moduleId: String,
+): ModuleDetail? {
+    val body = fetchText(detailUrl) ?: return null
+    val parsed = runCatching { parseRegistryDetail(body, baseUrl, moduleId) }.getOrNull() ?: return null
+    // The readme is a path on the registry, served as HTML, and only worth a request when the
+    // document names one.
+    val readme = parsed.readmeUrl?.let { fetchText(it) }.orEmpty()
+    return parsed.detail.copy(readme = readme, readmeHtml = readme)
+}
+
+/**
+ * The detail document of a registry module, split from its readme so the network fetch of that
+ * readme stays out of the parsing.
+ */
+internal data class RegistryDetail(
+    val readmeUrl: String?,
+    val detail: ModuleDetail,
+)
+
+/**
+ * Reads a registry detail document. Every path in it — the readme, the module's page on the site —
+ * is relative to the site root, which is why [baseUrl] is needed and the document's own address is
+ * not.
+ */
+internal fun parseRegistryDetail(body: String, baseUrl: String, moduleId: String): RegistryDetail {
+    val obj = JSONObject(body)
+    val readmePath = obj.optString("readme", "").trim()
+    val readmeUrl = readmePath.takeIf { it.isNotEmpty() }?.let { registryDocumentUrl(baseUrl, it) }
+
+    val stable = obj.optJSONObject("stable")
+    val releasesArray = obj.optJSONArray("releases") ?: JSONArray()
+    val releases = (0 until releasesArray.length()).mapNotNull { rIdx ->
+        val r = releasesArray.optJSONObject(rIdx) ?: return@mapNotNull null
+        val zip = r.optJSONObject("zip")
+        val zipUrl = stripTicks(zip?.optString("url", "") ?: "").trim()
+        val assets = if (zipUrl.isEmpty()) {
+            emptyList()
+        } else {
+            listOf(
+                ReleaseAssetInfo(
+                    name = zip.optString("name", "").trim().ifEmpty { zipUrl.substringAfterLast('/') },
+                    downloadUrl = zipUrl,
+                    size = zip.optLong("size", 0L),
+                    downloadCount = 0,
+                )
             )
         }
-    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        null
+        ReleaseInfo(
+            name = r.optString("name", "").trim().ifEmpty { r.optString("tag", "") },
+            tagName = r.optString("tag", "").trim().ifEmpty { r.optString("version", "") },
+            publishedAt = r.optString("publishedAt", ""),
+            // The registry renders the changelog to HTML for us, like the module page it sits on.
+            descriptionHTML = r.optString("changelogHtml", ""),
+            assets = assets,
+        )
     }
+
+    val newest = releases.firstOrNull()
+    val source = obj.optJSONObject("source")
+    return RegistryDetail(
+        readmeUrl = readmeUrl,
+        detail = ModuleDetail(
+            readme = "",
+            readmeHtml = "",
+            latestTag = stable?.optString("version", "").orEmpty().ifEmpty { newest?.tagName.orEmpty() },
+            latestTime = stable?.optString("publishedAt", "").orEmpty().ifEmpty { newest?.publishedAt.orEmpty() },
+            latestAssetName = newest?.assets?.firstOrNull()?.name,
+            latestAssetUrl = newest?.assets?.firstOrNull()?.downloadUrl,
+            releases = releases,
+            homepageUrl = obj.optString("homepage", "").trim(),
+            sourceUrl = source?.optString("url", "").orEmpty().trim(),
+            url = registrySiteUrl(baseUrl, moduleId),
+        ),
+    )
+}
+
+/**
+ * The module's page on the registry's own site, which is what the detail screen links to. The site
+ * is published in English and Simplified Chinese; a Chinese device gets the latter unless the
+ * region implies Traditional script, for which there is no page.
+ */
+private fun registrySiteUrl(baseUrl: String, moduleId: String): String {
+    if (moduleId.isEmpty()) return ""
+    val locale = Locale.getDefault()
+    val traditional = locale.country in setOf("TW", "HK", "MO")
+    val siteLocale = if (locale.language == "zh" && !traditional) "zh-CN" else "en"
+    return "${baseUrl}$siteLocale/modules/$moduleId/"
 }
 
 private suspend fun fetchText(url: String): String? = withContext(Dispatchers.IO) {

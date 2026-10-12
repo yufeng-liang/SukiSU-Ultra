@@ -2,6 +2,7 @@ package com.sukisu.ultra.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.sukisu.ultra.data.model.RepoModule
 import com.sukisu.ultra.ksuApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,9 +55,12 @@ class RepoSourceRepositoryImpl(
 
     /**
      * No source is configured out of the box: the repository the manager used to ship with,
-     * `modules.kernelsu.org`, has been gone since the organisation behind it was suspended, and
-     * seeding it only made every first launch report a failed fetch. The dialog offers
-     * [defaultRepoCandidates] instead.
+     * `modules.kernelsu.org`, went dark when the organisation behind it was suspended, and seeding
+     * it only made every first launch report a failed fetch. It is served again since 2026-10-10
+     * under a new organisation, in a format this manager reads (see [RepoFormat.KERNELSU_V1]), and
+     * it is offered in [defaultRepoCandidates] like any other repository — but a first launch still
+     * starts from an empty list, because a source the user never chose is one more thing that can
+     * fail on them.
      */
     override fun loadSources(): List<RepoSource> {
         val raw = prefs.getString(KEY_SOURCES, null) ?: return emptyList()
@@ -88,24 +92,19 @@ class RepoSourceRepositoryImpl(
             var lastError: String = ""
             for (candidate in candidates) {
                 try {
-                    val request = Request.Builder().url(candidate).build()
-                    client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            // 只嗅首字符不算数：畸形 JSON、凑巧带 "modules" 的任意 JSON 都会被
-                            // 当成可用仓库落盘，而列表里一条也解析不出来。这里真解析一遍——
-                            // 复用列表用的同一个入口，判决才和用户看到的结果一致。
-                            // 解析通过就算仓库，空索引（[]、modules: []）也是合法仓库。
-                            RepoModuleParser.parse(
-                                body = response.readIndexBody(),
-                                sourceId = "",
-                                sourceName = "",
-                                indexUrl = candidate,
-                            )
-                            resolvedUrl = candidate
-                        } else {
-                            lastError = "HTTP ${response.code}"
-                        }
-                    }
+                    // 只嗅首字符不算数：畸形 JSON、凑巧带 "modules" 的任意 JSON 都会被当成可用
+                    // 仓库落盘，而列表里一条也解析不出来。这里真解析一遍——复用列表用的同一个
+                    // 入口，判决才和用户看到的结果一致。解析通过就算仓库，空索引（[]、
+                    // modules: []）也是合法仓库。注册表索引只指向模块清单、本身没有模块，所以
+                    // 由这个入口替它走完那一跳，否则指向 modules.kernelsu.org 的地址会因为
+                    // "解析不出模块"被当成坏地址。
+                    fetchIndexModules(
+                        client = client,
+                        indexUrl = candidate,
+                        sourceId = "",
+                        sourceName = "",
+                    )
+                    resolvedUrl = candidate
                 } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -258,7 +257,9 @@ internal fun indexIdentity(url: String): String? {
  *    cannot reach raw.githubusercontent.com
  *  - a URL already pointing at a .json file is used as-is
  *  - anything else tries the MMRL convention (<base>/json/modules.json) first, then the KernelSU
- *    convention (<base>/modules.json)
+ *    convention (<base>/modules.json), then the registry convention
+ *    (<base>/api/v1/index.json, and the module list beside it), so that pasting the address of a
+ *    registry site resolves to the document the manager can read
  *
  * `HEAD` is GitHub's alias for the repository's default branch, so neither `main` nor `master` has
  * to be guessed.
@@ -273,7 +274,12 @@ fun candidateSourceUrls(raw: String): List<String> {
         ?: return if (trimmed.endsWith(".json")) {
             listOf(trimmed)
         } else {
-            listOf("$trimmed/json/modules.json", "$trimmed/modules.json")
+            listOf(
+                "$trimmed/json/modules.json",
+                "$trimmed/modules.json",
+                "$trimmed/api/v1/index.json",
+                "$trimmed/api/v1/modules.json",
+            )
         }
 
     val ref = repo.ref ?: "HEAD"
@@ -375,4 +381,49 @@ internal fun Response.readIndexBody(limitBytes: Long = MAX_INDEX_RESPONSE_BYTES)
     val bytes = peekBody(limitBytes + 1).bytes()
     if (bytes.size > limitBytes) throw IndexResponseTooLargeException(limitBytes)
     return String(bytes, Charsets.UTF_8)
+}
+
+/**
+ * Reads the modules a repository publishes at [indexUrl], following one hop when the document is a
+ * registry index.
+ *
+ * The registry at `modules.kernelsu.org` serves `api/v1/index.json` as a small pointer that names
+ * the file holding the modules; the modules themselves are never in the document a user pastes.
+ * Throws on a non-2xx response, an unreadable document or an unparseable format, which is how
+ * `addSource` tells a usable address from an unusable one.
+ */
+internal fun fetchIndexModules(
+    client: OkHttpClient,
+    indexUrl: String,
+    sourceId: String = "",
+    sourceName: String = "",
+): List<RepoModule> {
+    val body = readIndexDocument(client, indexUrl)
+    val pointer = RepoModuleParser.registryIndexPointer(body) ?: return RepoModuleParser.parse(
+        body = body,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        indexUrl = indexUrl,
+    )
+
+    val baseUrl = registryBaseUrl(indexUrl)
+        ?: throw IllegalArgumentException("Registry index has no site root: $indexUrl")
+    val target = registryDocumentUrl(baseUrl, pointer)
+    val targetBody = readIndexDocument(client, target)
+    // 解析用的是清单自己的地址：注册表里的路径都相对站点根，而 sameOriginAssetFallback 之类
+    // 的判断要的是"这份文档从哪来"。
+    return RepoModuleParser.parse(
+        body = targetBody,
+        sourceId = sourceId,
+        sourceName = sourceName,
+        indexUrl = target,
+    )
+}
+
+private fun readIndexDocument(client: OkHttpClient, url: String): String {
+    val request = Request.Builder().url(url).build()
+    return client.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
+        response.readIndexBody()
+    }
 }

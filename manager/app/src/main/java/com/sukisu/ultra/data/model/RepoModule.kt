@@ -37,6 +37,21 @@ data class MmrlModuleInfo(
     val versions: List<MmrlVersion>,
 )
 
+/**
+ * Extra data carried by modules from a KernelSU v1 registry (`modules.kernelsu.org`).
+ *
+ * Such an index lists only the newest version and no download address at all: the releases live in
+ * a document per module, which is read when the module is opened rather than for every module on
+ * every refresh.
+ */
+@Immutable
+data class RegistryModuleInfo(
+    /** Site root the module's paths are relative to, ending with a slash. */
+    val baseUrl: String,
+    /** Absolute address of the module's detail document, which carries its releases. */
+    val detailUrl: String,
+)
+
 @Immutable
 data class RepoModule(
     val moduleId: String,
@@ -61,4 +76,5 @@ data class RepoModule(
      */
     val alternateSourceNames: List<String> = emptyList(),
     val mmrl: MmrlModuleInfo? = null,
+    val registry: RegistryModuleInfo? = null,
 )
