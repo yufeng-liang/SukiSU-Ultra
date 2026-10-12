@@ -64,7 +64,7 @@ class ModuleContributionDialogStateTest {
     @Test
     fun `open writes the hash of the file it was given into the form`() {
         val zip = zipNamed("a.zip", "SUkISU-WIRING-A")
-        val harness = Harness(submit = { _, _, _, _, _, _ -> SubmitResult(true, null, "投稿已提交") })
+        val harness = Harness(submit = { _, _, _, _, _, _, _ -> SubmitResult(true, null, "投稿已提交") })
         val state = harness.state
 
         // 打开之前还没有包体哈希：口令行不显示（判据本身在规则测试里钉着）。
@@ -90,7 +90,7 @@ class ModuleContributionDialogStateTest {
     fun `a second open discards the hash computed for the previous package`() {
         val zipA = zipNamed("a.zip", "SUkISU-WIRING-A")
         val zipB = zipNamed("b.zip", "SUkISU-WIRING-B")
-        val harness = Harness(submit = { _, _, _, _, _, _ -> SubmitResult(true, null, "投稿已提交") })
+        val harness = Harness(submit = { _, _, _, _, _, _, _ -> SubmitResult(true, null, "投稿已提交") })
         val state = harness.state
 
         // 第 1 次 open：协程开跑 → withContext(Dispatchers.IO) 挂起 → 哈希算回来了，
@@ -122,7 +122,7 @@ class ModuleContributionDialogStateTest {
     @Test
     fun `the used-passphrase failure rolls a new nonce and submits the one on screen`() {
         val seenNonces = ArrayList<String>()
-        val harness = Harness(submit = { _, _, _, _, _, nonce ->
+        val harness = Harness(submit = { _, _, _, _, _, nonce, _ ->
             seenNonces += nonce
             SubmitResult(false, null, proofUsedMessage)
         })
@@ -144,8 +144,8 @@ class ModuleContributionDialogStateTest {
 
     @Test
     fun `a timeout keeps the nonce the user already copied`() {
-        val harness = Harness(submit = { _, _, _, _, _, _ ->
-            SubmitResult(false, null, "投稿超时（8 秒），请稍后再试")
+        val harness = Harness(submit = { _, _, _, _, _, _, _ ->
+            SubmitResult(false, null, "投稿超时（20 秒），请稍后再试")
         })
         val state = harness.state
         harness.fillIn(zipNamed("a.zip", "SUkISU-WIRING-A"))
@@ -157,7 +157,7 @@ class ModuleContributionDialogStateTest {
         // 超时不该作废用户的口令：他照旧串改好了签名，换一串等于让他永远追不上口令。
         // 删掉 submit() 里那行 nonce 判据、或把它写成"失败就重掷"，这里红。
         assertEquals(before, state.form.nonce)
-        assertEquals(ContributionSubmitState.Failed("投稿超时（8 秒），请稍后再试"), state.form.submitState)
+        assertEquals(ContributionSubmitState.Failed("投稿超时（20 秒），请稍后再试"), state.form.submitState)
         harness.close()
     }
 
@@ -167,7 +167,7 @@ class ModuleContributionDialogStateTest {
         // （反方向的漏掷 —— 非 2xx 把 body 里的原因丢了、判据永远拿不到依据 —— 钉在
         // ModuleContributionTest 的那两条网络层测试里，两边合起来才是完整的一条管道。）
         val reason = "这个 UID 的酷安个性签名里没有本次口令（788ef91b-abc123）—— 填好后再提交"
-        val harness = Harness(submit = { _, _, _, _, _, _ ->
+        val harness = Harness(submit = { _, _, _, _, _, _, _ ->
             SubmitResult(false, null, "$reason（服务端返回 HTTP 403）")
         })
         val state = harness.state
@@ -181,11 +181,49 @@ class ModuleContributionDialogStateTest {
         harness.close()
     }
 
+    @Test
+    fun `the machine code alone rolls a new nonce even when the copy is unrecognisable`() {
+        // 码优先判据的接线复验：文案换成任何话，只要 body.code == "proof_used" 就重掷。
+        // 光有 RulesTest 的纯函数断言不够 —— 把 submit() 里传 result.code 的那半个实参删掉，
+        // 这条红而纯函数测试全绿（正是"接线"测试要堵的那类洞）。
+        val harness = Harness(submit = { _, _, _, _, _, _, _ ->
+            SubmitResult(false, null, "后端把那句话改得亲妈都不认识了（服务端返回 HTTP 403）", "proof_used")
+        })
+        val state = harness.state
+        harness.fillIn(zipNamed("a.zip", "SUkISU-WIRING-A"))
+        val before = state.form.nonce
+
+        state.submit()
+        harness.scope.drainAll()
+
+        assertNotEquals("码说明口令已烧，必须重掷", before, state.form.nonce)
+        harness.close()
+    }
+
+    @Test
+    fun `submit hands the on-screen package hash down to the network layer`() {
+        // open() 存进表单的那份整包哈希（= 屏幕上口令绑定的字节）必须原样传下去，
+        // 网络层才有东西可比。删掉 submit() 里 snapshot.zipSha256 那个实参，这条红。
+        var seenZipSha: String? = null
+        val harness = Harness(submit = { _, _, _, _, _, _, formZipSha ->
+            seenZipSha = formZipSha
+            SubmitResult(true, null, "投稿已提交")
+        })
+        val state = harness.state
+        harness.fillIn(zipNamed("a.zip", "SUkISU-WIRING-A"))
+
+        state.submit()
+        harness.scope.drainAll()
+
+        assertEquals("传给网络层的必须是屏幕上那串口令绑定的哈希", shaA, seenZipSha)
+        harness.close()
+    }
+
     // ── 驱动用的假 scope ────────────────────────────────────────────────────
 
     /** 把 [ModuleContributionDialogState] 和驱动它的 [SteppingScope] 绑在一起，省掉成对传参。 */
     private inner class Harness(
-        submit: suspend (File, ModulePropInfo?, String, String, String, String) -> SubmitResult,
+        submit: suspend (File, ModulePropInfo?, String, String, String, String, String) -> SubmitResult,
         lookupUid: suspend (String) -> CoolapkUidLookup = { CoolapkUidLookup.Verified("酷友") },
     ) {
         val scope = SteppingScope()

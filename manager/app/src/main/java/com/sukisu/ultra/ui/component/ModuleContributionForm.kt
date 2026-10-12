@@ -59,21 +59,29 @@ object ModuleContributionRules {
         !id.isNullOrBlank() && zipSha.isNotBlank()
 
     /**
-     * 服务端的失败原因是不是「这枚口令已经用过了」。
+     * 服务端的失败是不是「这枚口令已经用过了」。
      *
      * 只有这一种失败值得重掷 nonce（见 [ModuleContributionDialogState.submit]）：那串口令确实作废了。
-     * 判据取自 Worker used-nonce 分支的中文回话（contrib/worker/src/index.ts：
-     * 「这个口令已经用过，请重新生成后再提交」，随 403 的 body.error 送回来），
-     * 刻意只认这一句的形状：
+     *
+     * **首选机器可读的失败码**：Worker 的 used-nonce 分支在 403 的 body 里回
+     * `code: 'proof_used'`（contrib/worker/src/index.ts），与网页端 app.js 的
+     * `proofWasSpent` 同一条规则 —— 文案匹配「改一个字就会悄悄把旋转逻辑关掉」，
+     * 码不会。中文标记只作兜底：线上可能有旧版 Worker / 中间网关吃掉 body 时只剩文案。
+     * 刻意只认这一种：
      * - 「签名里没有本次口令」不能换——用户要的是去把**当前这串**填进签名；
      * - 「口令记录读不出来」「超时」「网络不可用」是平台故障，换了等于把用户已经在
      *   签名里的那串作废，他改完签名再点重试就永远对不上。
      *
      * 与网页端 app.js 的行为同一条（设计文档 §14.3：只有真拿到"可能已提交成功"的信号才换一串）。
-     * 认不出的一律当作"不换"：漏重掷只是让用户再点一次重试，错重掷会把用户填进签名的那串作废。
+     * 两个判据都认不出一律当作"不换"：漏重掷只是让用户再点一次重试，错重掷会把用户填进签名的那串作废。
      */
-    fun proofWasAlreadyUsed(message: String): Boolean = PROOF_USED_MARKERS.any(message::contains)
+    fun proofWasAlreadyUsed(message: String, code: String? = null): Boolean =
+        code == PROOF_USED_CODE || PROOF_USED_MARKERS.any(message::contains)
 
+    /** Worker used-nonce 分支的机器可读码（index.ts 里 `code: 'proof_used'` 的字面量）。 */
+    private const val PROOF_USED_CODE = "proof_used"
+
+    /** 旧后端（没有 code）的文案兜底；与 Worker 那句 403 error 的开头对齐。 */
     private val PROOF_USED_MARKERS = listOf("口令已经用过", "口令已用过")
 }
 
@@ -147,7 +155,9 @@ fun CoolapkUidLookup.toState(): CoolapkUidState = when (this) {
  *
  * [zipSha256] 是待投稿 zip 的整包 SHA-256（小写十六进制，与提交时作为 multipart `sha256`
  * 发出去的那一个同源同值），口令前缀绑它；空串表示"还没算出来"，此时口令行不显示
- * （见 [ModuleContributionRules.showProofRow]）。
+ * （见 [ModuleContributionRules.showProofRow]）。提交时这一份会交给网络层与磁盘实算值对比
+ * （文件在对话框开着期间被改过就本地说清并停止上传，见
+ * [com.sukisu.ultra.ui.util.ModuleContribution.submitModule]）。
  */
 data class ContributionForm(
     val meta: ModulePropInfo? = null,

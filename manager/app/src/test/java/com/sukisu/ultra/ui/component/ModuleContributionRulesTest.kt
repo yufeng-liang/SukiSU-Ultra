@@ -195,7 +195,7 @@ class ModuleContributionRulesTest {
     fun `a retry is still blocked while the new attempt is in flight`() {
         // 重试不等于放过连点：重新提交之后照样锁住。
         val retrying = verifiedForm(
-            submitState = ContributionSubmitState.Failed("投稿超时（8 秒），请稍后再试"),
+            submitState = ContributionSubmitState.Failed("投稿超时（20 秒），请稍后再试"),
         ).copy(submitState = ContributionSubmitState.Submitting("正在提交…"))
         assertFalse(retrying.canSubmit)
         assertTrue(retrying.isSubmitting)
@@ -407,10 +407,33 @@ class ModuleContributionRulesTest {
                 "这个 UID 的酷安个性签名里没有本次口令（4f91ceb8-abc123）—— 请到「编辑资料 → 签名」填入后重新提交",
             ),
         )
-        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("酷安核实没通过（口令记录读不出来），本次未提交 —— 请稍后重试"))
-        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("投稿超时（8 秒），请稍后再试"))
+        // 文案与 Worker 现句逐字对齐（index.ts 的 KV 读失败分支，平台侧 403）：
+        // 旧样本「酷安核实没通过（口令记录读不出来）…」出自已被取代的措辞，留着它
+        // 等于用一句后端不会再说的话当负样本。
+        assertFalse(
+            ModuleContributionRules.proofWasAlreadyUsed(
+                "服务端读不出本次投稿的口令记录（自家记账的 KV 没有应答），本次未提交 —— 请稍后重试",
+            ),
+        )
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("投稿超时（20 秒），请稍后再试"))
         assertFalse(ModuleContributionRules.proofWasAlreadyUsed("网络不可用，投稿未完成"))
         assertFalse(ModuleContributionRules.proofWasAlreadyUsed("读不出模块信息（module.prop 缺失或 id/name 为空）"))
         assertFalse(ModuleContributionRules.proofWasAlreadyUsed(""))
+    }
+
+    @Test
+    fun `used-passphrase rotation is code-first with the copy only as fallback`() {
+        // 首选机器可读码：Worker 在 used-nonce 那条 403 的 body 里回 `code: 'proof_used'`。
+        // 后端改文案不再能悄悄关掉旋转 —— 这正是网页端 app.js 换成码优先的理由。
+        assertTrue(ModuleContributionRules.proofWasAlreadyUsed("任何与口令无关的文案", "proof_used"))
+        // 码缺席（旧版线上 Worker / 网关吃掉了 body）：文案兜底照旧生效。
+        assertTrue(
+            ModuleContributionRules.proofWasAlreadyUsed("这个口令已经用过，请重新生成后再提交", null),
+        )
+        // 码缺席且文案对不上：不重掷。
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("投稿需要酷安等级 Lv2 及以上", null))
+        // 别的码不算「用过」：码是判据，不是「一切 403」。
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("任何与口令无关的文案", "level_too_low"))
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("", ""))
     }
 }

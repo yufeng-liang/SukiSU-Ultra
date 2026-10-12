@@ -81,7 +81,20 @@ enum class CheckStatus {
  * [ok] 为 false 时 [message] 一定非空且是人类可读的中文原因，供界面直接显示；
  * [prUrl] 只在 [ok] 为 true 时有值（服务端成功但没回 PR 链接时也可能为 null）。
  */
-data class SubmitResult(val ok: Boolean, val prUrl: String?, val message: String)
+data class SubmitResult(
+    val ok: Boolean,
+    val prUrl: String?,
+    val message: String,
+    /**
+     * 服务端非 2xx 应答体里的机器可读失败码（`code` 字段），没有则为 null。
+     *
+     * 目前唯一的取值是 Worker 的 `"proof_used"`（contrib/worker/src/index.ts，used-nonce
+     * 命中那条 403）：客户端靠它决定「换一枚 nonce 再发」，而不是靠 grep 中文文案 ——
+     * 文案改一个字就会悄悄把旋转逻辑关掉（网页端 app.js 已改为码优先 + 文案兜底，
+     * 这里是 App 侧的同一条规则，见 [com.sukisu.ultra.ui.component.ModuleContributionRules.proofWasAlreadyUsed]）。
+     */
+    val code: String? = null,
+)
 
 /**
  * 酷安 UID 的核实结果（`GET /user?uid=` 的四态 + 本地判定的形状不对）。
@@ -134,8 +147,30 @@ object ModuleContribution {
      */
     const val BASE_URL: String = "https://sukisu-module-api.pages.dev"
 
-    /** 8 秒。投稿是安装成功之后的额外一步，等太久会让用户以为卡住了。 */
-    private const val TIMEOUT_MS = 8_000L
+    /**
+     * 查询类请求（`/check`、`/user`）的超时。8 秒：安装成功之后的额外一步，等太久会让用户以为卡住了。
+     * 这两个端点 Worker 侧自身很快返回（最坏是酷安一次往返），不需要投稿那种大预算。
+     */
+    private const val QUERY_TIMEOUT_MS = 8_000L
+
+    /**
+     * 投稿（`/submit`）的超时：**20 秒**。
+     *
+     * 算术（对齐 Worker 的真实常量，contrib/worker/src/coolapk.ts，2026-10-12 核实）：
+     * 所有权闸最坏 = 2 个源 × `COOLAPK_SPACE_TIMEOUT_MS`（4000ms，逐源独立、第一个挂满才换第二个）
+     * = **8 秒**，这还没算上传；再加上传与后端写入预算 **12 秒**
+     * （8MB zip —— Worker `MAX_TOTAL_BYTES` 的上限 —— 在慢速上行下按 ~5 Mbps 量 ≈ 13 秒的一半多，
+     * 按正常移动网络量 ≤8 秒，另加 Worker 解析与 GitHub 侧开 PR 的几秒）= **20 秒**。
+     *
+     * 为什么必须大于后端最坏值：客户端先超时而 Worker 继续跑完，会照常开 PR 并**烧掉口令**，
+     * 而超时不触发 nonce 轮换（[com.sukisu.ultra.ui.component.ModuleContributionRules.proofWasAlreadyUsed]
+     * 认的是服务端明说「用过」）—— 用户接下来必然吃一次「这个口令已经用过」，
+     * 为一次他没造成的失败白跑一个来回。
+     *
+     * 为什么不更大：Cloudflare Worker 单次请求的挂钟就在 30 秒量级，客户端等更久只会
+     * 更久地盯着一个不会再有结果的进度条。
+     */
+    private const val SUBMIT_TIMEOUT_MS = 20_000L
 
     /** 只认这几种取值，其余（含大小写以外的花活）一律 [CheckStatus.UNKNOWN]。 */
     private val STATUS_BY_NAME = mapOf(
@@ -166,7 +201,8 @@ object ModuleContribution {
      * 保证方：中间夹了 Cloudflare，出错时回的可能是整页 HTML、上游栈回显，几 KB 起步。
      * 不设上限，一次失败就会把口令行下面撑出一屏网页，用户既读不出原因，也复制不了口令。
      * 上限之上的部分对判据没有价值：[com.sukisu.ultra.ui.component.ModuleContributionRules.proofWasAlreadyUsed]
-     * 认的是这句话的开头（「这个口令已经用过……」）。
+     * 的首选判据是机器可读的 `code`（独立于文案、不受截断影响），这句话的文案只是旧客户端
+     * 兜底——截断必须保住句首的「这个口令已经用过」，兜底才仍然认得出。
      */
     private const val MAX_ERROR_REASON_CHARS = 200
 
@@ -190,7 +226,7 @@ object ModuleContribution {
             // 只吞自己那次超时；调用方发起的取消（界面关了、协程取消了）必须照常往外传，
             // 否则已经没人等结果了，这里还会继续跑完整个请求。
             try {
-                withTimeout(TIMEOUT_MS) { execute(call) }.use { response -> readStatus(response) }
+                withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response -> readStatus(response) }
             } catch (e: CancellationException) {
                 if (e is TimeoutCancellationException) CheckStatus.UNKNOWN else throw e
             } catch (e: Throwable) {
@@ -217,7 +253,7 @@ object ModuleContribution {
             val call = runCatching { client().newCall(Request.Builder().url(url).get().build()) }
                 .getOrNull() ?: return@withContext CoolapkUidLookup.Unavailable
             try {
-                withTimeout(TIMEOUT_MS) { execute(call) }.use { response -> readUidLookup(response) }
+                withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response -> readUidLookup(response) }
             } catch (e: CancellationException) {
                 if (e is TimeoutCancellationException) CoolapkUidLookup.Unavailable else throw e
             } catch (e: Throwable) {
@@ -238,6 +274,11 @@ object ModuleContribution {
      * `coolapkUid` 是投稿人自己填的 UID（审核与追责用）。**服务端把 `coolapkUid`
      * 定为必收字段**，缺失或不是 4~12 位数字一律 400 —— 这一侧先挡一道，
      * 免得用户白等一次上传。
+     * [nonce] 是所有权口令的随机部分。[displayedZipSha256] 是对话框展示（并绑进口令）的那份
+     * 整包哈希：这里对磁盘上的文件**重新实算**一遍并与它对比——只为本地把话说清楚，
+     * **这不是新增的校验闸**，服务端拿到字节后自己会算（⑤-c 拒声明值与实算值不一致的条目，
+     * 所有权前缀也用实算值），对不上一律拒绝；本地对比只是让用户少上传一个注定 403 的包、
+     * 并看到一句和「你复制的口令」对得上的原因。
      */
     suspend fun submitModule(
         zip: File,
@@ -246,6 +287,7 @@ object ModuleContribution {
         uid: String,
         nickname: String,
         nonce: String,
+        displayedZipSha256: String? = null,
     ): SubmitResult {
         val resolved = meta ?: return failure("读不出模块信息（module.prop 缺失或 id/name 为空）")
         val safeSource = source.trim()
@@ -255,9 +297,19 @@ object ModuleContribution {
         if (!isValidUid(safeUid)) return failure("酷安 UID 必须是 4~12 位数字")
         if (safeNickname.isEmpty()) return failure("酷安 UID 未核实，拿不到署名")
 
+        // isFile 必须在哈希之前查：对不存在/是目录的路径做哈希只会得到一句
+        // 「读取模块文件失败」，把「文件没了」误报成「读不动」，用户不知道去哪找原因。
+        if (!zip.isFile) return failure("模块文件不存在或不是普通文件")
+
         val sha256 = ModuleProp.zipSha256(zip)
             ?: return failure("读取模块文件失败，无法计算校验值")
-        if (!zip.isFile) return failure("模块文件不存在或不是普通文件")
+
+        if (!displayedZipSha256.isNullOrEmpty() && displayedZipSha256 != sha256) {
+            return failure(
+                "模块文件在打开对话框之后被改动了——你复制的口令绑的是改动前那份字节，" +
+                    "现在这份对不上，已停止上传。请重新打包、重新打开对话框再提交。"
+            )
+        }
 
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
@@ -285,7 +337,7 @@ object ModuleContribution {
             val call = runCatching { client().newCall(Request.Builder().url(url).post(body).build()) }
                 .getOrNull() ?: return@withContext failure("无法发起投稿请求")
             try {
-                withTimeout(TIMEOUT_MS) { execute(call) }.use { response -> readSubmitResult(response) }
+                withTimeout(SUBMIT_TIMEOUT_MS) { execute(call, SUBMIT_TIMEOUT_MS) }.use { response -> readSubmitResult(response) }
             } catch (e: CancellationException) {
                 // 调用方取消（界面关了）不是失败，照常往外传。
                 throw e
@@ -303,11 +355,12 @@ object ModuleContribution {
      * 阻塞式执行；不能是 `suspend`，否则 [withTimeout] 打断不掉已经开始读响应的请求。
      *
      * 两层超时：OkHttp 的 [okhttp3.Call.timeout] 负责掐断 socket（连接上了但服务端不回话，
-     * 只有协程超时的话，那个协程会被挂住直到 socket 自己超时，可能远超 8 秒）；
+     * 只有协程超时的话，那个协程会被挂住直到 socket 自己超时，可能远超预算的那 20 秒）；
      * [withTimeout] 负责把 OkHttp 之外的等待（DNS、排队）也算进来。
+     * 超时数值由调用方传入：查询与投稿的最坏后端耗时不是一个量级（见两个 *_TIMEOUT_MS 常量）。
      */
-    private fun execute(call: okhttp3.Call): Response {
-        runCatching { call.timeout().timeout(TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS) }
+    private fun execute(call: okhttp3.Call, timeoutMs: Long): Response {
+        runCatching { call.timeout().timeout(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
         return call.execute()
     }
 
@@ -361,15 +414,21 @@ object ModuleContribution {
      * HTTP 码一起留在消息里：body 不是 JSON、或压根没有 error 时，那句话就是用户仅有的信息。
      * error 取前 [MAX_ERROR_REASON_CHARS] 个字：这一句会被原样渲染成一行错误提示，
      * 而中间的 Cloudflare 出错时回的是整页 HTML / 上游栈回显，不设上限就会撑出一屏网页。
+     *
+     * `code` 与 `error` 一起读：非 2xx（和 200+ok:false）的拒绝体里可能带机器可读失败码
+     * （Worker 的 used-nonce 分支回 `code: 'proof_used'`）。它是 nonce 轮换判据的**首选**，
+     * 中文文案只是兜底 —— 网页端 app.js 已改成码优先，App 不能再只靠 grep 文案。
      */
     private fun readSubmitResult(response: Response): SubmitResult {
         if (!response.isSuccessful) {
             val withCode = "（服务端返回 HTTP ${response.code}）"
-            val reason = runCatching { response.body.string() }.getOrNull()
-                ?.let { text -> runCatching { JSONObject(text).optString("error") }.getOrNull() }
+            val json = runCatching { response.body.string() }.getOrNull()
+                ?.let { text -> runCatching { JSONObject(text) }.getOrNull() }
+            val reason = json?.optString("error")
                 ?.takeIf { it.isNotBlank() }
                 ?.take(MAX_ERROR_REASON_CHARS)
-            return SubmitResult(false, null, reason?.let { "$it$withCode" } ?: "投稿失败$withCode")
+            val machineCode = json?.optString("code")?.trim()?.takeIf { it.isNotEmpty() }
+            return SubmitResult(false, null, reason?.let { "$it$withCode" } ?: "投稿失败$withCode", machineCode)
         }
         val body = runCatching { response.body.string() }.getOrNull()
             ?: return SubmitResult(false, null, "投稿失败（读不到服务端响应）")
@@ -378,15 +437,18 @@ object ModuleContribution {
         if (!json.optBoolean("ok", false)) {
             val reason = json.optString("error").takeIf { it.isNotBlank() }
                 ?: "服务端拒绝了这次投稿"
-            return SubmitResult(false, null, reason)
+            val machineCode = json.optString("code").trim().takeIf { it.isNotEmpty() }
+            return SubmitResult(false, null, reason, machineCode)
         }
         return SubmitResult(true, json.optString("pr").takeIf { it.isNotBlank() }, "投稿已提交")
     }
 
     /** 把失败原因说成人话，而不是把一个 IOException 的类名甩给用户。 */
     private fun describe(error: Throwable): String = when (error) {
-        is kotlinx.coroutines.TimeoutCancellationException -> "投稿超时（8 秒），请稍后再试"
-        is SocketTimeoutException -> "投稿超时（8 秒），请稍后再试"
+        is kotlinx.coroutines.TimeoutCancellationException ->
+            "投稿超时（${SUBMIT_TIMEOUT_MS / 1000} 秒），请稍后再试"
+        is SocketTimeoutException ->
+            "投稿超时（${SUBMIT_TIMEOUT_MS / 1000} 秒），请稍后再试"
         is IOException -> "网络不可用，投稿未完成"
         else -> error.message?.takeIf { it.isNotBlank() } ?: "投稿失败"
     }

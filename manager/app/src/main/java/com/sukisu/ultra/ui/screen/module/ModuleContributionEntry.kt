@@ -90,6 +90,8 @@ object ModuleContributionEntry {
      * [nonce] 是所有权口令的随机部分。服务端算口令前缀用的是「模块 id + 整包 sha256」
      * （`sha256("<id>:<整包 sha256>")` 的前 8 位，见 [com.sukisu.ultra.ui.util.proofPrefixFor]），
      * 拼上这一串去酷安签名里比对——只改 id 或只换包都会让口令作废。
+     * [displayedZipSha256] 是对话框屏幕上那串口令绑定的整包哈希，原样交给网络层与实算值对比
+     * （文件在打开对话框之后被改过就本地拒绝，见 [ModuleContribution.submitModule]）。
      */
     suspend fun submit(
         zip: File,
@@ -98,7 +100,9 @@ object ModuleContributionEntry {
         uid: String,
         nickname: String,
         nonce: String,
-    ): SubmitResult = ModuleContribution.submitModule(zip, meta, source, uid, nickname, nonce)
+        displayedZipSha256: String = "",
+    ): SubmitResult =
+        ModuleContribution.submitModule(zip, meta, source, uid, nickname, nonce, displayedZipSha256)
 
     /**
      * 核实一个酷安 UID 是谁。

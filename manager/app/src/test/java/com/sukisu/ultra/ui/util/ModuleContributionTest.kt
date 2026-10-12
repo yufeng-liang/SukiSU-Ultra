@@ -112,8 +112,8 @@ class ModuleContributionTest {
     @Test
     fun `a 403 ownership rejection keeps the reason that the nonce rotation reads`() {
         // 服务端把"口令已经用过"回在 403 的 body.error 里（worker/src/index.ts 的 rejectOwnership）。
-        // 这句话是 App 侧唯一的重掷 nonce 依据：丢了它，那条判定就退化成"从不重掷"，
-        // 而用户只会看到一句没有原因的"服务端返回 HTTP 403"。
+        // 这句话连同 body.code 是 App 侧唯一的重掷 nonce 依据：丢了它，那条判定就退化成
+        // "从不重掷"，而用户只会看到一句没有原因的"服务端返回 HTTP 403"。
         val result = submitOf(
             403,
             """{"ok":false,"error":"这个口令已经用过，请重新生成后再提交"}""",
@@ -124,6 +124,44 @@ class ModuleContributionTest {
         // 同一个 403 的另一种原因（等级不够）不该被混成一句话：两种失败用户要做的事相反。
         val level = submitOf(403, """{"ok":false,"error":"投稿需要酷安等级 Lv2 及以上"}""")
         assertTrue(level.message, level.message.contains("Lv2"))
+    }
+
+    @Test
+    fun `the machine-readable code is carried out of the rejection body`() {
+        // Worker 的 used-nonce 分支现在回 `code: 'proof_used'`（index.ts，随 403 body）。
+        // 轮换判据首选它：文案改一个字就不再红的是码这一半，而不是悄悄关掉旋转。
+        val result = submitOf(
+            403,
+            """{"ok":false,"error":"这个口令已经用过，请重新生成后再提交","code":"proof_used"}""",
+        )
+        assertEquals("proof_used", result.code)
+        // 码 + 文案同时喂进判定：这是对话框 submit() 实际走的那条管道。
+        assertTrue(ModuleContributionRules.proofWasAlreadyUsed(result.message, result.code))
+    }
+
+    @Test
+    fun `a rejection body without a code leaves it null and never invents one`() {
+        // 旧版 Worker / 中间网关吃掉 body：code 缺席必须是 null（文案兜底才有的可兜）。
+        assertNull(submitOf(400, """{"ok":false,"error":"缺少 module.prop"}""").code)
+        assertNull(submitOf(503, "<html>gateway blew up</html>").code)
+        // 200 + ok:false 的拒绝体同样读码（判据不该按状态码分两套）。
+        assertEquals(
+            "proof_used",
+            submitOf(200, """{"ok":false,"error":"x","code":"proof_used"}""").code,
+        )
+    }
+
+    @Test
+    fun `the proof_used code survives bodies whose copy is unrecognisable`() {
+        // 文案那一半判据会被截断/HTML 吃掉；码不会 —— 这条钉住"码优先"真的优先。
+        val giant = "E".repeat(5_000)
+        val result = submitOf(503, """{"ok":false,"error":"$giant","code":"proof_used"}""")
+        assertEquals("proof_used", result.code)
+        assertFalse(result.message.contains("proof_used")) // 文案被截得面目全非
+        assertTrue(
+            "旋转判据必须靠码也成立",
+            ModuleContributionRules.proofWasAlreadyUsed(result.message, result.code),
+        )
     }
 
     @Test
@@ -139,7 +177,8 @@ class ModuleContributionTest {
         // 非 JSON 的错误页压根进不了 error 字段，落到那句短兜底，同样撑不出屏幕。
         val html = submitOf(503, "<html><body>" + "x".repeat(4_000) + "</body></html>")
         assertEquals("投稿失败（服务端返回 HTTP 503）", html.message)
-        // 上限不能把重掷判据要吃的那半句切掉：proofWasAlreadyUsed 认的是句首的「口令已经用过」。
+        // 上限不能把重掷判据要吃的那半句切掉：文案兜底（proofWasAlreadyUsed 无码可用时）
+        // 认的是句首的「口令已经用过」。
         val used = "这个口令已经用过，请重新生成后再提交"
         val rotated = submitOf(403, """{"ok":false,"error":"$used${"（请重试）".repeat(400)}"}""")
         assertTrue(
@@ -344,5 +383,61 @@ class ModuleContributionTest {
     private object DirectContinuation : kotlin.coroutines.Continuation<Any?> {
         override val context: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext
         override fun resumeWith(result: Result<Any?>) = Unit
+    }
+
+    // ── submitModule 的本地「文件变了」对比 ─────────────────────────────────
+
+    @Test
+    fun `submitModule refuses locally when the bytes changed after the dialog opened`() {
+        // open() 往表单里存了一份整包哈希、口令绑的是那一份；提交时磁盘上的字节变了的话，
+        // 用户复制的口令已经作废 —— 网络层必须在上传之前就说清「文件被改动了」，
+        // 而不是上传一个服务端实算对不上的包、回一句关于他复制过的那串口令的 403。
+        val zip = java.io.File(
+            java.nio.file.Files.createTempDirectory("submit-sha").toFile(),
+            "changed.zip",
+        ).apply { writeText("bytes-at-submit-time"); deleteOnExit() }
+        val meta = ModulePropInfo("demo", "Demo", "1.0", 1L, "someone", "desc")
+        val started = System.nanoTime()
+        val result = invokeSubmitModule(zip, meta, "0".repeat(64))
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000L
+        assertFalse(result.ok)
+        assertNull(result.prUrl)
+        assertTrue("要说清是文件变了：${result.message}", result.message.contains("改动"))
+        // 本地就该拦下：走网络（pages.dev 是真地址）不可能瞬时返回。
+        assertTrue("不该发起网络请求（耗时 ${elapsedMs}ms）", elapsedMs < 5_000L)
+    }
+
+    @Test
+    fun `a missing file is reported as missing before any hashing happens`() {
+        // isFile 的查询顺序：文件没了就直说「不存在」，不能被哈希读取失败误报成「读不动」，
+        // 也不该拿一个不存在的路径去和本地对比（那是同一句假话的另一种说法）。
+        val gone = java.io.File(
+            java.nio.file.Files.createTempDirectory("submit-gone").toFile(),
+            "does-not-exist.zip",
+        )
+        val meta = ModulePropInfo("demo", "Demo", "1.0", 1L, "someone", "desc")
+        val result = invokeSubmitModule(gone, meta, "0".repeat(64))
+        assertFalse(result.ok)
+        assertTrue("该说文件不存在：${result.message}", result.message.contains("不存在"))
+        assertFalse(result.message, result.message.contains("改动"))
+    }
+
+    /** 反射调用私有的 suspend [ModuleContribution.submitModule]（本文件既有的测试手法）。 */
+    private fun invokeSubmitModule(zip: java.io.File, meta: ModulePropInfo?, displayed: String?): SubmitResult {
+        val method = ModuleContribution::class.java.getDeclaredMethod(
+            "submitModule",
+            java.io.File::class.java,
+            ModulePropInfo::class.java,
+            String::class.java, String::class.java, String::class.java, String::class.java,
+            String::class.java,
+            kotlin.coroutines.Continuation::class.java,
+        ).apply { isAccessible = true }
+        val out = method.invoke(
+            ModuleContribution, zip, meta, "https://a.example", "2781460", "酷友", "ab12cd",
+            displayed, DirectContinuation,
+        )
+        // 本地拒绝路径在任何挂起点之前返回，直接拿到 SubmitResult；拿到协程哨兵就说明走岔了路。
+        return out as? SubmitResult
+            ?: throw AssertionError("submitModule 没有同步返回结果（走到了挂起？out=$out）")
     }
 }

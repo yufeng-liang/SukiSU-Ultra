@@ -34,7 +34,7 @@ import java.io.File
  */
 class ModuleContributionDialogState internal constructor(
     private val scope: CoroutineScope,
-    private val submit: suspend (File, ModulePropInfo?, String, String, String, String) -> SubmitResult,
+    private val submit: suspend (File, ModulePropInfo?, String, String, String, String, String) -> SubmitResult,
     private val lookupUid: suspend (String) -> CoolapkUidLookup,
     private val submittingText: () -> String,
 ) {
@@ -62,7 +62,9 @@ class ModuleContributionDialogState internal constructor(
      * 在 [scope]（主线程）上同步读一遍就是掉帧。算出来之前口令行不显示
      * （[ModuleContributionRules.showProofRow]），所以不存在"显示了一串随后会变"的窗口。
      * 提交时网络层算的是同一个文件的同一个哈希（[com.sukisu.ultra.ui.util.ModuleContribution.submitModule]
-     * 里的 `ModuleProp.zipSha256(zip)`），展示的与提交的那个 `sha256` 字段因此同源。
+     * 里的 `ModuleProp.zipSha256(zip)`），并把这一份展示值传下去**对比**：
+     * 对话框开着期间文件被改动过的话，屏幕上那串口令已经作废，本地直接停下并说明原因，
+     * 而不是上传一个注定被服务端拒掉的包、再让用户对着一句他复制过的口令收到 403。
      */
     fun open(zip: File, meta: ModulePropInfo?) {
         currentMeta = meta
@@ -160,7 +162,12 @@ class ModuleContributionDialogState internal constructor(
                 // 署名用核实出来的昵称，不用输入框里的原文：那是酷安反查的结果，
                 // 也是服务端唯一能证明"昵称属于这个 UID"的来源。
                 // nonce 一并传下去：与「模块 id + 整包 sha256」拼成所有权口令，服务端拿它比对酷安签名。
-                submit(zip, currentMeta, snapshot.source, snapshot.uid, snapshot.nickname, snapshot.nonce)
+                // form.zipSha256（屏幕上那串口令绑定的哈希）也传下去：网络层对磁盘文件实算后与它对比，
+                // 文件在打开对话框之后变过就本地拒绝并说清原因（见 submitModule 的说明）。
+                submit(
+                    zip, currentMeta, snapshot.source, snapshot.uid, snapshot.nickname,
+                    snapshot.nonce, snapshot.zipSha256,
+                )
             }.getOrElse { error ->
                 SubmitResult(false, null, error.message?.takeIf { it.isNotBlank() } ?: "投稿失败")
             }
@@ -171,11 +178,12 @@ class ModuleContributionDialogState internal constructor(
                     ContributionSubmitState.Failed(result.message)
                 },
                 // 只有服务端明确说「这枚口令已经用过」才重掷 nonce——那一串真的作废了。
+                // 判定码优先（body.code == "proof_used"）、文案兜底，规则与网页端 app.js 同一条；
                 // 其余失败（超时、签名里没这串口令、KV 读不出记录）必须保持同一串：
                 // 用户是照**当前显示的口令**去改签名的，随手换一串就等于让他的签名永远追不上口令，
                 // 而换出来的新串他还没填进公开字段，这一次投稿直接死循环。判定见
-                // [ModuleContributionRules.proofWasAlreadyUsed]，与网页端 app.js 同一条规则。
-                nonce = if (!result.ok && ModuleContributionRules.proofWasAlreadyUsed(result.message)) {
+                // [ModuleContributionRules.proofWasAlreadyUsed]。
+                nonce = if (!result.ok && ModuleContributionRules.proofWasAlreadyUsed(result.message, result.code)) {
                     makeNonce()
                 } else {
                     snapshot.nonce
@@ -197,7 +205,7 @@ class ModuleContributionDialogState internal constructor(
 fun rememberModuleContributionDialog(
     scope: CoroutineScope,
     submittingText: () -> String,
-    submit: suspend (File, ModulePropInfo?, String, String, String, String) -> SubmitResult,
+    submit: suspend (File, ModulePropInfo?, String, String, String, String, String) -> SubmitResult,
     lookupUid: suspend (String) -> CoolapkUidLookup,
 ): ModuleContributionDialogState {
     return remember(scope) {
