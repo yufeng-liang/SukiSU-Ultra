@@ -340,12 +340,6 @@ private fun OriginTagMaterial(origin: BackupOrigin) {
 }
 
 /**
- * 「备份存在哪」那一行。
- *
- * snackbar 几秒就没了，而"文件在哪"是过几天才会想起来问的问题，所以它常驻在按钮下面。
- * 地址还没填的云端不显示——写一行空的地址等于什么都没说。
- */
-/**
  * 「本机备份在 …」那一行。
  *
  * 只写本机：云端地址就写在上面那张 WebDAV 卡片的标题栏里（[CloudCardMaterial]），再写一遍是
@@ -788,12 +782,6 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
     }
 }
 
-/**
- * 「备份存在哪」那几行。
- *
- * 两个分页都挂：「备份」页说的是"这次会写到哪"，「恢复」页说的是"列出来的这些在哪"。
- * 地址还没填的云端不显示——写一行空的地址等于什么都没说（见 [LocationLineMaterial]）。
- */
 /**
  * 「备份在哪」那一行。
  *

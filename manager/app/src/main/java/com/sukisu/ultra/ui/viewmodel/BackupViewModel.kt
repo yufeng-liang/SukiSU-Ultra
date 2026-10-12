@@ -262,13 +262,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * 重新列勾选的来源与内容。
-     *
-     * 注意这里**不碰 message**：操作的结果（备份摘要、失败原因）刚写进 message，紧接着就 refresh，
-     * 如果 refresh 顺手清掉它，用户在一次主线程 turn 里看不到任何提示——失败会被当成成功。
-     * message 只由 [clearMessage]（消费掉之后）、用户主动换来源/内容/服务器，或下一次操作覆盖。
-     */
-    /**
      * 上一次 [refresh] 的结果，供调用方在刷新**之后**再说话。
      *
      * 刷新是异步的（[refresh] 返回的是 Job），调用方得先 join 再看这里，否则读到的还是刷新前
@@ -282,6 +275,13 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         val listingFailed: Boolean,
     )
 
+    /**
+     * 重新列勾选的来源与内容。
+     *
+     * 注意这里**不碰 message**：操作的结果（备份摘要、失败原因）刚写进 message，紧接着就 refresh，
+     * 如果 refresh 顺手清掉它，用户在一次主线程 turn 里看不到任何提示——失败会被当成成功。
+     * message 只由 [clearMessage]（消费掉之后）、用户主动换来源/内容/服务器，或下一次操作覆盖。
+     */
     fun refresh() = viewModelScope.launch {
         val origins = _uiState.value.origins
         val kinds = _uiState.value.kinds
