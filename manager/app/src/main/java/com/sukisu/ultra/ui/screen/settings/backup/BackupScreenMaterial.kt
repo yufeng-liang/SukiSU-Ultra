@@ -747,17 +747,19 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
                     } else {
                         null
                     },
-                    headlineContent = { Text(group.label) },
-                    supportingContent = {
+                    headlineContent = {
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            // 一次备份可能本机、云端各写了一份：牌子并排，颜色各自区分。
+                            // 牌子跟时间同一行、靠右：它标的是"这一次写到哪几侧"，属于这一行的属性，
+                            // 掉到下面那行会跟"内容 · 项数"抢位置，也让人以为它只描述内容。
+                            Text(group.label, modifier = Modifier.weight(1f))
                             group.origins.forEach { OriginTagMaterial(it) }
-                            Text(groupSummary(group))
                         }
                     },
+                    supportingContent = { Text(groupSummary(group)) },
                     trailingContent = {
                         if (!state.selecting) {
                             Icon(
