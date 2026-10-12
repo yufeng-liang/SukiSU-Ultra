@@ -35,6 +35,9 @@ class WebDavBackupStorageTest {
     /** 有服务端禁用 MOVE；关掉它来验证上传会退回直接覆盖。 */
     private var moveSupported = true
 
+    /** 有服务端只在覆盖时拒绝 MOVE（坚果云对已存在的目标回 409），新建名字照常成功。 */
+    private var moveRefusesOverwrite = false
+
     private val putPaths = mutableListOf<String>()
     private val moves = mutableListOf<Pair<String, String>>()
 
@@ -71,17 +74,20 @@ class WebDavBackupStorageTest {
                 exchange.sendResponseHeaders(201, -1)
             }
             "MOVE" -> {
-                if (!moveSupported) {
-                    exchange.sendResponseHeaders(405, -1)
-                } else {
-                    val destination = exchange.requestHeaders.getFirst("Destination").orEmpty()
-                    val target = URI.create(destination).path.removePrefix("/dav")
-                    moves += path to target
-                    val body = files.remove(path)
-                    if (body == null) exchange.sendResponseHeaders(404, -1)
-                    else {
-                        files[target] = body
-                        exchange.sendResponseHeaders(201, -1)
+                val destination = exchange.requestHeaders.getFirst("Destination").orEmpty()
+                val target = URI.create(destination).path.removePrefix("/dav")
+                when {
+                    !moveSupported -> exchange.sendResponseHeaders(405, -1)
+                    // 覆盖已存在的目标：坚果云实测回 409（新建名字不拒绝）。
+                    moveRefusesOverwrite && files.containsKey(target) -> exchange.sendResponseHeaders(409, -1)
+                    else -> {
+                        moves += path to target
+                        val body = files.remove(path)
+                        if (body == null) exchange.sendResponseHeaders(404, -1)
+                        else {
+                            files[target] = body
+                            exchange.sendResponseHeaders(201, -1)
+                        }
                     }
                 }
             }
@@ -186,6 +192,33 @@ class WebDavBackupStorageTest {
                 moves.contains("/sukisu/index.json.part" to "/sukisu/index.json"),
             )
             assertTrue("the temporary object must not be left behind", files.keys.none { it.endsWith(".part") })
+        }
+    }
+
+    @Test
+    fun `a server that refuses to MOVE over an existing name still replaces it`() {
+        runBlocking {
+            moveRefusesOverwrite = true
+            val store = storage()
+
+            // 新建名字：MOVE 照常成功，索引第一次就是这么写上去的。
+            val first = "index v1".toByteArray()
+            assertTrue(store.put("index.json", first.size.toLong()) { first.inputStream() }.isSuccess)
+            assertEquals("index v1", files.getValue("/sukisu/index.json").decodeToString())
+
+            // 覆盖：MOVE 被 409 拒绝，必须退回直接覆盖——索引是每次备份都要重写的文件，
+            // 退回不了就等于云端列表永远停在第一份。
+            val second = "index v2".toByteArray()
+            assertTrue(store.put("index.json", second.size.toLong()) { second.inputStream() }.isSuccess)
+            assertEquals("index v2", files.getValue("/sukisu/index.json").decodeToString())
+            assertTrue(
+                "the refused temporary object must be cleaned up",
+                files.keys.none { it.endsWith(".part") },
+            )
+            assertTrue(
+                "expected a direct PUT onto the target, saw $putPaths",
+                putPaths.contains("/sukisu/index.json"),
+            )
         }
     }
 

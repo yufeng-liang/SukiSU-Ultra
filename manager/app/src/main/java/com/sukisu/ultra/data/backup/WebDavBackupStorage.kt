@@ -85,9 +85,11 @@ class WebDavBackupStorage(
      * 上一份完整内容、要么已经是这一份。索引记录着**全部**备份，半截索引等于整个功能读不出东西，
      * 靠的就是这个性质。
      *
-     * MOVE 是 WebDAV 核心方法，但确实有服务端禁用它（405/501）。碰上就退回直接覆盖：[target]
-     * 的旧内容仍会被下一次完整上传替换，"能写进去但不原子"好过"根本写不进去"。探测一次即可，
-     * 之后的文件不再走临时对象。
+     * MOVE 是 WebDAV 核心方法，但确实有服务端禁用它（405/501），也有服务端只在**覆盖**时拒绝
+     * （409/412：坚果云对已存在的目标回 409，新建名字的 MOVE 照常成功）。碰上就退回直接覆盖：
+     * [target] 的旧内容仍会被下一次完整上传替换，"能写进去但不原子"好过"根本写不进去"。探测
+     * 一次即可，之后的文件不再走临时对象。若 409 其实是"父集合不存在"，退回的 PUT 会以同样的
+     * 码失败并照常报给用户，不会把真失败吞掉。
      */
     private suspend fun upload(staged: File, relativePath: String, onProgress: (Long) -> Unit) {
         if (supportsMove == false) {
@@ -107,7 +109,12 @@ class WebDavBackupStorage(
         putDirect(staged, relativePath, {})
     }
 
-    /** MOVE 是否被接受；405/501 表示服务端不支持，其它失败码照常抛出（写入没成功就得让上层知道）。 */
+    /**
+     * MOVE 是否被接受；405/501 表示服务端不支持，其它失败码照常抛出（写入没成功就得让上层知道）。
+     *
+     * 409/412 也算"这次 MOVE 不成"，理由见 [upload]：坚果云对**已存在**的目标回 409，而新建
+     * 名字的 MOVE 正常——索引是每次都要重写的文件，不退回覆盖就永远写不进去。
+     */
     private suspend fun moveOnto(temporaryPath: String, targetPath: String): Boolean =
         client.newCall(
             request(temporaryPath)
@@ -117,7 +124,7 @@ class WebDavBackupStorage(
                 .build(),
         ).await().use { response ->
             when (response.code) {
-                405, 501 -> false
+                405, 501, 409, 412 -> false
                 else -> {
                     checkSuccess(response, HttpOperation.UPLOAD, targetPath)
                     true
