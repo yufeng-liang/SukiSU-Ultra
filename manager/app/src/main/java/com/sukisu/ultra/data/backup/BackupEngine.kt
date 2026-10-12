@@ -58,18 +58,26 @@ class BackupEngine(
         }
         val written = mutableListOf<String>()
         val skipped = mutableListOf<String>()
-        val totalBytes = outcome.artifacts.sumOf { it.sizeBytes }
-        // 已经推完的那几个归档的字节数：进度是"这次目标"的累计，不是单个文件的。
+        // 同一批内容要写到每一个后端，所以总字节是"这一批 × 后端数"：只按一批算的话，第二个后端
+        // 一开始写，进度条就已经贴在 100% 上了（sentBefore 本来就是跨后端累计的）。
+        val totalBytes = outcome.artifacts.sumOf { it.sizeBytes } * storages.size
+        // 已经推完的那几个归档的字节数：进度是"这次目标"的累计，不是单个文件的，也不分后端。
         var sentBefore = 0L
         // 源侧的失败（某个模块没打包成功）同样要报出来，否则用户看到"written N"以为全都备上了。
-        val failures = outcome.failures.toMutableList()
+        // 它不属于任何一个后端，所以留在整体里、不进任何一份按后端的明细。
+        val sourceFailures = outcome.failures.toMutableList()
+        val perStorage = mutableListOf<StorageOutcome>()
 
         try {
-            storages.forEach { storage ->
+            storages.forEachIndexed { storageIndex, storage ->
+                // 按后端各记一份：整体计数在两侧都写成功时会翻倍，而结果表要按来源报数。
+                val storageWritten = mutableListOf<String>()
+                val storageSkipped = mutableListOf<String>()
+                val storageFailures = mutableListOf<BackupFailure>()
                 withIndexLock(storage.id) {
                     // 索引读不出来就不回写：把"读失败"当成"空索引"会把已有 manifest 整体清掉。
                     val index = readIndex(storage).getOrElse { error ->
-                        failures += BackupFailure(ArchiveNaming.INDEX_FILE, storage.id, reasonOf(error))
+                        storageFailures += BackupFailure(ArchiveNaming.INDEX_FILE, storage.id, reasonOf(error))
                         return@withIndexLock
                     }
                     val pending = mutableListOf<BackupEntry>()
@@ -77,7 +85,7 @@ class BackupEngine(
 
                     outcome.artifacts.forEachIndexed { artifactIndex, artifact ->
                         if (DuplicatePolicy.findDuplicate(index + pending, kind, artifact.sha256) != null) {
-                            skipped += artifact.fileName
+                            storageSkipped += artifact.fileName
                             return@forEachIndexed
                         }
                         val fileName = ArchiveNaming.uniqueName(artifact.fileName, usedNames)
@@ -92,6 +100,10 @@ class BackupEngine(
                                     // 第几个归档：11 个模块的备份只报字节数，看不出还剩几个文件。
                                     fileIndex = artifactIndex + 1,
                                     fileCount = outcome.artifacts.size,
+                                    // 字节数是跨后端累计的、不回头，所以"现在在写哪一处"必须单独报。
+                                    storage = storage.id,
+                                    storageIndex = storageIndex + 1,
+                                    storageCount = storages.size,
                                 ),
                             )
                         }
@@ -110,7 +122,7 @@ class BackupEngine(
                         )
                         val putFailure = put.exceptionOrNull()
                         if (putFailure != null) {
-                            failures += BackupFailure(fileName, storage.id, reasonOf(putFailure))
+                            storageFailures += BackupFailure(fileName, storage.id, reasonOf(putFailure))
                             return@forEachIndexed
                         }
                         // 字节确实出去了，进度基准就往前走；失败的那次不动，与老行为一致。
@@ -123,14 +135,14 @@ class BackupEngine(
                                 // 写不进去，这条就整体算失败，绝不能登记进索引——登记了等于给用户一条
                                 // "已备份"却必然恢复失败的记录。归档已经写进去了，这里尽力删掉，删不掉
                                 // 也照实报出来；索引里不留半条，下次备份会用同名文件把它覆盖掉。
-                                failures += BackupFailure(metaName, storage.id, reasonOf(metaFailure))
+                                storageFailures += BackupFailure(metaName, storage.id, reasonOf(metaFailure))
                                 storage.delete(fileName).onFailure { cleanup ->
-                                    failures += BackupFailure(fileName, storage.id, reasonOf(cleanup))
+                                    storageFailures += BackupFailure(fileName, storage.id, reasonOf(cleanup))
                                 }
                                 return@forEachIndexed
                             }
                         }
-                        written += fileName
+                        storageWritten += fileName
                         pending += BackupEntry(
                             kind = kind,
                             entryId = artifact.entryId,
@@ -161,20 +173,29 @@ class BackupEngine(
                             deleted += entry
                         } else {
                             val error = archive.exceptionOrNull() ?: meta.exceptionOrNull()!!
-                            failures += BackupFailure(entry.fileName, storage.id, reasonOf(error))
+                            storageFailures += BackupFailure(entry.fileName, storage.id, reasonOf(error))
                         }
                     }
                     val remaining = updated - deleted
                     storage.writeText(ArchiveNaming.INDEX_FILE, BackupManifest.renderEntries(remaining))
-                        .onFailure { failures += BackupFailure(ArchiveNaming.INDEX_FILE, storage.id, reasonOf(it)) }
+                        .onFailure { storageFailures += BackupFailure(ArchiveNaming.INDEX_FILE, storage.id, reasonOf(it)) }
                 }
+                written += storageWritten
+                skipped += storageSkipped
+                perStorage += StorageOutcome(storage.id, storageWritten, storageSkipped, storageFailures)
             }
         } finally {
             // 打包落下的临时文件在所有后端都写完之前不能删，所以清理放在这里。
             outcome.artifacts.forEach { it.cleanup?.invoke() }
         }
 
-        return BackupRunResult(kind, written, skipped, failures)
+        return BackupRunResult(
+            kind = kind,
+            written = written,
+            skipped = skipped,
+            failures = sourceFailures + perStorage.flatMap { it.failures },
+            storages = perStorage,
+        )
     }
 
     suspend fun list(storage: BackupStorage, kind: BackupKind): Result<List<BackupEntry>> =

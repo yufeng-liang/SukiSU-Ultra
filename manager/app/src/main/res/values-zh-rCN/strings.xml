@@ -810,7 +810,7 @@
     <string name="backup_share_chooser">分享备份</string>
     <string name="backup_progress_title">正在备份</string>
     <string name="backup_cancelled">备份已取消，已经写好的那几份仍然保留。</string>
-    <string name="backup_progress_target">第 %1$d/%2$d 个目标 · %3$s %4$s</string>
+    <string name="backup_progress_target">第 %1$d/%2$d 个目标 · %3$s</string>
     <string name="backup_progress_files">第 %1$d/%2$d 个文件</string>
     <string name="backup_progress_packing">正在打包 %1$d/%2$d</string>
     <string name="backup_progress_preparing">正在准备…</string>

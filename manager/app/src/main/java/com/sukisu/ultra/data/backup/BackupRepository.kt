@@ -39,8 +39,9 @@ data class OriginEntry(val origin: BackupOrigin, val entry: BackupEntry)
 /**
  * UI 层的唯一入口。把内核（引擎 + 源 + 本地/云端后端）组装起来。
  *
- * 本地与云端各持一个 [BackupEngine]，共用同一份 [engineSources]：
- * 云端故障（断网、凭据过期）不能拖慢本地备份与恢复。
+ * 引擎按**这次要写哪几处**现装配：一次备份把同一批内容打包一遍，再依次写到每一个后端，所以
+ * 本机与云端勾在一起时模块只打一次包。两个后端共用同一份 [engineSources]——源本身没有状态，
+ * 模块列表、ksud 调用都不便宜。
  *
  * 所有临时文件都收进 [workStaging] 或后端各自的 staging：以前打包/恢复/导入的文件直接落在
  * cacheDir 根下，不在任何 [StagingArea] 管辖内，[StagingArea.cleanupStale] 永远碰不到它们，
@@ -100,22 +101,6 @@ class BackupRepository(private val context: Context = ksuApp) {
         ),
     )
 
-    /**
-     * 本地引擎：**每次调用现装配**。
-     *
-     * 保留额度是活设置（用户在设置页随时能改），`by lazy` 把引擎缓存下来等于把当时的额度也缓存了
-     * ——改完设置本次会话一直按旧数字裁。装配本身很轻：sources/storages 都是长命对象。
-     */
-    private fun localEngine(): BackupEngine {
-        val (moduleKeep, bootKeep) = backupRetentionNow({ settings.backupRetention }, { settings.backupBootRetention })
-        return BackupEngine(
-            sources = engineSources,
-            storages = listOf(localStorage),
-            retention = moduleKeep,
-            bootRetention = bootKeep,
-        )
-    }
-
     /** 云端是否已配置：开关打开且地址非空。 */
     fun cloudConfigured(): Boolean = settings.backupCloudEnabled && settings.webDavUrl.isNotBlank()
 
@@ -136,66 +121,95 @@ class BackupRepository(private val context: Context = ksuApp) {
         staging = StagingArea(File(context.cacheDir, "backup-staging/webdav")),
     )
 
-    private fun cloudEngine(): BackupEngine {
+    private fun storageFor(origin: BackupOrigin): BackupStorage =
+        if (origin == BackupOrigin.CLOUD) cloudStorage() else localStorage
+
+    /**
+     * 装配一个引擎，写入 [origins] 这几处。
+     *
+     * 传多个来源**不是**为了省一次调用：引擎一次 [BackupEngine.backup] 只导出一次源，所以同一批
+     * 模块打包一遍就能写到本机和云端两处。以前是按目标各调一次（kinds × origins 双层循环），
+     * 两侧都勾时同一批模块被打了两遍 zip、算了两次 sha256——11 个模块几十 MB，就是几秒钟白烧的
+     * CPU 和电量。
+     *
+     * **每次调用现装配**：保留额度是活设置（用户在设置页随时能改），缓存引擎等于把当时的额度也
+     * 缓存了——改完设置本次会话一直按旧数字裁。装配本身很轻：sources 是长命对象，后端也只有云端
+     * 那个要现建 OkHttp 客户端。
+     */
+    private fun engineFor(origins: List<BackupOrigin>): BackupEngine {
         val (moduleKeep, bootKeep) = backupRetentionNow({ settings.backupRetention }, { settings.backupBootRetention })
         return BackupEngine(
             sources = engineSources,
-            storages = listOf(cloudStorage()),
+            storages = origins.map { storageFor(it) },
             retention = moduleKeep,
             bootRetention = bootKeep,
         )
     }
-
-    private fun storageFor(origin: BackupOrigin): BackupStorage =
-        if (origin == BackupOrigin.CLOUD) cloudStorage() else localStorage
-
-    private fun engineFor(origin: BackupOrigin): BackupEngine =
-        if (origin == BackupOrigin.CLOUD) cloudEngine() else localEngine()
 
     /** 用输入框里当前的值测连接，而不是已保存的旧配置——否则用户改完地址不点保存就测了旧地址。 */
     suspend fun testCloud(url: String, user: String, pass: String): Result<Unit> =
         withContext(Dispatchers.IO) { cloudStorage(url.trim(), user.trim(), pass).test() }
 
     /**
+     * 一次备份：同一批内容**打包一次**，写到 [origins] 里的每一处，返回每一处各自的结果。
+     *
      * [selected] 只对模块有意义：勾了哪几个就只打包哪几个，null = 全部。
      *
      * 自动备份（[autoBackupAfterInstall]）不走这里，它始终打包全部模块——那是一次无人值守的
      * 快照，"刚装完东西"这一刻要的是完整状态，而不是用户上次手工勾的那几个。
      */
     suspend fun backup(
-        origin: BackupOrigin,
+        origins: List<BackupOrigin>,
         kind: BackupKind,
         selected: Set<String>? = null,
         onProgress: (TransferProgress) -> Unit = {},
         onPacking: (PackingProgress) -> Unit = {},
-    ): BackupRunResult = withContext(Dispatchers.IO) {
-        if (origin == BackupOrigin.CLOUD && !cloudConfigured()) {
-            return@withContext BackupRunResult(
-                kind,
-                failures = listOf(
-                    BackupFailure(
-                        path = "",
-                        storage = WebDavBackupStorage.ID,
-                        reason = BackupReason.CloudNotConfigured,
-                    ),
-                ),
-            )
+    ): Map<BackupOrigin, BackupRunResult> = withContext(Dispatchers.IO) {
+        // 云端没配好就写不了：把它从"要写的后端"里摘掉，但结果里仍要有它那一份失败——用户勾了
+        // 云端，就得知道这次没写上去。
+        val writable = origins.filter { it != BackupOrigin.CLOUD || cloudConfigured() }
+        val unwritable = origins.filterNot { it in writable }
+        val result = if (writable.isEmpty()) {
+            // 一处都写不了时不能去调引擎：它会照样把模块打包一遍，然后什么都不写。
+            BackupRunResult(kind)
+        } else {
+            engineFor(writable).backup(kind, selected, onProgress, onPacking)
         }
-        engineFor(origin).backup(kind, selected, onProgress, onPacking)
+        buildMap {
+            writable.forEach { origin -> put(origin, result.forStorage(storageIdOf(origin))) }
+            unwritable.forEach { origin ->
+                put(
+                    origin,
+                    BackupRunResult(
+                        kind,
+                        failures = listOf(
+                            BackupFailure(
+                                path = "",
+                                storage = storageIdOf(origin),
+                                reason = BackupReason.CloudNotConfigured,
+                            ),
+                        ),
+                    ),
+                )
+            }
+        }
     }
 
+    private fun storageIdOf(origin: BackupOrigin): String =
+        if (origin == BackupOrigin.CLOUD) WebDavBackupStorage.ID else LocalBackupStorage.ID
+
     suspend fun list(origin: BackupOrigin, kind: BackupKind): Result<List<BackupEntry>> =
-        withContext(Dispatchers.IO) { engineFor(origin).list(storageFor(origin), kind) }
+        withContext(Dispatchers.IO) { engineFor(listOf(origin)).list(storageFor(origin), kind) }
 
     /** 恢复 [entry]：从它所属的后端读归档，交给对应的源装回设备。 */
     suspend fun restore(origin: BackupOrigin, entry: BackupEntry): Result<RestoreOutcome> =
         withContext(Dispatchers.IO) {
-            engineFor(origin).restore(storageFor(origin), entry)
+            engineFor(listOf(origin)).restore(storageFor(origin), entry)
         }
 
     /** 删掉这几条备份：归档、边车 meta 和索引一起清。 */
     suspend fun delete(origin: BackupOrigin, entries: List<BackupEntry>): Result<Unit> =
-        withContext(Dispatchers.IO) { engineFor(origin).delete(storageFor(origin), entries) }
+        withContext(Dispatchers.IO) { engineFor(listOf(origin)).delete(storageFor(origin), entries) }
 
     /**
      * 把选中的条目收成一个可以分享出去的文件。
@@ -217,7 +231,7 @@ class BackupRepository(private val context: Context = ksuApp) {
                     val item = items.single()
                     val target = File(dir, item.entry.fileName.substringAfterLast('/'))
                     target.outputStream().use { sink ->
-                        engineFor(item.origin).exportTo(storageFor(item.origin), item.entry, sink).getOrThrow()
+                        engineFor(listOf(item.origin)).exportTo(storageFor(item.origin), item.entry, sink).getOrThrow()
                     }
                     return@runCatchingCancellable target
                 }
@@ -227,7 +241,7 @@ class BackupRepository(private val context: Context = ksuApp) {
                         zip.putNextEntry(ZipEntry(item.entry.fileName.substringAfterLast('/')))
                         // 走 engine.copyTo 而不是直接 storage.get().copyTo：这条路径以前完全不过
                         // sha256 校验（exportTo 有、这里没有），分享出去的多选包同样可能带截断内容。
-                        engineFor(item.origin)
+                        engineFor(listOf(item.origin))
                             .copyTo(storageFor(item.origin), item.entry, zip)
                             .getOrThrow()
                         zip.closeEntry()
@@ -267,10 +281,26 @@ class BackupRepository(private val context: Context = ksuApp) {
             cloudConfigured = cloudConfigured(),
         )
         if (!targets.any) return@withContext null
-        val local = if (targets.local) localEngine().backup(BackupKind.MODULE) else null
-        // 云端失败也要报出来，否则自动上传一直失败而用户什么都看不到。
-        val cloud = if (targets.cloud) cloudEngine().backup(BackupKind.MODULE) else null
-        val record = AutoBackupRecord(
+        val record = runAutoBackup(BackupKind.MODULE, targets)
+        settings.backupAutoLastRecord = AutoBackupRecordJson.render(record)
+        record
+    }
+
+    /**
+     * 跑一次自动备份，把结果落成一条记录。
+     *
+     * 两处目的地写在**同一次**调用里：引擎一次 backup 只导出一次源，所以本机和云端都勾时
+     * 模块只打包一遍。分成两次调用的话（以前就是这样）同一批模块会被打两遍。
+     */
+    private suspend fun runAutoBackup(kind: BackupKind, targets: AutoBackupPolicy.AutoBackupTargets): AutoBackupRecord {
+        val origins = buildList {
+            if (targets.local) add(BackupOrigin.LOCAL)
+            if (targets.cloud) add(BackupOrigin.CLOUD)
+        }
+        val results = backup(origins, kind)
+        val local = results[BackupOrigin.LOCAL]
+        val cloud = results[BackupOrigin.CLOUD]
+        return AutoBackupRecord(
             atEpochMs = System.currentTimeMillis(),
             outcome = AutoBackupPolicy.classify(local, cloud),
             writtenCount = (local?.written?.size ?: 0) + (cloud?.written?.size ?: 0),
@@ -279,8 +309,6 @@ class BackupRepository(private val context: Context = ksuApp) {
             // 界面上那句"成功 · 写入 0 项"看着像什么都没干。
             skippedCount = (local?.skipped?.size ?: 0) + (cloud?.skipped?.size ?: 0),
         )
-        settings.backupAutoLastRecord = AutoBackupRecordJson.render(record)
-        record
     }
 
     /** 上一次自动备份的结果。没跑过、或记录坏了都返回 null。 */
@@ -303,15 +331,7 @@ class BackupRepository(private val context: Context = ksuApp) {
             cloudConfigured = cloudConfigured(),
         )
         if (!targets.any) return@withContext null
-        val local = if (targets.local) localEngine().backup(BackupKind.REPO_CONFIG) else null
-        val cloud = if (targets.cloud) cloudEngine().backup(BackupKind.REPO_CONFIG) else null
-        val record = AutoBackupRecord(
-            atEpochMs = System.currentTimeMillis(),
-            outcome = AutoBackupPolicy.classify(local, cloud),
-            writtenCount = (local?.written?.size ?: 0) + (cloud?.written?.size ?: 0),
-            failures = local?.failures.orEmpty() + cloud?.failures.orEmpty(),
-            skippedCount = (local?.skipped?.size ?: 0) + (cloud?.skipped?.size ?: 0),
-        )
+        val record = runAutoBackup(BackupKind.REPO_CONFIG, targets)
         settings.backupAutoLastRecord = AutoBackupRecordJson.render(record)
         record
     }
@@ -342,8 +362,8 @@ class BackupRepository(private val context: Context = ksuApp) {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 staged.outputStream().use { input.copyTo(it) }
             } ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileUnreadable))
-            // 导入也按当时的设置现装配引擎（见 localEngine）。
-            localEngine().importFrom(
+            // 导入也按当时的设置现装配引擎（见 engineFor）。
+            engineFor(listOf(BackupOrigin.LOCAL)).importFrom(
                 storage = localStorage,
                 kind = actualKind,
                 fileName = name,

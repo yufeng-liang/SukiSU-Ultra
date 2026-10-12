@@ -102,10 +102,14 @@ private class FakeSource(
     /** 最近一次 [export] 收到的勾选集合：用来证明它被原样透传给了源。 */
     var lastSelection: Set<String>? = null
 
+    /** 被打包的次数：一次备份写到几处都只该是 1（同一批内容打包一遍）。 */
+    var exportCount = 0
+
     override suspend fun export(
         selected: Set<String>?,
         onPacking: (PackingProgress) -> Unit,
     ): Result<ExportOutcome> {
+        exportCount++
         lastSelection = selected
         packReports.forEach(onPacking)
         if (exportFails) return Result.failure(IllegalStateException("packaging blew up"))
@@ -395,6 +399,134 @@ class BackupEngineTest {
             assertTrue(result.isPartial)
             assertEquals(listOf("module_a_1_20261008_120000.zip"), result.written)
             assertEquals("webdav", result.failures.single().storage)
+        }
+    }
+
+    /**
+     * 一次备份写到两处只打包一遍。
+     *
+     * 把 11 个模块打成 zip、算 sha256 是这次备份里最贵的一段（几十 MB），按来源各跑一遍就是白烧
+     * 的 CPU 和电量。引擎一次 [BackupEngine.backup] 只导出一次源，这条把它钉住。
+     */
+    @Test
+    fun `two storages share one packing pass`() {
+        runBlocking {
+            val local = FakeStorage("local")
+            val cloud = FakeStorage("webdav")
+            val source = moduleSource(artifact("a", "sha-a"))
+            val name = "module_a_1_20261008_120000.zip"
+
+            val result = engine(listOf(local, cloud), source).backup(BackupKind.MODULE)
+
+            assertEquals("同一批内容只该被打包一次", 1, source.exportCount)
+            // 两处都要有那份归档：省掉的那一遍是打包，不是写入。
+            assertTrue(local.files.containsKey(name))
+            assertTrue(cloud.files.containsKey(name))
+            assertEquals(2, result.storages.size)
+        }
+    }
+
+    /**
+     * 按来源报数必须看各自那一份明细。
+     *
+     * 整体计数是"写了两份"（同一批内容两个后端各写一次），这正是结果表不能拿它当某一侧成绩的
+     * 原因：本地那一格会写着 2 项，而它其实只写了 1 项。
+     */
+    @Test
+    fun `each backend keeps its own tally`() {
+        runBlocking {
+            val name = "module_a_1_20261008_120000.zip"
+            val result = engine(listOf(FakeStorage("local"), FakeStorage("webdav")), moduleSource(artifact("a", "sha-a")))
+                .backup(BackupKind.MODULE)
+
+            assertEquals(listOf(name, name), result.written)
+            assertEquals(listOf(name), result.forStorage("local").written)
+            assertEquals(listOf(name), result.forStorage("webdav").written)
+            // 切完的结果里不该再挂着两份明细，否则调用方会拿着半份结果再切一次。
+            assertTrue(result.forStorage("local").storages.isEmpty())
+        }
+    }
+
+    /**
+     * 跳过是按后端算的，不是按整次备份算的。
+     *
+     * 用户后开云端时就是这个样子：本机那份早就有了，云端第一次收。结果表要写"本机 已是最新 ·
+     * 云端 已备份 1 项"，而不是两侧都写"已是最新"。
+     */
+    @Test
+    fun `a duplicate is skipped only on the backend that already has it`() {
+        runBlocking {
+            val a = artifact("a", "sha-a")
+            val local = FakeStorage("local")
+            val cloud = FakeStorage("webdav")
+            val name = "module_a_1_20261008_120000.zip"
+
+            // 第一次只有本机收下；第二次才把云端加上。
+            engine(listOf(local), moduleSource(a)).backup(BackupKind.MODULE)
+            val second = engine(listOf(local, cloud), moduleSource(a)).backup(BackupKind.MODULE)
+
+            assertEquals(listOf(name), second.forStorage("local").skipped)
+            assertTrue(second.forStorage("webdav").skipped.isEmpty())
+            assertEquals(listOf(name), second.forStorage("webdav").written)
+        }
+    }
+
+    /**
+     * 源侧的失败不属于任何一个后端，却会让每一份都不完整——所以它出现在每一份里。
+     *
+     * 只报本地那一行、让云端那一行看着没事，就把"这个模块根本没打出来"藏起来了。
+     */
+    @Test
+    fun `a source level failure shows up in every backend's slice`() {
+        runBlocking {
+            val source = FakeSource(
+                BackupKind.MODULE,
+                listOf(artifact("a", "sha-a")),
+                failures = listOf(
+                    BackupFailure("module_b.zip", "source", BackupReason.WriteFailed("module_b.zip", null)),
+                ),
+            )
+            val result = engine(listOf(FakeStorage("local"), FakeStorage("webdav")), source).backup(BackupKind.MODULE)
+
+            assertTrue(result.forStorage("local").failures.any { it.path == "module_b.zip" })
+            assertTrue(result.forStorage("webdav").failures.any { it.path == "module_b.zip" })
+        }
+    }
+
+    /**
+     * 总字节是"这一批 × 后端数"。
+     *
+     * 只按一批算的话，第二个后端一开始写，进度条就已经贴在 100% 上了（已传字节是跨后端累计的），
+     * 用户会以为传完了、然后在原地等。
+     */
+    @Test
+    fun `total bytes span every backend`() {
+        runBlocking {
+            val a = artifact("a", "sha-a")
+            val b = artifact("b", "sha-b")
+            val seen = mutableListOf<TransferProgress>()
+
+            engine(listOf(FakeStorage("local"), FakeStorage("webdav")), moduleSource(a, b))
+                .backup(BackupKind.MODULE, onProgress = { seen += it })
+
+            val perPass = a.sizeBytes + b.sizeBytes
+            assertEquals(perPass * 2, seen.last().totalBytes)
+            assertEquals(perPass * 2, seen.last().sentBytes)
+        }
+    }
+
+    /** 字节数是跨后端累计的、不回头，所以"现在在写哪一处"必须单独报出来。 */
+    @Test
+    fun `progress says which backend is being written`() {
+        runBlocking {
+            val seen = mutableListOf<TransferProgress>()
+
+            engine(listOf(FakeStorage("local"), FakeStorage("webdav")), moduleSource(artifact("a", "sha-a")))
+                .backup(BackupKind.MODULE, onProgress = { seen += it })
+
+            assertEquals(listOf("local", "webdav"), seen.map { it.storage }.distinct())
+            assertEquals(listOf(1, 2), seen.map { it.storageIndex }.distinct())
+            assertTrue(seen.all { it.storageCount == 2 })
         }
     }
 

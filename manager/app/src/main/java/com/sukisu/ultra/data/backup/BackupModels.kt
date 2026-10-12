@@ -70,15 +70,56 @@ data class BackupFailure(
     val authFailed: Boolean get() = reason is BackupReason.CloudCredentialsRejected
 }
 
+/**
+ * 某一个后端这一次写了什么。
+ *
+ * 一次备份把同一批内容**打包一次**、写到所有勾选的来源，所以整体计数（写了几项）在两侧都成功时
+ * 会翻倍。要按来源报数（结果表一行一个"来源 × 内容"、自动备份要分"本地成了云端没成"）就必须
+ * 留一份按后端的明细。
+ */
+data class StorageOutcome(
+    val storage: String,
+    val written: List<String> = emptyList(),
+    val skipped: List<String> = emptyList(),
+    val failures: List<BackupFailure> = emptyList(),
+)
+
 data class BackupRunResult(
     val kind: BackupKind,
     val written: List<String> = emptyList(),
     val skipped: List<String> = emptyList(),
     val failures: List<BackupFailure> = emptyList(),
+    /**
+     * 每个后端各自的那一份结果，顺序与写入顺序一致。
+     *
+     * 空表示"这次没有可写的后端"（比如云端没配好），此时 [written] / [skipped] 就是全部。
+     */
+    val storages: List<StorageOutcome> = emptyList(),
 ) {
     val isSuccess: Boolean get() = failures.isEmpty()
     val isPartial: Boolean get() = failures.isNotEmpty() && written.isNotEmpty()
     val isFailure: Boolean get() = failures.isNotEmpty() && written.isEmpty()
+
+    /**
+     * 只看某一个后端的那一份结果。
+     *
+     * 源侧/引擎侧的失败不属于任何一个后端，却会让每一次写入都不完整，所以它们出现在**每一份**
+     * 里：只报本地那一行、让云端那一行看着没事，就把"这个模块根本没打出来"藏起来了。
+     *
+     * 这个后端不在 [storages] 里（没被写、或这次压根没有后端）时原样返回：那种结果里的计数本来
+     * 就是全部，切片无从谈起。
+     */
+    fun forStorage(storageId: String): BackupRunResult {
+        val own = storages.firstOrNull { it.storage == storageId } ?: return this
+        val shared = failures.filter { failure -> storages.none { it.storage == failure.storage } }
+        return copy(
+            written = own.written,
+            skipped = own.skipped,
+            failures = own.failures + shared,
+            // 切完之后再切没有意义，清掉免得调用方拿着半份结果又切一次。
+            storages = emptyList(),
+        )
+    }
 }
 
 /** [reason] 只在失败时有值：成功时没什么可说的，恢复到了哪一项由调用方自己知道。 */

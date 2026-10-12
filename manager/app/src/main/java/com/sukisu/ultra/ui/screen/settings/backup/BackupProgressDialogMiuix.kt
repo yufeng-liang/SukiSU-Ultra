@@ -78,7 +78,6 @@ fun BackupProgressDialogMiuix(
                             R.string.backup_progress_target,
                             run.current,
                             run.total,
-                            stringResource(BackupLabels.origin(run.origin)),
                             stringResource(BackupLabels.kind(run.kind)),
                         ),
                         fontSize = 14.sp,

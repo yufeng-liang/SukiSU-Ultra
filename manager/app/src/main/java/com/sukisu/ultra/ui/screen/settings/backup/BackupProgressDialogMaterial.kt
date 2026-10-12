@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.util.BackupText
 
 /**
  * 备份进度与结果。
@@ -64,7 +65,6 @@ fun BackupProgressDialogMaterial(
                             R.string.backup_progress_target,
                             run.current,
                             run.total,
-                            stringResource(BackupLabels.origin(run.origin)),
                             stringResource(BackupLabels.kind(run.kind)),
                         ),
                         style = MaterialTheme.typography.bodyMedium,
@@ -223,7 +223,10 @@ internal fun stageLines(run: BackupRunState): List<StageLine> {
 }
 
 /**
- * 「第几个文件 · 已传 / 总共 · 速度」。
+ * 「写到哪一处 · 第几个文件 · 已传 / 总共 · 速度」。
+ *
+ * 开头那一处是**当前正在写**的来源：一次备份依次写本机和云端，字节数是跨来源累计的、不回头，
+ * 所以位置得单独报出来——否则用户看不出本机已经写完、正在传云端（见 [TransferProgress.storage]）。
  *
  * 文件数那一段回答的是"还有几个模块没传"：一次备份 11 个模块，进度里只写"第 1/1 个目标"会让人
  * 以为那 1/1 说的是模块（就是被问到的那个）。还不知道文件数、或还没采到速度采样时，
@@ -232,6 +235,8 @@ internal fun stageLines(run: BackupRunState): List<StageLine> {
 @Composable
 internal fun transferLine(run: BackupRunState): String {
     val parts = buildList {
+        // 后端 id 认不出来（旧记录、引擎侧的失败）时这段直接不写，不编一个位置出来。
+        BackupText.storageLabelRes(run.storage)?.let { add(stringResource(it)) }
         if (run.fileCount > 0 && run.fileIndex > 0) {
             add(stringResource(R.string.backup_progress_files, run.fileIndex, run.fileCount))
         }

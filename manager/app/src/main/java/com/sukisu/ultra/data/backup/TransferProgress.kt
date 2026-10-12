@@ -17,6 +17,10 @@ import java.io.InputStream
  * [fileIndex] / [fileCount] 是"这个目标里的第几个归档、一共几个"：11 个模块的一次备份里，
  * 只报字节数看不出还剩几个文件，而用户看到的列表就是 11 项——进度上不写这一层，
  * 他会以为"1/1"是模块数（见 `backup_progress_target` 的措辞）。
+ *
+ * [sentBytes] / [totalBytes] 是**跨后端累计**的：同一批内容要写到本机和云端两处，只按一批算的话
+ * 第二个后端一开始写，进度条就已经贴在 100% 上了。[storage] 说的是"现在正在写哪一个"——
+ * 字节数不回头，所以位置得单独报出来，否则用户看不出本机写完了、正在传云端。
  */
 data class TransferProgress(
     val fileName: String,
@@ -25,6 +29,11 @@ data class TransferProgress(
     /** 第几个归档（1 起）；0 表示还不知道。 */
     val fileIndex: Int = 0,
     val fileCount: Int = 0,
+    /** 正在写哪个后端（[BackupStorage.id]）。 */
+    val storage: String = "",
+    /** 第几个后端（1 起）、一共几个；0 表示还不知道。 */
+    val storageIndex: Int = 0,
+    val storageCount: Int = 0,
 )
 
 /**

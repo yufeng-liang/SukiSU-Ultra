@@ -257,7 +257,12 @@ data class BackupRunState(
     /** 第几个目标（1 起），和 [total] 一起显示"2/4"。 */
     val current: Int,
     val total: Int,
-    val origin: BackupOrigin,
+    /**
+     * 正在备哪一类内容。
+     *
+     * 目标是"内容"不是"位置 × 内容"：同一批模块打包一遍就写到勾选的每一处，所以来源不再是目标的
+     * 一部分——写到哪一处由 [storage] 在传输阶段报出来。
+     */
     val kind: BackupKind,
     val sentBytes: Long = 0,
     /** 这次目标的归档总字节数；0 表示还不知道（没有可传的东西）。 */
@@ -265,6 +270,13 @@ data class BackupRunState(
     /** 这个目标里的第几个归档（1 起）、一共几个；0 表示还没开始报。 */
     val fileIndex: Int = 0,
     val fileCount: Int = 0,
+    /**
+     * 正在写哪个后端（[com.sukisu.ultra.data.backup.BackupStorage.id]）。
+     *
+     * 一次备份依次写每一个勾选的来源，而字节数是跨来源累计的、不回头：不把当前这一处报出来，
+     * 用户看不出本机已经写完、正在传云端。打包阶段还没有后端可讲，那时是空串。
+     */
+    val storage: String = "",
     /**
      * 还在打包：源正在把模块打成 zip / 把原厂镜像读出来，字节进度还没开始。
      *

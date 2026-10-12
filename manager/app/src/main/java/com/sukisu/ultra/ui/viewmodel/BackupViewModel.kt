@@ -575,10 +575,11 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         ?.entry
 
     /**
-     * 按勾选组合备份：位置 × 内容 每种组合各写一份。
+     * 按勾选组合备份：每种内容**打包一次**，写到勾选的每一处。
      *
-     * 本机与云端**分别调用**（[BackupRepository.backup] 每次只对一个后端），所以云端失败不会
-     * 影响本地那份——这正是一次备份两个位置的意义所在。
+     * 目标是"内容"而不是"位置 × 内容"：同一批模块本来就要写到本机和云端，打包两遍纯属白烧
+     * CPU（11 个模块几十 MB）。引擎一次调用里依次写每个后端，某一处失败不影响另一处——这正是一次
+     * 备份两个位置的意义所在，所以结果仍按来源分开记（见 [BackupTargetResult]）。
      */
     fun backupNow() = viewModelScope.launch {
         // 留住这一次备份的句柄，好让用户能取消它。从协程自己身上取，比在外面赋值少一层
@@ -593,11 +594,10 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             state.modulesUnavailable -> null
             else -> state.selectedModuleIds
         }
-        val targets = state.kinds.sortedBy { it.ordinal }.flatMap { kind ->
-            state.origins.sortedBy { it.ordinal }.map { origin -> origin to kind }
-        }
+        val origins = state.origins.sortedBy { it.ordinal }
+        val targets = state.kinds.sortedBy { it.ordinal }
         val results = mutableListOf<BackupTargetResult>()
-        targets.forEachIndexed { index, (origin, kind) ->
+        targets.forEachIndexed { index, kind ->
             // 每个目标重新起算进度与速度：上一个目标的速度跟这一个没关系。
             lastSampleAt = 0L
             lastSampleBytes = 0L
@@ -608,7 +608,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     backupRun = BackupRunState(
                         current = index + 1,
                         total = targets.size,
-                        origin = origin,
                         kind = kind,
                         // 先按"打包中"开局：这一刻确实什么都还没开始（连源都还没被叫起来），
                         // 弹窗照不确定进度画并写"正在准备"，比"0 B / 0 B"的 0% 进度条诚实。
@@ -616,8 +615,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     ),
                 )
             }
-            val result = repository.backup(
-                origin = origin,
+            val byOrigin = repository.backup(
+                origins = origins,
                 kind = kind,
                 selected = if (kind == BackupKind.MODULE) selectedModules else null,
                 onProgress = { progress ->
@@ -630,6 +629,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                                 totalBytes = progress.totalBytes,
                                 fileIndex = progress.fileIndex,
                                 fileCount = progress.fileCount,
+                                // 字节数是跨后端累计的、不回头，所以"现在在写哪一处"要单独记下来。
+                                storage = progress.storage,
                                 speedBytesPerSecond = speed,
                                 // 有字节出去了就说明打包早就结束：这条兜住"源忘了报收尾"
                                 // 以及开局那几帧，界面不会一直画不确定进度。
@@ -659,7 +660,10 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update { current ->
                 current.copy(backupRun = current.backupRun?.copy(averageBytesPerSecond = average))
             }
-            results += BackupTargetResult(origin, kind, result)
+            // 按来源拆开记：结果表一行一个"来源 × 内容"，而整体计数在两侧都写成功时会翻倍。
+            origins.forEach { origin ->
+                byOrigin[origin]?.let { results += BackupTargetResult(origin, kind, it) }
+            }
         }
         // 中途被取消就不再往下走：[cancelBackupRun] 已经把弹窗切成"已取消"，这里再写一次会把
         // 它盖成一次正常完成的结果。列表刷新由取消那一侧等这个协程收尾之后去做。

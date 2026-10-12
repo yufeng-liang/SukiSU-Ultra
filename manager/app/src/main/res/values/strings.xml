@@ -817,7 +817,7 @@
     <string name="backup_share_chooser">Share backup</string>
     <string name="backup_progress_title">Backing up</string>
     <string name="backup_cancelled">Backup cancelled. Anything already written is kept.</string>
-    <string name="backup_progress_target">Target %1$d of %2$d · %3$s %4$s</string>
+    <string name="backup_progress_target">Target %1$d of %2$d · %3$s</string>
     <string name="backup_progress_files">file %1$d of %2$d</string>
     <string name="backup_progress_packing">Packing %1$d of %2$d</string>
     <string name="backup_progress_preparing">Preparing…</string>
