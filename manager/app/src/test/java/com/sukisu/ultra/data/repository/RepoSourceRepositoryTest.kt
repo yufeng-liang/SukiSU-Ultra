@@ -158,6 +158,38 @@ class RepoSourceRepositoryTest {
 
         assertTrue(error.message.orEmpty().contains("8 MiB"))
     }
+
+    @Test
+    fun `a fresh install starts with the official registry as the only source`() {
+        // 从没配过（prefs 里连键都没有）：列表就是官方注册表这一条，用户第一次进模块仓库就有东西看。
+        assertFalse(prefs.contains(SOURCES_KEY))
+
+        assertEquals(listOf(builtInSource), stored())
+    }
+
+    @Test
+    fun `the built-in source can be removed and does not come back`() {
+        // 用户把它删掉之后 prefs 里存的是空数组（键在），所以默认值不能再把它塞回来。
+        seed()
+
+        assertEquals(emptyList<RepoSource>(), stored())
+    }
+
+    @Test
+    fun `saved sources are returned exactly, with no built-in injected`() {
+        val mine = RepoSource("mine", "Mine", "https://example.com/mine.json", enabled = false)
+        seed(mine)
+
+        assertEquals(listOf(mine), stored())
+    }
+
+    @Test
+    fun `the built-in source is the same entry the add-source dialog offers`() {
+        // 两处各写一份地址迟早会分叉：默认源和候选列表必须是同一个地址，点一下加进来的和预置的才是同一个源。
+        val offered = defaultRepoCandidates.single { it.name == builtInSource.name }
+
+        assertEquals(offered.url, builtInSource.url)
+    }
 }
 
 private fun responseWithBody(body: String) = Response.Builder()

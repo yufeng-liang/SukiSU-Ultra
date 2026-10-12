@@ -37,6 +37,15 @@ data class RepoCandidate(
  * installable entry and then the newer one, so an out-of-date repository contributes only the
  * modules nobody else publishes.
  */
+/** Site root of the KernelSU module registry; the paths inside its documents are relative to it. */
+internal const val KERNELSU_REGISTRY_BASE = "https://modules.kernelsu.org/"
+
+/**
+ * The registry's index. It is only a pointer — the modules are in the file it names, and their
+ * download addresses are in a document per module (see [RepoFormat.KERNELSU_V1]).
+ */
+internal const val KERNELSU_REGISTRY_INDEX_URL = KERNELSU_REGISTRY_BASE + "api/v1/index.json"
+
 val defaultRepoCandidates: List<RepoCandidate> = listOf(
     RepoCandidate(
         name = "LeanxModulostk/modulostk",
@@ -100,7 +109,7 @@ val defaultRepoCandidates: List<RepoCandidate> = listOf(
     ),
     RepoCandidate(
         name = "KernelSU Modules",
-        url = "https://modules.kernelsu.org/api/v1/index.json",
+        url = KERNELSU_REGISTRY_INDEX_URL,
         moduleCount = 18,
     ),
     RepoCandidate(

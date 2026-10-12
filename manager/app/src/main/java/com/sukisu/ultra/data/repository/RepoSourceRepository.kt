@@ -54,16 +54,18 @@ class RepoSourceRepositoryImpl(
     }
 
     /**
-     * No source is configured out of the box: the repository the manager used to ship with,
-     * `modules.kernelsu.org`, went dark when the organisation behind it was suspended, and seeding
-     * it only made every first launch report a failed fetch. It is served again since 2026-10-10
-     * under a new organisation, in a format this manager reads (see [RepoFormat.KERNELSU_V1]), and
-     * it is offered in [defaultRepoCandidates] like any other repository — but a first launch still
-     * starts from an empty list, because a source the user never chose is one more thing that can
-     * fail on them.
+     * 一个源都没配过时（prefs 里没有这个键）给的就是官方注册表。
+     *
+     * 这个位置原本是空的，理由是老 `modules.kernelsu.org` 随组织被封一起消失了，预置它只会让
+     * 每一次首次启动都报一句抓取失败。它 2026-10-10 由新组织重新上线、换了这套管理器读得懂的
+     * 格式（见 [RepoFormat.KERNELSU_V1]），理由也就没了：官方源在列表里什么都不做的话，用户
+     * 第一次进模块仓库看到的是一片空白，还得自己去候选列表里找。
+     *
+     * 只在"从没配过"时给。用户把它删掉之后 prefs 里存的是空数组（键在），所以不会长回来；
+     * 用户自己的那份配置也永远不会被它盖住。
      */
     override fun loadSources(): List<RepoSource> {
-        val raw = prefs.getString(KEY_SOURCES, null) ?: return emptyList()
+        val raw = prefs.getString(KEY_SOURCES, null) ?: return listOf(builtInSource)
         return runCatching { decode(raw) }.getOrNull() ?: emptyList()
     }
 
@@ -372,6 +374,18 @@ internal const val INDEX_CALL_TIMEOUT_SECONDS = 20L
 /** 响应超限。带可读原因，失败时会原样拼进给用户看的提示里。 */
 internal class IndexResponseTooLargeException(limitBytes: Long) :
     Exception("index response exceeds ${limitBytes / (1024 * 1024)} MiB")
+
+/**
+ * 内置的默认源：官方注册表。
+ *
+ * id 必须固定。每次读都新生成一个 UUID 的话，界面拿着 A 去删，下一次读出来的是 B——删不掉，
+ * 改名和启停也落不到同一条上。它也只是 prefs 里的主键，不需要跟着安装走。
+ */
+internal val builtInSource = RepoSource(
+    id = "builtin-kernelsu-modules",
+    name = "KernelSU Modules",
+    url = KERNELSU_REGISTRY_INDEX_URL,
+)
 
 /**
  * 读索引响应体，最多读 [limitBytes] 字节：peekBody 只多取 1 字节用来判断有没有超限，

@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.util.module
 
+import com.sukisu.ultra.data.repository.KERNELSU_REGISTRY_BASE
 import com.sukisu.ultra.data.repository.registryDocumentUrl
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.screen.modulerepo.RepoModuleArg
@@ -46,9 +47,6 @@ data class ReleaseAssetInfo(
 
 private const val MAX_CHANGELOG_FETCHES = 30
 
-/** Site root of the KernelSU module registry, which serves its documents under `api/v1`. */
-private const val KERNELSU_REGISTRY_BASE = "https://modules.kernelsu.org/"
-
 fun sanitizeVersionString(version: String): String {
     return version.replace(Regex("[^a-zA-Z0-9.\\-_]"), "_")
 }
@@ -60,7 +58,7 @@ fun stripTicks(s: String): String {
 
 fun fetchReleaseDescriptionHtml(moduleId: String, latestTag: String): String? {
     if (!isNetworkAvailable(ksuApp)) return null
-    val url = "$KERNELSU_REGISTRY_BASE/api/v1/modules/$moduleId.json"
+    val url = registryDocumentUrl(KERNELSU_REGISTRY_BASE, "api/v1/modules/$moduleId.json")
     return runCatching {
         ksuApp.okhttpClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
             if (!resp.isSuccessful) null else {
@@ -138,7 +136,7 @@ private suspend fun fetchMmrlModuleDetail(module: RepoModuleArg): ModuleDetail? 
  */
 suspend fun fetchModuleDetailById(moduleId: String): ModuleDetail? {
     if (!isNetworkAvailable(ksuApp)) return null
-    val url = "$KERNELSU_REGISTRY_BASE/api/v1/modules/$moduleId.json"
+    val url = registryDocumentUrl(KERNELSU_REGISTRY_BASE, "api/v1/modules/$moduleId.json")
     return fetchRegistryModuleDetail(
         detailUrl = url,
         baseUrl = KERNELSU_REGISTRY_BASE,
@@ -208,7 +206,7 @@ internal fun parseRegistryDetail(body: String, baseUrl: String, moduleId: String
         val r = releasesArray.optJSONObject(rIdx) ?: return@mapNotNull null
         val zip = r.optJSONObject("zip")
         val zipUrl = stripTicks(zip?.optString("url", "") ?: "").trim()
-        val assets = if (zipUrl.isEmpty()) {
+        val assets = if (zip == null || zipUrl.isEmpty()) {
             emptyList()
         } else {
             listOf(
