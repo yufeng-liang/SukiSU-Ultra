@@ -117,9 +117,12 @@ class BackupGroupingTest {
         assertEquals(listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.map { it.origin })
     }
 
-    /** 一次备份里模块和 boot 是两条结果，各成一组：恢复它们的后果完全不同。 */
+    /**
+     * 一次备份里勾了模块和 boot，那也是**一行**：列表要回答的是"我最近备了什么"，不是"哪几类
+     * 内容各占一行"。恢复后果不同由勾选项判定（boot 的确认弹窗按 kind 触发），不靠分组区分。
+     */
     @Test
-    fun `modules and boot are separate groups even in the same session`() {
+    fun `modules and boot of one session are one group`() {
         val groups = BackupGrouping.group(
             listOf(
                 row("module_a_1_20261009_093107.zip", "2026-10-09T09:31:07Z"),
@@ -127,7 +130,26 @@ class BackupGroupingTest {
             ),
             label,
         )
-        assertEquals(2, groups.size)
-        assertEquals(setOf(BackupKind.MODULE, BackupKind.BOOT), groups.map { it.kind }.toSet())
+        assertEquals(1, groups.size)
+        assertEquals(listOf(BackupKind.MODULE, BackupKind.BOOT), groups.single().kinds)
+        assertEquals(2, groups.single().rows.size)
+    }
+
+    /** 类别在卡片上的顺序固定按 ordinal，不跟着归档在列表里的先后走。 */
+    @Test
+    fun `kinds are listed in a fixed order regardless of arrival`() {
+        val groups = BackupGrouping.group(
+            listOf(
+                row("repo_config_20261009_093107.json", "2026-10-09T09:31:07Z", kind = BackupKind.REPO_CONFIG),
+                row("boot_a1b2c3d4e5f6_20261009_093107.img", "2026-10-09T09:31:07Z", kind = BackupKind.BOOT),
+                row("module_a_1_20261009_093107.zip", "2026-10-09T09:31:07Z"),
+            ),
+            label,
+        )
+        assertEquals(1, groups.size)
+        assertEquals(
+            listOf(BackupKind.MODULE, BackupKind.BOOT, BackupKind.REPO_CONFIG),
+            groups.single().kinds,
+        )
     }
 }

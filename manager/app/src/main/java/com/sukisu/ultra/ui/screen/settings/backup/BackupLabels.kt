@@ -28,9 +28,13 @@ object BackupLabels {
         else -> R.string.backup_kind_module
     }
 
-    /** 分组卡片上"这一组是什么"那一栏。 */
-    @StringRes
-    fun groupKind(group: BackupGroup): Int = kind(group.kind)
+    /**
+     * 分组卡片上"这一组是什么"那一栏。
+     *
+     * 一次备份可能不止一类内容（模块 + 仓库源配置），所以返回列表：调用方按同一顺序取字符串、
+     * 再用分隔符拼起来，措辞不会两个主题各写一遍。
+     */
+    fun groupKinds(group: BackupGroup): List<Int> = group.kinds.map { kind(it) }
 
     /** 分组卡片的副标题：来源（两侧都勾上时才写）· 内容 · 项数。 */
     fun groupSummary(originLabel: String?, kindLabel: String, countText: String): String =

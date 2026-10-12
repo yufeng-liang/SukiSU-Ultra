@@ -31,7 +31,7 @@ class BackupSelectionTest {
         BackupGroup(
             id = id,
             origin = origin,
-            kind = BackupKind.MODULE,
+            kinds = listOf(BackupKind.MODULE),
             session = id,
             label = id,
             rows = (1..rows).map { row("$id-$it", origin) },

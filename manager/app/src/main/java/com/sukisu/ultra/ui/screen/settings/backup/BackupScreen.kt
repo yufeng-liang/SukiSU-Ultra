@@ -264,11 +264,17 @@ internal const val EXPAND_MS = 220
  * 两个主题共用：分组卡片的措辞只有一处，改的时候不会只改一边。
  */
 @Composable
-fun groupSummary(group: BackupGroup, showsOrigin: Boolean): String = BackupLabels.groupSummary(
-    originLabel = stringResource(BackupLabels.origin(group.origin)).takeIf { showsOrigin },
-    kindLabel = stringResource(BackupLabels.groupKind(group)),
-    countText = pluralStringResource(R.plurals.backup_group_items, group.rows.size, group.rows.size),
-)
+fun groupSummary(group: BackupGroup, showsOrigin: Boolean): String {
+    // 一次备份可能有好几类内容：用分隔符拼出来，而不是写成"3 类内容"——用户要看的就是备了啥。
+    // map 是 inline 的，所以这里能在 lambda 里调 stringResource。
+    val separator = stringResource(R.string.backup_kind_list_separator)
+    val kindLabel = BackupLabels.groupKinds(group).map { stringResource(it) }.joinToString(separator)
+    return BackupLabels.groupSummary(
+        originLabel = stringResource(BackupLabels.origin(group.origin)).takeIf { showsOrigin },
+        kindLabel = kindLabel,
+        countText = pluralStringResource(R.plurals.backup_group_items, group.rows.size, group.rows.size),
+    )
+}
 
 /**
  * 保留额度收起时的那一行：三个额度现在各是多少。

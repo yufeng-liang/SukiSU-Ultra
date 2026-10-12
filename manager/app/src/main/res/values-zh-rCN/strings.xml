@@ -672,6 +672,7 @@
     <string name="backup_kind_module">模块</string>
     <string name="backup_kind_boot">原厂 boot 镜像</string>
     <string name="backup_kind_repo">仓库源配置</string>
+    <string name="backup_kind_list_separator">、</string>
     <string name="backup_repo_explain">备份已添加的模块仓库源（地址、名称与开关），恢复时整批还原，只保留最新一份。</string>
     <string name="backup_boot_row_title">原厂镜像</string>
     <string name="backup_boot_explain">备份的是打补丁前的原厂镜像；恢复它设备会回到未 root 状态，需重新打补丁。</string>
