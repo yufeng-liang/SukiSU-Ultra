@@ -94,7 +94,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.model.RepoModule
@@ -114,7 +113,6 @@ import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.TopBarBackButton
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.ultra.ui.component.statustag.StatusTag
-import com.sukisu.ultra.ui.util.download
 import com.sukisu.ultra.ui.util.formatRepoTime
 import com.sukisu.ultra.ui.util.isDownloadAvailable
 import com.sukisu.ultra.ui.util.rememberContentReady
@@ -583,6 +581,24 @@ fun ModuleRepoDetailScreenMaterial(
     var pendingDownload by remember { mutableStateOf<(() -> Unit)?>(null) }
     val confirmDialog = rememberConfirmDialog(onConfirm = { pendingDownload?.invoke() })
 
+    // 下载状态挂在页面上（见 AssetDownloads）：版本列表的列表项滚出屏幕就被回收，状态放在项里
+    // 会跟着一起消失。
+    //
+    // 下载完就接着装：那个确认框问的本来就是"要不要装这个模块"，下载只是它的第一步，再让用户
+    // 点一次「安装」等于把同一个决定问第二遍。装到设备上是唯一不可逆的一步，仍然由确认框守着。
+    //
+    // 用页面的 scope 发起跳转：下载完成的回调不属于任何一次组合，列表项被回收、甚至用户已经
+    // 退回上一页之后它照样会到。这个 scope 随页面一起取消，于是"用户已经走开"本身就是一道闸门，
+    // 不会把人从别处拽进刷入页。
+    val downloads = rememberAssetDownloads(
+        onCompleted = { uri ->
+            scope.launch {
+                // 下载目录里的文件可能已经不在了，和手动点「安装」时一样先确认还能读。
+                if (isDownloadAvailable(uri)) actions.onInstallModule(uri)
+            }
+        }
+    )
+
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     ExpressiveScaffold(
@@ -647,7 +663,8 @@ fun ModuleRepoDetailScreenMaterial(
                         scope = scope,
                         onInstallModule = actions.onInstallModule,
                         context = context,
-                        setPendingDownload = { pendingDownload = it }
+                        setPendingDownload = { pendingDownload = it },
+                        downloads = downloads,
                     )
 
                     2 -> InfoPage(
@@ -755,6 +772,7 @@ fun ReleasesPage(
     onInstallModule: (Uri) -> Unit,
     context: Context,
     setPendingDownload: ((() -> Unit)) -> Unit,
+    downloads: AssetDownloads,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     LazyColumn(
@@ -853,6 +871,7 @@ fun ReleasesPage(
                                     context = context,
                                     onInstallModule = onInstallModule,
                                     setPendingDownload = setPendingDownload,
+                                    downloads = downloads,
                                 )
                             }
                         }
@@ -873,6 +892,7 @@ private fun ReleaseAssetSegmentedItem(
     context: Context,
     onInstallModule: (Uri) -> Unit,
     setPendingDownload: ((() -> Unit)) -> Unit,
+    downloads: AssetDownloads,
 ) {
     val fileName = asset.name
     val sizeText = remember(asset.size) {
@@ -886,47 +906,26 @@ private fun ReleaseAssetSegmentedItem(
     }
     val sizeAndDownloads =
         remember(sizeText, asset.downloadCount) { "$sizeText · ${asset.downloadCount} downloads" }
-    var isDownloading by remember(fileName, asset.downloadUrl) { mutableStateOf(false) }
-    var progress by remember(fileName, asset.downloadUrl) { mutableIntStateOf(0) }
-    var downloadedUri by remember(fileName, asset.downloadUrl) { mutableStateOf<Uri?>(null) }
-    val isDownloaded = downloadedUri != null
-    val onClickDownload = remember(fileName, asset.downloadUrl) {
-        {
-            val startText = context.getString(R.string.module_start_downloading, fileName)
-            setPendingDownload {
-                isDownloading = true
-                scope.launch(Dispatchers.IO) {
-                    download(
-                        asset.downloadUrl,
-                        fileName,
-                        altUrl = asset.downloadUrlFallback,
-                        onDownloaded = { uri ->
-                            isDownloading = false
-                            downloadedUri = uri
-                        },
-                        onDownloading = { isDownloading = true },
-                        onProgress = { p -> scope.launch(Dispatchers.Main) { progress = p } }
-                    )
-                    isDownloading = false
-                }
-            }
-            confirmDialog.showConfirm(title = confirmTitle, content = startText)
-        }
+    val download = downloads.of(asset.downloadUrl)
+    val onClickDownload = {
+        val startText = context.getString(R.string.module_start_downloading, fileName)
+        setPendingDownload { downloads.start(asset) }
+        confirmDialog.showConfirm(title = confirmTitle, content = startText)
     }
 
     SegmentedListItem(
         headlineContent = { Text(text = fileName) },
         supportingContent = { Text(text = sizeAndDownloads) },
         trailingContent = {
-            if (isDownloaded) {
+            val uri = download.uri
+            if (uri != null) {
                 FilledTonalButton(
                     onClick = {
-                        val uri = downloadedUri ?: return@FilledTonalButton
                         scope.launch {
                             if (isDownloadAvailable(uri)) {
                                 onInstallModule(uri)
                             } else {
-                                downloadedUri = null
+                                downloads.forget(asset.downloadUrl)
                             }
                         }
                     },
@@ -946,12 +945,12 @@ private fun ReleaseAssetSegmentedItem(
             } else {
                 FilledTonalButton(
                     onClick = onClickDownload,
-                    enabled = !isDownloading,
+                    enabled = !download.isDownloading,
                     contentPadding = ButtonDefaults.TextButtonContentPadding
                 ) {
-                    if (isDownloading) {
+                    if (download.isDownloading) {
                         CircularWavyProgressIndicator(
-                            progress = { progress / 100f },
+                            progress = { download.progress / 100f },
                             modifier = Modifier.size(20.dp),
                         )
                     } else {
