@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,7 +14,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +33,9 @@ import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.ui.component.material.SegmentedCheckboxItem
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
+
+/** 删除按钮那条描边的透明度：全实心红边会把这颗按钮抬到和主按钮一样重。 */
+private const val DELETED_BORDER_ALPHA = 0.5f
 
 /**
  * 一次备份的详情：这一组里到底有哪些条目。
@@ -108,20 +111,22 @@ fun BackupDetailMaterial(
                                 }
                             }
                             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                            // 删除是这一页最重的一件事，但它不是主按钮：淡红底配正红字，实心大红
-                            // 会盖过上面那两个真正要按的按钮；只写红字又容易被当成说明文字。
+                            // 删除是这一页最重的一件事，但它不是主按钮。
                             //
-                            // 用 FilledTonalButton 而不是带底色的 TextButton：后者是按"只有文字"
-                            // 排的（内边距、圆角都是给小字按钮的），铺满整行之后像一块贴歪的色块。
-                            // 文字色也要换成 onErrorContainer——error 配 errorContainer 是红字压
-                            // 红底，对比度低，看着就是"配色脏"。
-                            FilledTonalButton(
+                            // 不填底色：这套配色里的 errorContainer 是一块偏暖的珊瑚色，铺满整行
+                            // 之后成了整页最大的一块颜色，压在冷色调的页面上就是那句"配色有点丑"。
+                            // 走描边——红字 + 半透明红边，形态和上面那个「导出/分享」一致，既看得出
+                            // 是个按钮（纯红字会被读成说明文字），又不像一整块警告色。
+                            OutlinedButton(
                                 onClick = actions.onDeleteGroup,
                                 enabled = !busy,
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.error.copy(alpha = DELETED_BORDER_ALPHA),
                                 ),
                             ) {
                                 Text(stringResource(R.string.backup_detail_delete))
