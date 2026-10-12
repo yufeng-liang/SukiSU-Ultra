@@ -117,29 +117,14 @@ fun BackupDetailMiuix(
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                         Text(text = group.label, fontSize = 17.sp)
                         Text(
-                            text = groupSummary(group, state.showsOriginBadge),
+                            // 这一组存在哪：恢复/删除之前该知道动的是哪些地方的文件。
+                            // 本机和云端都写过就是两行（两处地址各不相同）。
+                            text = (listOf(groupSummary(group)) + groupLocationLines(group, state.cloudSavedUrl))
+                                .joinToString(BackupListFormatter.SEPARATOR),
                             fontSize = 13.sp,
                             color = colorScheme.onSurfaceVariantSummary,
                             modifier = Modifier.padding(top = 4.dp),
                         )
-                        // 这一组存在哪：恢复/删除之前该知道动的是哪一侧的文件。
-                        BackupLocation.full(group.origin, state.cloudSavedUrl)
-                            .takeIf { it.isNotBlank() }
-                            ?.let { location ->
-                                Text(
-                                    text = stringResource(
-                                        if (group.origin == BackupOrigin.CLOUD) {
-                                            R.string.backup_location_cloud
-                                        } else {
-                                            R.string.backup_location_local
-                                        },
-                                        location,
-                                    ),
-                                    fontSize = 12.sp,
-                                    color = colorScheme.onSurfaceVariantSummary,
-                                    modifier = Modifier.padding(top = 4.dp),
-                                )
-                            }
                         // 两个按钮等宽：宽度跟着文字走的话，一行里一长一短看着像没对齐的标签，
                         // 而这两个动作是一对——"导出"和"恢复"都是对勾选项整体生效的。
                         Row(
@@ -189,10 +174,16 @@ fun BackupDetailMiuix(
                         checked = state.allGroupEntriesSelected,
                         onCheckedChange = actions.onSetAllGroupEntries,
                     )
+                    // 两侧合起来列之后，同名条目在本机和云端各有一条：来源得跟着行走，
+                    // 否则"恢复/删除这一条"动的是哪一侧就看不出来。
+                    val showOrigin = group.origins.size > 1
                     group.rows.forEach { row ->
                         CheckboxPreference(
                             title = entryTitle(row),
-                            summary = row.subtitle.takeIf { it.isNotBlank() },
+                            summary = listOfNotNull(
+                                row.originLabel.takeIf { showOrigin },
+                                row.subtitle.takeIf { it.isNotBlank() },
+                            ).joinToString(BackupListFormatter.SEPARATOR).takeIf { it.isNotEmpty() },
                             checked = row.id in state.openGroupSelected,
                             onCheckedChange = { actions.onToggleGroupEntry(row.id) },
                         )

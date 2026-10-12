@@ -4,6 +4,7 @@ import com.sukisu.ultra.data.backup.BackupEntry
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
+import com.sukisu.ultra.data.backup.OriginEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals

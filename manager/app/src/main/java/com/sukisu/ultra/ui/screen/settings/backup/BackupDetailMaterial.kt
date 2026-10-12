@@ -76,23 +76,11 @@ fun BackupDetailMaterial(
                         SegmentedListItem(
                             headlineContent = { Text(group.label) },
                             supportingContent = {
-                                val summary = groupSummary(group, state.showsOriginBadge)
-                                // 这一组存在哪：恢复/删除之前该知道动的是哪一侧的文件。
-                                val location = BackupLocation.full(group.origin, state.cloudSavedUrl)
-                                Text(
-                                    if (location.isBlank()) {
-                                        summary
-                                    } else {
-                                        summary + BackupListFormatter.SEPARATOR + stringResource(
-                                            if (group.origin == BackupOrigin.CLOUD) {
-                                                R.string.backup_location_cloud
-                                            } else {
-                                                R.string.backup_location_local
-                                            },
-                                            location,
-                                        )
-                                    },
-                                )
+                                // 这一组存在哪：恢复/删除之前该知道动的是哪些地方的文件。
+                                // 本机和云端都写过就是两行（两处地址各不相同）。
+                                val lines = listOf(groupSummary(group)) +
+                                    groupLocationLines(group, state.cloudSavedUrl)
+                                Text(lines.joinToString(BackupListFormatter.SEPARATOR))
                             },
                         )
                     }
@@ -151,11 +139,17 @@ fun BackupDetailMaterial(
                             onCheckedChange = actions.onSetAllGroupEntries,
                         )
                     }
+                    // 两侧合起来列之后，同名条目在本机和云端各有一条：来源得跟着行走，
+                    // 否则"恢复/删除这一条"动的是哪一侧就看不出来。
+                    val showOrigin = group.origins.size > 1
                     group.rows.forEach { row ->
                         item {
                             SegmentedCheckboxItem(
                                 title = entryTitle(row),
-                                summary = row.subtitle.takeIf { it.isNotBlank() },
+                                summary = listOfNotNull(
+                                    row.originLabel.takeIf { showOrigin },
+                                    row.subtitle.takeIf { it.isNotBlank() },
+                                ).joinToString(BackupListFormatter.SEPARATOR).takeIf { it.isNotEmpty() },
                                 checked = row.id in state.openGroupSelected,
                                 onCheckedChange = { actions.onToggleGroupEntry(row.id) },
                             )

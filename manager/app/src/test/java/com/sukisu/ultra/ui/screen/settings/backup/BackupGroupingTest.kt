@@ -87,9 +87,12 @@ class BackupGroupingTest {
         assertEquals("T(2026-10-09T09:31:08Z)", groups.first().label)
     }
 
-    /** 两侧各有一份同名归档时是两组：来源不同就是两次不同的备份。 */
+    /**
+     * 同一次备份写到两侧仍是**一行**：那是同一份东西的两个副本，不是两次备份。卡片上用两块来源
+     * 牌子说明写到哪儿；每一条条目自己带着来源，恢复/删除照旧动对那一侧。
+     */
     @Test
-    fun `the same session on two origins stays two groups`() {
+    fun `the same session on two origins is one group`() {
         val groups = BackupGrouping.group(
             listOf(
                 row("module_a_1_20261009_093107.zip", "2026-10-09T09:31:07Z"),
@@ -97,16 +100,14 @@ class BackupGroupingTest {
             ),
             label,
         )
-        assertEquals(2, groups.size)
-        assertEquals(setOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.map { it.origin }.toSet())
-        assertEquals(2, groups.map { it.id }.toSet().size)
-        // 本地在前：界面按这个顺序分段，云端段在下面。
-        assertEquals(listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.map { it.origin })
+        assertEquals(1, groups.size)
+        assertEquals(listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.single().origins)
+        assertEquals(2, groups.single().rows.size)
     }
 
-    /** 分组顺序是"先来源、再时间倒序"，界面就是靠它切段的。 */
+    /** 列表是纯按时间倒序的一段：来源不再分段，两侧合起来排。 */
     @Test
-    fun `origins come before recency in the group order`() {
+    fun `groups are ordered by recency across origins`() {
         val groups = BackupGrouping.group(
             listOf(
                 row("module_a_1_20261009_093107.zip", "2026-10-09T09:31:07Z", origin = BackupOrigin.CLOUD),
@@ -114,7 +115,10 @@ class BackupGroupingTest {
             ),
             label,
         )
-        assertEquals(listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD), groups.map { it.origin })
+        assertEquals(
+            listOf("T(2026-10-09T09:31:07Z)", "T(2026-10-08T12:00:00Z)"),
+            groups.map { it.label },
+        )
     }
 
     /**

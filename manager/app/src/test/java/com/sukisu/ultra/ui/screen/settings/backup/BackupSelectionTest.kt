@@ -30,7 +30,7 @@ class BackupSelectionTest {
     private fun group(id: String, origin: BackupOrigin = BackupOrigin.LOCAL, rows: Int = 1) =
         BackupGroup(
             id = id,
-            origin = origin,
+            origins = listOf(origin),
             kinds = listOf(BackupKind.MODULE),
             session = id,
             label = id,

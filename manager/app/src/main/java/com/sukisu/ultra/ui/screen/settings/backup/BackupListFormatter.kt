@@ -4,6 +4,7 @@ import com.sukisu.ultra.data.backup.BackupEntry
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
+import com.sukisu.ultra.data.backup.OriginEntry
 import java.util.Locale
 
 data class BackupRow(
@@ -41,13 +42,6 @@ data class BackupRow(
      */
     val createdAt: String,
 )
-
-/**
- * 列表里的一项：一条归档 + 它在哪一侧。
- *
- * 本地和云端各有一份索引，同一条模块在两边的文件名是一样的，所以来源必须跟着条目走。
- */
-data class OriginEntry(val origin: BackupOrigin, val entry: BackupEntry)
 
 /**
  * 列表里由调用方提供的那几段文案。

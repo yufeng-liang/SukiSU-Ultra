@@ -27,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sukisu.ultra.BuildConfig
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.BackupKind
+import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.dialog.ConfirmResult
@@ -152,10 +153,12 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onDismissBackupRun = viewModel::dismissBackupRun,
         onCancelBackupRun = viewModel::cancelBackupRun,
         onDeleteGroup = {
-            // 删的是文件，删完找不回来；而且云端那份也一起删，所以要说清动的是哪一侧。
+            // 删的是文件，删完找不回来；而且这一组可能本机和云端都有，所以要说清动的是哪些地方。
             state.openGroup?.let { group ->
                 confirmScope.launch {
-                    val originLabel = context.getString(BackupLabels.origin(group.origin))
+                    val separator = context.getString(R.string.backup_list_separator)
+                    val originLabel = BackupLabels.groupOrigins(group)
+                        .joinToString(separator) { context.getString(it) }
                     val confirmed = confirmDialog.awaitConfirm(
                         title = deleteConfirmTitle,
                         content = context.getString(
@@ -259,22 +262,41 @@ private const val PAGE_MS = 260
 internal const val EXPAND_MS = 220
 
 /**
- * 分组卡片的一行说明：来源（两侧都勾上时才写）· 内容 · 项数。
+ * 分组卡片/详情页那一行说明：内容 · 项数。
  *
- * 两个主题共用：分组卡片的措辞只有一处，改的时候不会只改一边。
+ * 写到哪几侧不在这里重复：卡片上是来源标签，详情页是下面的"备份存在哪"那几行。
+ * 两个主题共用这一处措辞，改的时候不会只改一边。
  */
 @Composable
-fun groupSummary(group: BackupGroup, showsOrigin: Boolean): String {
+fun groupSummary(group: BackupGroup): String {
     // 一次备份可能有好几类内容：用分隔符拼出来，而不是写成"3 类内容"——用户要看的就是备了啥。
     // map 是 inline 的，所以这里能在 lambda 里调 stringResource。
-    val separator = stringResource(R.string.backup_kind_list_separator)
+    val separator = stringResource(R.string.backup_list_separator)
     val kindLabel = BackupLabels.groupKinds(group).map { stringResource(it) }.joinToString(separator)
     return BackupLabels.groupSummary(
-        originLabel = stringResource(BackupLabels.origin(group.origin)).takeIf { showsOrigin },
         kindLabel = kindLabel,
         countText = pluralStringResource(R.plurals.backup_group_items, group.rows.size, group.rows.size),
     )
 }
+
+/**
+ * 「备份存在哪」那几行：这一组写到哪几侧就写几行（本机一个目录、云端一个地址）。
+ * 地址还没填的云端不写——写一行空地址等于什么都没说。
+ */
+@Composable
+fun groupLocationLines(group: BackupGroup, cloudSavedUrl: String): List<String> =
+    group.origins.mapNotNull { origin ->
+        BackupLocation.full(origin, cloudSavedUrl).takeIf { it.isNotBlank() }?.let { location ->
+            stringResource(
+                if (origin == BackupOrigin.CLOUD) {
+                    R.string.backup_location_cloud
+                } else {
+                    R.string.backup_location_local
+                },
+                location,
+            )
+        }
+    }
 
 /**
  * 保留额度收起时的那一行：三个额度现在各是多少。

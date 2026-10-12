@@ -753,8 +753,9 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            OriginTagMaterial(group.origin)
-                            Text(groupSummary(group, showsOrigin = false))
+                            // 一次备份可能本机、云端各写了一份：牌子并排，颜色各自区分。
+                            group.origins.forEach { OriginTagMaterial(it) }
+                            Text(groupSummary(group))
                         }
                     },
                     trailingContent = {

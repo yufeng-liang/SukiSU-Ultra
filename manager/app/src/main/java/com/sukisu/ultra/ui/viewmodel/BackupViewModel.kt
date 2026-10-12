@@ -11,6 +11,7 @@ import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.BackupRepository
 import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
+import com.sukisu.ultra.data.backup.OriginEntry
 import com.sukisu.ultra.data.backup.RestoreOutcome
 import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.backup.WebDavPresets
@@ -27,7 +28,6 @@ import com.sukisu.ultra.ui.screen.settings.backup.BackupRowLabels
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRunState
 import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
-import com.sukisu.ultra.ui.screen.settings.backup.OriginEntry
 import com.sukisu.ultra.ui.screen.settings.backup.pruneSelection
 import com.sukisu.ultra.ui.util.BackupText
 import com.sukisu.ultra.ui.util.formatSessionTime
@@ -411,8 +411,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         var deleted = 0
         val failures = mutableListOf<String>()
         selected.forEach { group ->
-            val entries = group.rows.mapNotNull { entryOf(it) }
-            repository.delete(group.origin, entries).fold(
+            deleteRows(group.rows).fold(
                 onSuccess = { deleted++ },
                 onFailure = { error -> failures += describe(error) },
             )
@@ -509,12 +508,12 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 打包交给数据层，这里只把文件放进状态：界面拿它拼 Intent（消息通道只有一条字符串）。
      */
     fun shareSelected() = viewModelScope.launch {
-        val group = _uiState.value.openGroup ?: return@launch
+        if (_uiState.value.openGroup == null) return@launch
         val selected = _uiState.value.openGroupSelection
         if (selected.isEmpty()) return@launch
         _uiState.update { it.copy(loading = true, message = null) }
-        val entries = selected.mapNotNull { entryOf(it) }
-        val result = repository.packForShare(group.origin, entries)
+        val items = selected.mapNotNull { row -> entryOf(row)?.let { OriginEntry(row.origin, it) } }
+        val result = repository.packForShare(items)
         _uiState.update {
             it.copy(
                 loading = false,
@@ -526,12 +525,27 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun consumeShare() = _uiState.update { it.copy(pendingShare = null) }
 
+    /**
+     * 删掉这些行。
+     *
+     * 合并来源之后，同一组（乃至同一份勾选）都可能横跨本机与云端：按每一行自己的来源分组，
+     * 各删各的那一侧。一侧失败不影响另一侧，失败原因照实往上抛。
+     */
+    private suspend fun deleteRows(rows: List<BackupRow>): Result<Unit> {
+        var failure: Throwable? = null
+        rows.groupBy { it.origin }.forEach { (origin, sameSide) ->
+            val entries = sameSide.mapNotNull { entryOf(it) }
+            if (entries.isEmpty()) return@forEach
+            repository.delete(origin, entries).onFailure { if (failure == null) failure = it }
+        }
+        return failure?.let { Result.failure(it) } ?: Result.success(Unit)
+    }
+
     /** 删掉这一整组备份。删完退回列表：留在详情页看一个已经不存在的东西没有意义。 */
     fun deleteGroup() = viewModelScope.launch {
         val group = _uiState.value.openGroup ?: return@launch
-        val entries = group.rows.mapNotNull { entryOf(it) }
         _uiState.update { it.copy(loading = true, message = null) }
-        val result = repository.delete(group.origin, entries)
+        val result = deleteRows(group.rows)
         _uiState.update {
             it.copy(
                 loading = false,
@@ -765,9 +779,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private fun announceCloudContents() {
         val outcome = lastRefreshOutcome ?: return
         if (outcome.listingFailed || BackupOrigin.CLOUD !in outcome.origins) return
-        val cloudGroups = _uiState.value.groups.count { it.origin == BackupOrigin.CLOUD }
-        val cloudItems = _uiState.value.groups.filter { it.origin == BackupOrigin.CLOUD }
-            .sumOf { it.rows.size }
+        val cloudGroups = _uiState.value.groups.count { BackupOrigin.CLOUD in it.origins }
+        val cloudItems = _uiState.value.groups
+            .sumOf { group -> group.rows.count { it.origin == BackupOrigin.CLOUD } }
         if (cloudGroups == 0 || cloudItems == 0) return
         _uiState.update {
             it.copy(

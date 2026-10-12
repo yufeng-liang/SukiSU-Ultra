@@ -36,7 +36,10 @@ object BackupLabels {
      */
     fun groupKinds(group: BackupGroup): List<Int> = group.kinds.map { kind(it) }
 
-    /** 分组卡片的副标题：来源（两侧都勾上时才写）· 内容 · 项数。 */
-    fun groupSummary(originLabel: String?, kindLabel: String, countText: String): String =
-        listOfNotNull(originLabel, kindLabel, countText).joinToString(BackupListFormatter.SEPARATOR)
+    /** 分组卡片上"写到哪几侧"那一栏，同上：一次备份可能本机和云端各写了一份。 */
+    fun groupOrigins(group: BackupGroup): List<Int> = group.origins.map { origin(it) }
+
+    /** 分组卡片的副标题：内容 · 项数（写到哪几侧由来源标签写，不在这里重复）。 */
+    fun groupSummary(kindLabel: String, countText: String): String =
+        listOfNotNull(kindLabel, countText).joinToString(BackupListFormatter.SEPARATOR)
 }

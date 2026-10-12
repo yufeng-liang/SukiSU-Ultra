@@ -28,8 +28,8 @@ class BackupGroupEntriesTest {
     )
 
     private fun group(vararg ids: String) = BackupGroup(
-        id = "LOCAL/20261009_093556",
-        origin = BackupOrigin.LOCAL,
+        id = "20261009_093556",
+        origins = listOf(BackupOrigin.LOCAL),
         kinds = listOf(BackupKind.MODULE),
         session = "20261009_093556",
         label = "Oct 9",

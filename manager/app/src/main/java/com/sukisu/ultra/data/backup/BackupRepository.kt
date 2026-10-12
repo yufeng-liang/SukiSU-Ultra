@@ -28,6 +28,15 @@ object BackupDefaults {
 }
 
 /**
+ * 一条归档 + 它在哪一侧。
+ *
+ * 本地和云端各有一份索引，同一条模块在两边的文件名是一样的，所以来源必须跟着条目走——
+ * 恢复、删除、打包都按它自己的来源去读，只看文件名会动错那一侧。列表把两侧合起来列之后，
+ * 一次选择（乃至"一次备份"这一组）都可能横跨两侧。
+ */
+data class OriginEntry(val origin: BackupOrigin, val entry: BackupEntry)
+
+/**
  * UI 层的唯一入口。把内核（引擎 + 源 + 本地/云端后端）组装起来。
  *
  * 本地与云端各持一个 [BackupEngine]，共用同一份 [engineSources]：
@@ -193,29 +202,33 @@ class BackupRepository(private val context: Context = ksuApp) {
      * 只选一条就给原样的归档：它还能被"从文件导入"吃回去，导出的东西才是可用的。多条打成一个
      * zip——分享面板里 11 个附件用户没法处理。文件落在专门的 `share/` 目录里并且**不删**：
      * 接收方的应用是分享面板关掉之后才去读它的；上一次分享的文件在这一次开始时清掉。
+     *
+     * 每条自带来源：列表把两侧合起来列之后，一次选择可能横跨本机与云端，打包要按各自的来源读。
      */
-    suspend fun packForShare(origin: BackupOrigin, entries: List<BackupEntry>): Result<File> =
+    suspend fun packForShare(items: List<OriginEntry>): Result<File> =
         withContext(Dispatchers.IO) {
             runCatchingCancellable {
-                require(entries.isNotEmpty()) { "nothing selected" }
+                require(items.isNotEmpty()) { "nothing selected" }
                 val dir = File(context.cacheDir, SHARE_DIR)
                 dir.listFiles().orEmpty().forEach { it.delete() }
                 dir.mkdirs()
-                val engine = engineFor(origin)
-                val storage = storageFor(origin)
-                if (entries.size == 1) {
-                    val entry = entries.single()
-                    val target = File(dir, entry.fileName.substringAfterLast('/'))
-                    target.outputStream().use { sink -> engine.exportTo(storage, entry, sink).getOrThrow() }
+                if (items.size == 1) {
+                    val item = items.single()
+                    val target = File(dir, item.entry.fileName.substringAfterLast('/'))
+                    target.outputStream().use { sink ->
+                        engineFor(item.origin).exportTo(storageFor(item.origin), item.entry, sink).getOrThrow()
+                    }
                     return@runCatchingCancellable target
                 }
-                val target = File(dir, shareZipName(entries))
+                val target = File(dir, shareZipName(items.map { it.entry }))
                 ZipOutputStream(target.outputStream().buffered()).use { zip ->
-                    entries.forEach { entry ->
-                        zip.putNextEntry(ZipEntry(entry.fileName.substringAfterLast('/')))
+                    items.forEach { item ->
+                        zip.putNextEntry(ZipEntry(item.entry.fileName.substringAfterLast('/')))
                         // 走 engine.copyTo 而不是直接 storage.get().copyTo：这条路径以前完全不过
                         // sha256 校验（exportTo 有、这里没有），分享出去的多选包同样可能带截断内容。
-                        engine.copyTo(storage, entry, zip).getOrThrow()
+                        engineFor(item.origin)
+                            .copyTo(storageFor(item.origin), item.entry, zip)
+                            .getOrThrow()
                         zip.closeEntry()
                     }
                 }

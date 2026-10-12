@@ -676,7 +676,7 @@
     <string name="backup_kind_module">Modules</string>
     <string name="backup_kind_boot">Stock boot image</string>
     <string name="backup_kind_repo">Repo sources</string>
-    <string name="backup_kind_list_separator">, </string>
+    <string name="backup_list_separator">, </string>
     <string name="backup_repo_explain">The module repo sources you added (addresses, names and switches), restored as a whole.</string>
     <string name="backup_boot_row_title">Stock image</string>
     <string name="backup_boot_explain">Stock images from before patching; restoring one returns the device to an unrooted state until it is patched again.</string>
