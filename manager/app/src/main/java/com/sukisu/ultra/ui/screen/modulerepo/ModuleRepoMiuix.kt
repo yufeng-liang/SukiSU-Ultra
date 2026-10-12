@@ -697,8 +697,13 @@ fun ModuleRepoScreenMiuix(
         show = showDisclaimer.value,
         onDismiss = { committed ->
             showDisclaimer.value = false
-            // 只有勾了"承诺"才落盘；没勾则什么都不记，下次进入仍会弹。
-            if (committed) actions.onDisclaimerAccepted()
+            if (committed) {
+                // 勾了"承诺"才落盘；落盘后不再弹。
+                actions.onDisclaimerAccepted()
+            } else {
+                // 没勾就关闭（点外面/按返回）＝不接受：直接退回上一页，本页不再展示。
+                actions.onBack()
+            }
         },
     )
 }
