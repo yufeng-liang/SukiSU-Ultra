@@ -28,20 +28,38 @@ private val NONCE_ALPHABET = ('a'..'z') + ('0'..'9')
 private val NONCE_RANDOM = SecureRandom()
 
 /**
- * 承诺口令的前缀：`sha256(模块 id)` 的前 8 位小写十六进制。
+ * 承诺口令的前缀：`sha256("<模块 id>:<整包 sha256>")` 的前 8 位小写十六进制。
  *
- * 与 worker/src/proof.ts、public/scripts/proof.js 是同一套算法的第三份实现——
- * 三处必须同值，服务端拿它比对用户写进酷安签名的口令。
+ * 与 worker/src/proof.ts、public/scripts/proof.js 是同一套公式的第三份实现——
+ * 三处必须逐字符同值，服务端拿它比对用户写进酷安签名的口令。
+ *
+ * 为什么绑**整包**而不只绑模块 id（设计文档 §14.1）：这串口令是先公开（填进酷安签名，
+ * 游客态可读）、后被消费的，所以只绑 id 的口令能被抢投——任何人读到受害者正在用的口令，
+ * 就能用自己的恶意 zip 在同一个模块 id 下提交，五道闸全过，归档的却是受害者的身份。
+ * 前缀里乘进包体哈希后，复用这串口令就必须提交**受害者那一模一样的包**，那已经不是攻击。
+ *
+ * [zipSha] 必须是提交时作为 multipart `sha256` 发出去的那一个值（[ModuleProp.zipSha256] 算的
+ * 整包摘要）：界面上显示的哈希与实际提交的不同，等于又造出一个新的 bug。
+ *
+ * `Charsets.UTF_8` 是显式写死的，不能省：省略就是隐式平台默认字符集，中文模块 id 在
+ * 设备上（Android 恒为 UTF-8）没事、换一台默认字符集不是 UTF-8 的 JVM 上就悄悄算出另一串，
+ * 而这条链上三处实现只有这一处可能这样漂。
  */
-fun proofPrefixForId(id: String): String =
-    id.toByteArray().sha256Hex().take(8)
+fun proofPrefixFor(id: String, zipSha: String): String =
+    "$id:$zipSha".toByteArray(Charsets.UTF_8).sha256Hex().take(8)
 
 /** 一次性随机段：6 位小写字母数字。只存这一段，口令前缀现算，杜绝与模块 id 脱钩。 */
 fun makeNonce(): String =
     (1..6).map { NONCE_ALPHABET[NONCE_RANDOM.nextInt(NONCE_ALPHABET.size)] }.joinToString("")
 
-/** 承诺文本版本。必须与 Worker 的 `PLEDGE_VERSIONS` 完全一致。 */
-private const val PLEDGE_VERSION = "pledge-v1"
+/**
+ * 承诺文本版本。必须与 Worker 的 `PLEDGE_VERSIONS` 完全一致。
+ *
+ * 从 private 改成 internal 只为了 [com.sukisu.ultra.ui.component.ModuleContributionRulesTest]
+ * 能钉住这个字面量（它与 proofText 的形状此前没有任何测试）；internal 不出模块，
+ * 不构成对外的公开 API。
+ */
+internal const val PLEDGE_VERSION = "pledge-v1"
 
 /**
  * 模块索引是否已收录这一版。
@@ -321,9 +339,23 @@ object ModuleContribution {
         }
     }
 
+    /**
+     * 投稿结果的解析。
+     *
+     * 非 2xx 也**必须**把 body 里的 `error` 带出来：服务端所有拒绝都写在那儿，而且是 4xx 回的
+     * （`rejectOwnership` → `{ok:false, error}` + 403、缺 pledge/nonce 形状不对 → 400）。
+     * 只回一句"服务端返回 HTTP 403"的话，用户看到的是没有原因的失败，而
+     * [com.sukisu.ultra.ui.component.ModuleContributionRules.proofWasAlreadyUsed]
+     * 那条"只有口令已用过才重掷 nonce"的判定也永远拿不到依据——它会退化成"从不重掷"。
+     * HTTP 码一起留在消息里：body 不是 JSON、或压根没有 error 时，那句话就是用户仅有的信息。
+     */
     private fun readSubmitResult(response: Response): SubmitResult {
         if (!response.isSuccessful) {
-            return SubmitResult(false, null, "投稿失败（服务端返回 HTTP ${response.code}）")
+            val withCode = "（服务端返回 HTTP ${response.code}）"
+            val reason = runCatching { response.body.string() }.getOrNull()
+                ?.let { text -> runCatching { JSONObject(text).optString("error") }.getOrNull() }
+                ?.takeIf { it.isNotBlank() }
+            return SubmitResult(false, null, reason?.let { "$it$withCode" } ?: "投稿失败$withCode")
         }
         val body = runCatching { response.body.string() }.getOrNull()
             ?: return SubmitResult(false, null, "投稿失败（读不到服务端响应）")

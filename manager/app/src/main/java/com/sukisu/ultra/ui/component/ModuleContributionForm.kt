@@ -5,7 +5,7 @@ import com.sukisu.ultra.ui.util.CoolapkUidLookup
 import com.sukisu.ultra.ui.util.ModulePropInfo
 import com.sukisu.ultra.ui.util.SubmitResult
 import com.sukisu.ultra.ui.util.makeNonce
-import com.sukisu.ultra.ui.util.proofPrefixForId
+import com.sukisu.ultra.ui.util.proofPrefixFor
 
 /**
  * 投稿对话框背后那点纯逻辑。
@@ -44,6 +44,37 @@ object ModuleContributionRules {
      * 但用户自己点开投稿按钮时要如实告诉他"这一版是不是已收录，我们没查出来"。
      */
     fun showUnknownHint(status: CheckStatus?): Boolean = status == CheckStatus.UNKNOWN
+
+    /**
+     * 口令行要不要显示。
+     *
+     * 口令绑的是「模块 id + 整包 sha256」，两个输入缺任何一个都拼不出**这次投稿真正要用的**那一串。
+     * 整包哈希是在后台线程算完才落进表单的（zip 可达 8MB，主线程读一遍就是掉帧），
+     * 所以中间会有一个短暂窗口它还不存在——那时宁可没有口令行，也不能显示一串
+     * 等会儿一定会变的口令：用户复制走、填进酷安签名的就是一串废口令。
+     *
+     * 判据写在这里而不是两套界面各写一遍：两套渲染器迟早会在其中一套里跑偏。
+     */
+    fun showProofRow(id: String?, zipSha: String): Boolean =
+        !id.isNullOrBlank() && zipSha.isNotBlank()
+
+    /**
+     * 服务端的失败原因是不是「这枚口令已经用过了」。
+     *
+     * 只有这一种失败值得重掷 nonce（见 [ModuleContributionDialogState.submit]）：那串口令确实作废了。
+     * 判据取自 Worker used-nonce 分支的中文回话（contrib/worker/src/index.ts：
+     * 「这个口令已经用过，请重新生成后再提交」，随 403 的 body.error 送回来），
+     * 刻意只认这一句的形状：
+     * - 「签名里没有本次口令」不能换——用户要的是去把**当前这串**填进签名；
+     * - 「口令记录读不出来」「超时」「网络不可用」是平台故障，换了等于把用户已经在
+     *   签名里的那串作废，他改完签名再点重试就永远对不上。
+     *
+     * 与网页端 app.js 的行为同一条（设计文档 §14.3：只有真拿到"可能已提交成功"的信号才换一串）。
+     * 认不出的一律当作"不换"：漏重掷只是让用户再点一次重试，错重掷会把用户填进签名的那串作废。
+     */
+    fun proofWasAlreadyUsed(message: String): Boolean = PROOF_USED_MARKERS.any(message::contains)
+
+    private val PROOF_USED_MARKERS = listOf("口令已经用过", "口令已用过")
 }
 
 /**
@@ -113,6 +144,10 @@ fun CoolapkUidLookup.toState(): CoolapkUidState = when (this) {
  *
  * 投稿人身份是 [uid] + [uidState] 两个字段，不再是自由填写的署名：昵称由酷安反查得到
  * （见 [CoolapkUidState.Verified]），用户能控制的只有 UID 那一串数字。
+ *
+ * [zipSha256] 是待投稿 zip 的整包 SHA-256（小写十六进制，与提交时作为 multipart `sha256`
+ * 发出去的那一个同源同值），口令前缀绑它；空串表示"还没算出来"，此时口令行不显示
+ * （见 [ModuleContributionRules.showProofRow]）。
  */
 data class ContributionForm(
     val meta: ModulePropInfo? = null,
@@ -122,6 +157,7 @@ data class ContributionForm(
     val consentChecked: Boolean = false,
     val submitState: ContributionSubmitState = ContributionSubmitState.Idle,
     val nonce: String = makeNonce(),
+    val zipSha256: String = "",
 ) {
 
     /** 核实出来的昵称；没核实通过时为空串（此时也不允许提交）。 */
@@ -129,12 +165,15 @@ data class ContributionForm(
         get() = (uidState as? CoolapkUidState.Verified)?.nickname.orEmpty()
 
     /**
-     * 所有权口令文本 = `<sha256(模块 id) 前 8 位>-<nonce>`。
+     * 所有权口令文本 = `<sha256("<id>:<整包 sha256>") 前 8 位>-<nonce>`（设计文档 §14.1）。
      *
-     * 只存随机部分（[nonce]），前缀每次由当前模块 id 现算——id 一变口令跟着变，
-     * 与 [com.sukisu.ultra.ui.util.proofPrefixForId] 及 Worker 侧同值。
+     * 只存随机部分（[nonce]），前缀每次由「当前模块 id + 当前整包哈希」现算——
+     * 换 id 或换包都跟着变，与 [com.sukisu.ultra.ui.util.proofPrefixFor] 及 Worker 侧同值。
+     *
+     * [zipSha] 由调用方给（两套渲染器都传 [zipSha256]），而不是在这里读 [zipSha256]：
+     * 口令的两个输入必须摆在同一个调用点上，界面才知道"这串到底绑的是哪个包"。
      */
-    fun proofText(id: String): String = proofPrefixForId(id) + "-" + nonce
+    fun proofText(id: String, zipSha: String): String = proofPrefixFor(id, zipSha) + "-" + nonce
 
     /**
      * 出处填了、且酷安 UID 核实通过。
@@ -198,4 +237,5 @@ data class ContributionForm(
  * 因此只能在对话框打开（= 新的一次尝试）时用它；会话中途拿来做预填会悄悄旋转口令，
  * 而酷安签名里留下的还是旧的那串，服务端只会回「没在签名里找到口令」。
  */
-fun contributionFormOf(meta: ModulePropInfo?): ContributionForm = ContributionForm(meta = meta)
+fun contributionFormOf(meta: ModulePropInfo?, zipSha256: String = ""): ContributionForm =
+    ContributionForm(meta = meta, zipSha256 = zipSha256)

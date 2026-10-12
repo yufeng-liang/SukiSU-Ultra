@@ -47,6 +47,7 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.ContributionForm
 import com.sukisu.ultra.ui.component.ContributionSubmitState
 import com.sukisu.ultra.ui.component.CoolapkUidState
+import com.sukisu.ultra.ui.component.ModuleContributionRules
 import com.sukisu.ultra.ui.util.ModulePropInfo
 
 /**
@@ -146,8 +147,9 @@ fun ModuleContributionDialogMaterial(
 
                     UidStatusRow(form = form, onRetry = onRetryLookup)
 
-                    // 所有权口令：只在读得出模块 id 时显示——口令绑 id，id 变了口令跟着变。
-                    meta?.let { ProofRow(form = form, id = it.id) }
+                    // 所有权口令：绑「模块 id + 整包 sha256」——换 id 或换包都换一串。
+                    // 整包哈希还在后台算的时候这一行不出现（判据在 ModuleContributionRules.showProofRow）。
+                    meta?.let { ProofRow(form = form, id = it.id, zipSha = form.zipSha256) }
 
                     // 确认说明：勾选项排在提交按钮正上方，不划过它就点不到提交
                     Row(
@@ -312,15 +314,20 @@ private fun UidStatusRow(form: ContributionForm, onRetry: () -> Unit) {
 }
 
 /**
- * 所有权口令行：展示 `<sha256(模块 id) 前 8 位>-<nonce>`，一键复制去填酷安签名。
+ * 所有权口令行：展示 `<sha256("<id>:<整包 sha256>") 前 8 位>-<nonce>`，一键复制去填酷安签名。
  *
- * 口令现算自 [ContributionForm.proofText]、与 [id] 绑死——换模块 id 它跟着变，
- * 服务端据此确认这个酷安账号归投稿人本人。只在读得出模块 id 时由调用方显示。
+ * 口令现算自 [ContributionForm.proofText]、绑死 [id] 与 [zipSha]——换模块 id 或换包都跟着变，
+ * 服务端据此确认这个酷安账号归**这次投稿的这个人**。[zipSha] 必须是提交时发出去的那个
+ * 整包 sha256（[ContributionForm.zipSha256]），显示另一个哈希就是在给用户提供一串废口令。
+ *
+ * 两个输入不齐时整行不显示（[ModuleContributionRules.showProofRow]）：包体哈希在后台算，
+ * 没算出来就没有可显示的口令——宁可这一行不在，也不能先给一串随后会变的。
  */
 @Composable
-private fun ProofRow(form: ContributionForm, id: String) {
+private fun ProofRow(form: ContributionForm, id: String, zipSha: String) {
+    if (!ModuleContributionRules.showProofRow(id, zipSha)) return
     val clipboard = LocalClipboardManager.current
-    val proof = form.proofText(id)
+    val proof = form.proofText(id, zipSha)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),

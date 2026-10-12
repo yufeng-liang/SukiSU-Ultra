@@ -11,12 +11,16 @@ import com.sukisu.ultra.ui.component.material.ModuleContributionDialogMaterial
 import com.sukisu.ultra.ui.component.miuix.ModuleContributionDialogMiuix
 import com.sukisu.ultra.ui.util.CoolapkUidLookup
 import com.sukisu.ultra.ui.util.ModuleContribution
+import com.sukisu.ultra.ui.util.ModuleProp
 import com.sukisu.ultra.ui.util.ModulePropInfo
 import com.sukisu.ultra.ui.util.SubmitResult
+import com.sukisu.ultra.ui.util.makeNonce
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -53,6 +57,12 @@ class ModuleContributionDialogState internal constructor(
      *
      * [meta] 由 [com.sukisu.ultra.ui.util.ModuleProp.parseModuleProp] 从 [zip] 读出来，
      * 用于预填展示信息；读不出来（null）也可以开，但提交会在网络层被挡住并给出原因。
+     *
+     * 整包 sha256 在这之后**异步**补进表单：口令前缀绑它（设计文档 §14.1），而 zip 最大 8MB，
+     * 在 [scope]（主线程）上同步读一遍就是掉帧。算出来之前口令行不显示
+     * （[ModuleContributionRules.showProofRow]），所以不存在"显示了一串随后会变"的窗口。
+     * 提交时网络层算的是同一个文件的同一个哈希（[com.sukisu.ultra.ui.util.ModuleContribution.submitModule]
+     * 里的 `ModuleProp.zipSha256(zip)`），展示的与提交的那个 `sha256` 字段因此同源。
      */
     fun open(zip: File, meta: ModulePropInfo?) {
         currentMeta = meta
@@ -62,6 +72,14 @@ class ModuleContributionDialogState internal constructor(
         lookupJob?.cancel()
         form = ContributionForm(meta = meta)
         file = zip
+        val openedZip = zip
+        scope.launch {
+            // 读盘在 IO，写状态回到 scope（主线程）：snapshot 状态从后台线程写是 race 的来源。
+            val zipSha = withContext(Dispatchers.IO) { ModuleProp.zipSha256(openedZip) }
+            // 算完时对话框可能已经关掉、或换成了另一个包：只把哈希写回它属于的那一次。
+            if (zipSha == null || file !== openedZip) return@launch
+            form = form.copy(zipSha256 = zipSha)
+        }
     }
 
     fun close() {
@@ -141,7 +159,7 @@ class ModuleContributionDialogState internal constructor(
             val result = runCatching {
                 // 署名用核实出来的昵称，不用输入框里的原文：那是酷安反查的结果，
                 // 也是服务端唯一能证明"昵称属于这个 UID"的来源。
-                // nonce 一并传下去：与模块 id 拼成所有权口令，服务端拿它比对酷安签名。
+                // nonce 一并传下去：与「模块 id + 整包 sha256」拼成所有权口令，服务端拿它比对酷安签名。
                 submit(zip, currentMeta, snapshot.source, snapshot.uid, snapshot.nickname, snapshot.nonce)
             }.getOrElse { error ->
                 SubmitResult(false, null, error.message?.takeIf { it.isNotBlank() } ?: "投稿失败")
@@ -151,6 +169,16 @@ class ModuleContributionDialogState internal constructor(
                     ContributionSubmitState.Success(result.message, result.prUrl)
                 } else {
                     ContributionSubmitState.Failed(result.message)
+                },
+                // 只有服务端明确说「这枚口令已经用过」才重掷 nonce——那一串真的作废了。
+                // 其余失败（超时、签名里没这串口令、KV 读不出记录）必须保持同一串：
+                // 用户是照**当前显示的口令**去改签名的，随手换一串就等于让他的签名永远追不上口令，
+                // 而换出来的新串他还没填进公开字段，这一次投稿直接死循环。判定见
+                // [ModuleContributionRules.proofWasAlreadyUsed]，与网页端 app.js 同一条规则。
+                nonce = if (!result.ok && ModuleContributionRules.proofWasAlreadyUsed(result.message)) {
+                    makeNonce()
+                } else {
+                    snapshot.nonce
                 },
             )
         }

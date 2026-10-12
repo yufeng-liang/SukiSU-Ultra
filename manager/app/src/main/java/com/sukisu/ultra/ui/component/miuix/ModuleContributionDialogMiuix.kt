@@ -30,6 +30,7 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.ContributionForm
 import com.sukisu.ultra.ui.component.ContributionSubmitState
 import com.sukisu.ultra.ui.component.CoolapkUidState
+import com.sukisu.ultra.ui.component.ModuleContributionRules
 import com.sukisu.ultra.ui.util.ModulePropInfo
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -121,8 +122,9 @@ fun ModuleContributionDialogMiuix(
 
                 UidStatusRow(form = form, onRetry = onRetryLookup)
 
-                // 所有权口令：只在读得出模块 id 时显示——口令绑 id，id 变了口令跟着变。
-                form.meta?.let { meta -> ProofRow(form = form, id = meta.id) }
+                // 所有权口令：绑「模块 id + 整包 sha256」——换 id 或换包都换一串。
+                // 整包哈希还在后台算的时候这一行不出现（判据在 ModuleContributionRules.showProofRow）。
+                form.meta?.let { meta -> ProofRow(form = form, id = meta.id, zipSha = form.zipSha256) }
 
                 // 确认说明：不勾就提交不了，且它永远在提交按钮上方
                 Row(
@@ -298,16 +300,18 @@ private fun UidStatusRow(form: ContributionForm, onRetry: () -> Unit) {
 }
 
 /**
- * 所有权口令行：展示 `<sha256(模块 id) 前 8 位>-<nonce>`，一键复制去填酷安签名。
+ * 所有权口令行：展示 `<sha256("<id>:<整包 sha256>") 前 8 位>-<nonce>`，一键复制去填酷安签名。
  *
- * 与 Material 那套同一条内容、同一套判据（只在读得出模块 id 时显示）：口令现算自
- * [ContributionForm.proofText]、绑死 [id]，换 id 跟着变。两套渲染器都要有它，
- * 只改一套等于另一套主题上这条所有权链断了。
+ * 与 Material 那套同一条内容、同一套判据（[ModuleContributionRules.showProofRow]：模块 id 与
+ * 整包 sha256 都齐了才显示）：口令现算自 [ContributionForm.proofText]、绑死 [id] 与 [zipSha]，
+ * 换 id 或换包都跟着变。[zipSha] 必须就是提交时发出去的那个整包哈希，显示另一个等于喂给用户
+ * 一串服务端认不出的口令。两套渲染器都要有它，只改一套等于另一套主题上这条所有权链断了。
  */
 @Composable
-private fun ProofRow(form: ContributionForm, id: String) {
+private fun ProofRow(form: ContributionForm, id: String, zipSha: String) {
+    if (!ModuleContributionRules.showProofRow(id, zipSha)) return
     val clipboard = LocalClipboardManager.current
-    val proof = form.proofText(id)
+    val proof = form.proofText(id, zipSha)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),

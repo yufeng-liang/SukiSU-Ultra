@@ -2,10 +2,12 @@ package com.sukisu.ultra.ui.component
 
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ModulePropInfo
+import com.sukisu.ultra.ui.util.PLEDGE_VERSION
 import com.sukisu.ultra.ui.util.makeNonce
-import com.sukisu.ultra.ui.util.proofPrefixForId
+import com.sukisu.ultra.ui.util.proofPrefixFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -278,17 +280,66 @@ class ModuleContributionRulesTest {
 
     // ── 所有权口令：这套算法第三份实现的钉子 ────────────────────────────────
     //
-    // proofPrefixForId / makeNonce 与 contrib/worker/src/proof.ts、
-    // modules-web/public/scripts/proof.js 是同一算法的三份实现，而跨仓库一致性自检是 JS 的，
+    // proofPrefixFor / makeNonce 与 contrib/worker/src/proof.ts、
+    // modules-web/public/scripts/proof.js 是同一公式的三份实现，而跨仓库一致性自检是 JS 的，
     // 结构上够不到 Kotlin —— 这一份今天没人管，漂了要到 App 投稿整批 403 才看得见。
-    // 下面几个十六进制值是用 node:crypto 对着 id 的 UTF-8 字节**独立**算出来的，
-    // 换成从 Kotlin 实现反推就等于自我证明，这条测试也就不再是钉子了。
-    // 它们同时证明 Kotlin 的 `id.toByteArray()` 和 `new TextEncoder().encode(id)` 得到同一串字节。
+    // 下面每个十六进制值都是先用 node:crypto 算、再用 coreutils sha256sum 复算一遍的，
+    // 从 `"<id>:<整包 sha256>"` 的 UTF-8 字节得来；换成从 Kotlin 实现反推就等于自我证明，
+    // 这条测试也就不再是钉子了。它们同时证明 Kotlin 的
+    // `"$id:$zipSha".toByteArray(Charsets.UTF_8)` 和 JS 的 `new TextEncoder().encode(...)`
+    // 得到同一串字节。
+    //
+    // 公式（设计文档 §14.1）：proofPrefix = sha256(id + ":" + 整包sha256) 的前 8 位，
+    // 口令 = `<前缀>-<nonce>`。绑包体是为了封死抢投：签名是公开可读的，只绑 id 的口令
+    // 能被别人读去配他自己的恶意包；乘进包体哈希后，复用口令就必须提交受害者那一份字节。
 
     @Test
-    fun `the proof prefix matches the hashes computed outside this repo`() {
-        assertEquals("979315af", proofPrefixForId("test_module"))
-        assertEquals("2a97516c", proofPrefixForId("demo"))
+    fun `proofPrefix 绑包体：黄金值来自 node-crypto`() {
+        val zipA = "e37287b0ddbda7edb55845acc6de4244cd82e14df5824bdd71007a452a7cbaab"
+        assertEquals("4f91ceb8", proofPrefixFor("demo", zipA))
+        val zipB = "2898d907fba3a01bbe9e078e73fb9c20c33a69fc322d062c61e826f2798e3621"
+        assertEquals("e66e7d33", proofPrefixFor("sukisu_proof_vector_1", zipB))
+        assertEquals(
+            "002be46d",
+            proofPrefixFor("含中文的模块id", "4c0811ae6205a89d3a741861d8883c9c58687f1a268f7cffd028e37c5ca202e4"),
+        )
+    }
+
+    @Test
+    fun `proofText 形状与分隔符`() {
+        val t = ContributionForm(nonce = "ab12cd").proofText("x", "0".repeat(64))
+        assertEquals("cbaaf85b-ab12cd", t)   // 换分隔符 / 换顺序都会在这里红
+        // 前缀与 nonce 之间只能有这一个 `-`：整串 15 字符，酷安签名上限实测 60，
+        // 形状漂了服务端 bioCarriesProof 的包含判断就再也命中不了。
+        assertEquals(15, t.length)
+        assertTrue(Regex("^[0-9a-f]{8}-[a-z0-9]{6}$").matches(t))
+        // 计划文档（contrib/docs/plans/2026-10-12-proof-binds-package-and-ci-recheck.md）的
+        // 黄金值表第 4 行是 `x` + 0×64 → cbaaf85b，Task 8 的断言用的也是 'x'；
+        // 这条 proofText 钉子因此沿用 ("x", 0×64) 这一对。demo + 0×64 的真值另钉在下面，
+        // 两个都是外部独立算出的（node:crypto 与 coreutils sha256sum 各一遍），不是从实现反推。
+        assertEquals(
+            "4fd67254-ab12cd",
+            ContributionForm(nonce = "ab12cd").proofText("demo", "0".repeat(64)),
+        )
+    }
+
+    @Test
+    fun `承诺版本与 Worker 同值`() {
+        // 归档里的 pledge.version 就是这句话：版本号漂了，pending JSON 里那句"他接受过承诺"就开始说谎。
+        assertEquals("pledge-v1", PLEDGE_VERSION)
+    }
+
+    @Test
+    fun `换包必换前缀，同一个包的前缀稳定`() {
+        val id = "demo"
+        val zipA = "e37287b0ddbda7edb55845acc6de4244cd82e14df5824bdd71007a452a7cbaab"
+        val zipB = "2898d907fba3a01bbe9e078e73fb9c20c33a69fc322d062c61e826f2798e3621"
+        // 这条就是这次改动要买的东西：同一个模块 id 换个包，口令前缀必换 ——
+        // 抢投者拿着受害者签名里的口令去提交自己的包，前缀对不上。
+        assertNotEquals(proofPrefixFor(id, zipA), proofPrefixFor(id, zipB))
+        assertEquals(proofPrefixFor(id, zipA), proofPrefixFor(id, zipA))
+        // 顺序也是公式的一部分：id 在前、包体哈希在后，反过来就是另一串（Worker 同一条形状）。
+        assertNotEquals(proofPrefixFor(id, zipA), proofPrefixFor(zipA, id))
     }
 
     @Test
@@ -306,12 +357,56 @@ class ModuleContributionRulesTest {
 
     @Test
     fun `a non ascii module id still yields a stable eight hex prefix`() {
-        // 仓库里真有中文 id 的模块：非 ASCII 也得正常出前缀，且同一个 id 每次出同一串。
+        // 仓库里真有中文 id 的模块：非 ASCII 也得正常出前缀，且同一个输入每次出同一串。
         val id = "系统状态监控"
-        val prefix = proofPrefixForId(id)
+        val zipSha = "0".repeat(64)
+        val prefix = proofPrefixFor(id, zipSha)
         assertTrue(prefix, Regex("^[0-9a-f]{8}$").matches(prefix))
-        assertEquals(prefix, proofPrefixForId(id))
-        // 外部独立算出的黄金值。只有非 ASCII 才验得出两边编码是不是同一套（ASCII 下 UTF-8 与Latin-1 同字节）。
-        assertEquals("67e75643", prefix)
+        assertEquals(prefix, proofPrefixFor(id, zipSha))
+        // 外部独立算出的黄金值。只有非 ASCII 才验得出两边编码是不是同一套（ASCII 下 UTF-8 与 Latin-1 同字节），
+        // 也只有它验得出 Kotlin 侧没退化成隐式的平台默认字符集。
+        assertEquals("a1bc4d18", prefix)
+    }
+
+    // ── 口令行的显示判据 ────────────────────────────────────────────────────
+
+    @Test
+    fun `the proof row waits for both the id and the package hash`() {
+        val sha = "0".repeat(64)
+        // 整包哈希是口令前缀的一半输入：没算出来（空串）就没有可显示的口令。
+        // 这时候宁可这一行不在，也不能先给一串随后会变的——用户复制走、填进签名的就是废串。
+        assertFalse(ModuleContributionRules.showProofRow("test_module", ""))
+        assertFalse(ModuleContributionRules.showProofRow(null, sha))
+        assertFalse(ModuleContributionRules.showProofRow("", sha))
+        assertFalse(ModuleContributionRules.showProofRow("   ", sha))
+        assertTrue(ModuleContributionRules.showProofRow("test_module", sha))
+    }
+
+    @Test
+    fun `only the used-passphrase failure rolls a new nonce`() {
+        // 重掷口令的唯一条件：服务端明确说这串用过了（Worker 的 used-nonce 分支）。
+        assertTrue(
+            ModuleContributionRules.proofWasAlreadyUsed("这个口令已经用过，请重新生成后再提交"),
+        )
+        // 端到端的形状：网络层把原因和 HTTP 码拼成一句（ModuleContribution.readSubmitResult），
+        // 判定读的就是这一句 —— 少了这条，"原因被 HTTP 码盖掉"那种回归只会红在网络层测试里，
+        // 而这里这条重掷规则会静默地永不触发。
+        assertTrue(
+            ModuleContributionRules.proofWasAlreadyUsed(
+                "这个口令已经用过，请重新生成后再提交（服务端返回 HTTP 403）",
+            ),
+        )
+        // 其余失败必须保持同一串：用户是照当前显示的口令去改签名的，
+        // 随手换一串会让他的签名永远追不上口令，而换出来的新串他压根还没填进公开字段。
+        assertFalse(
+            ModuleContributionRules.proofWasAlreadyUsed(
+                "这个 UID 的酷安个性签名里没有本次口令（4f91ceb8-abc123）—— 请到「编辑资料 → 签名」填入后重新提交",
+            ),
+        )
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("酷安核实没通过（口令记录读不出来），本次未提交 —— 请稍后重试"))
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("投稿超时（8 秒），请稍后再试"))
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("网络不可用，投稿未完成"))
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed("读不出模块信息（module.prop 缺失或 id/name 为空）"))
+        assertFalse(ModuleContributionRules.proofWasAlreadyUsed(""))
     }
 }

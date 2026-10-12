@@ -103,7 +103,26 @@ class ModuleContributionTest {
         assertFalse(result.ok)
         assertNull(result.prUrl)
         // 400 时 body 里的原因不该被丢掉——那是唯一能告诉用户"哪里不合格"的信息。
-        assertTrue(result.message.contains("400"))
+        assertTrue(result.message, result.message.contains("缺少 module.prop"))
+        // HTTP 码一起留着：body 不是 JSON 或没有 error 时，它是用户仅有的一句。
+        assertTrue(result.message, result.message.contains("400"))
+    }
+
+    @Test
+    fun `a 403 ownership rejection keeps the reason that the nonce rotation reads`() {
+        // 服务端把"口令已经用过"回在 403 的 body.error 里（worker/src/index.ts 的 rejectOwnership）。
+        // 这句话是 App 侧唯一的重掷 nonce 依据：丢了它，那条判定就退化成"从不重掷"，
+        // 而用户只会看到一句没有原因的"服务端返回 HTTP 403"。
+        val result = submitOf(
+            403,
+            """{"ok":false,"error":"这个口令已经用过，请重新生成后再提交"}""",
+        )
+        assertFalse(result.ok)
+        assertTrue(result.message, result.message.contains("口令已经用过"))
+        assertTrue(result.message, result.message.contains("403"))
+        // 同一个 403 的另一种原因（等级不够）不该被混成一句话：两种失败用户要做的事相反。
+        val level = submitOf(403, """{"ok":false,"error":"投稿需要酷安等级 Lv2 及以上"}""")
+        assertTrue(level.message, level.message.contains("Lv2"))
     }
 
     @Test
