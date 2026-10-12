@@ -47,7 +47,8 @@
     <string name="module_repo_source_unreachable">该地址未找到有效的模块仓库</string>
     <string name="module_repo_source_bad_url">地址无效</string>
     <string name="module_repo_disclaimer_title">关于模块仓库源</string>
-    <string name="module_repo_disclaimer_body">本页的模块来自第三方模块仓库，均未经过安全审核。\n\nKernelSU 内置的模块源就是这个官方源（modules.kernelsu.org），本应用默认使用它。官方源对每个模块的首次提交会做一次规则审核，但没有代码审计，也没有恶意软件扫描——审核看的是垃圾内容、滥用、id 抢注这类规则，而不是模块在你设备上做了什么；后续更新自动发布、不再审核，也不验证签名与开发者身份。可一键添加的候选仓库源同样没有经过任何审核。\n\n模块以 Root 权限运行，能读写系统分区、你的应用数据与网络请求。恶意模块、或被入侵的开发者账号发布的模块，可能导致设备无法开机（格机）、数据丢失、账号或钱财被盗刷、隐私泄露等后果，且往往难以恢复。\n\n提供自定义仓库源与内置候选源，只是为了让你更方便地找到模块，并不代表我们推荐、背书或担保其中任何内容。是否安装某个模块、以及由此带来的一切风险与后果，都需要你自己判断并承担。请只从你信任的来源安装模块。</string>
+    <string name="module_repo_disclaimer_body">本页的模块来自第三方模块仓库，**均未经过安全审核**。\n\nKernelSU 内置的模块源就是这个官方源（modules.kernelsu.org），本应用默认使用它。官方源对每个模块的首次提交会做一次规则审核，但**没有代码审计，也没有恶意软件扫描**——审核看的是垃圾内容、滥用、id 抢注这类规则，而不是模块在你设备上做了什么；后续更新**自动发布、不再审核**，也不验证签名与开发者身份。可一键添加的候选仓库源**同样没有经过任何审核**。\n\n模块以 Root 权限运行，能读写系统分区、你的应用数据与网络请求。恶意模块、或被入侵的开发者账号发布的模块，可能导致**设备无法开机（格机）、数据丢失、账号或钱财被盗刷、隐私泄露**等后果，且往往难以恢复。\n\n提供自定义仓库源与内置候选源，只是为了让你更方便地找到模块，并不代表我们推荐、背书或担保其中任何内容。是否安装某个模块、以及由此带来的一切风险与后果，都**需要你自己判断并承担**。请只从你信任的来源安装模块。</string>
+    <string name="module_repo_disclaimer_scroll_hint">滑到底部读完后才能勾选</string>
     <string name="module_repo_disclaimer_commitment">我已阅读并承诺自行承担上述风险</string>
     <string name="module_repo_disclaimer_confirm">我已知晓</string>
     <string name="module_repo_source_delete_confirm">确定移除此源？</string>

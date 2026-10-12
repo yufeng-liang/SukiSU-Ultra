@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,12 +34,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 /**
  * 进入模块仓库页时的免责说明（Miuix 风格）。
  *
- * 与 Material 那套同一条内容、同一套判据，只换控件：正文与勾选框都放进 [OverlayDialog] 的
- * 滚动内容区，[OverlayDialog] 的 title 只放标题。
+ * 与 Material 那套同一条内容、同一套判据，只换控件：正文、提示、勾选框与按钮都在
+ * [OverlayDialog] 的滚动内容区里，[OverlayDialog] 的 title 只放标题。
+ *
+ * 两道闸，缺一不可：
+ * ① **读完才能勾**：滚到底（`!canScrollForward`）之前勾选框禁用——不读完就勾等于没读。
+ * ② **勾了才能点**：「我已知晓」在勾选框为空时禁用，所以对话框里没有"随手点掉"的路径；
+ *    要么读完并承诺，要么点外面/按返回关掉（按未勾选处理，下次进来还会弹）。
  *
  * 底部是一个"承诺"勾选框而不是"不再提示"：用户勾它是一次主动表态（已读并自负风险），
- * 副作用才是"以后不再弹"。[onDismiss] 的参数就是这个勾选的值，所有关闭路径都带上它
- * （点确定、点外面、按返回）：勾选框表达的是用户的意愿，不该因为他用哪种方式关掉而作废。
+ * 副作用才是"以后不再弹"。[onDismiss] 的参数就是这个勾选的值，所有关闭路径都带上它。
  */
 @Composable
 fun RepoDisclaimerDialogMiuix(
@@ -46,6 +53,10 @@ fun RepoDisclaimerDialogMiuix(
     // 以 show 为 key：每次重新弹出都从"未勾选"开始。OverlayDialog 在 show=false 时内容仍在
     // 组合里，不带 key 的话上一次的勾选会留到下一次。
     var committed by remember(show) { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+    // 到底了才算读完；正文短到不需要滚动时 canScrollForward 一开始就是 false，视为已读完。
+    val readToEnd by remember { derivedStateOf { !scrollState.canScrollForward } }
+    val emphasis = SpanStyle(color = colorScheme.error, fontWeight = FontWeight.Bold)
     OverlayDialog(
         show = show,
         title = stringResource(R.string.module_repo_disclaimer_title),
@@ -57,14 +68,23 @@ fun RepoDisclaimerDialogMiuix(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 460.dp)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.module_repo_disclaimer_body),
+                    text = annotateDisclaimer(
+                        stringResource(R.string.module_repo_disclaimer_body),
+                        emphasis,
+                    ),
                     fontSize = 14.sp,
                     color = colorScheme.onSurfaceVariantSummary,
+                )
+                // 这一行一直占位（读完时留空）：否则它消失的瞬间下面整块会往上跳一下。
+                Text(
+                    text = if (readToEnd) "" else stringResource(R.string.module_repo_disclaimer_scroll_hint),
+                    fontSize = 12.sp,
+                    color = colorScheme.primary,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -72,17 +92,20 @@ fun RepoDisclaimerDialogMiuix(
                 ) {
                     Checkbox(
                         state = if (committed) ToggleableState.On else ToggleableState.Off,
-                        onClick = { committed = !committed },
+                        onClick = { if (readToEnd) committed = !committed },
+                        enabled = readToEnd,
                     )
                     Text(
                         modifier = Modifier.padding(start = 8.dp),
                         text = stringResource(R.string.module_repo_disclaimer_commitment),
                         fontSize = 14.sp,
+                        color = if (readToEnd) colorScheme.onSurface else colorScheme.onSurfaceVariantSummary,
                     )
                 }
                 TextButton(
                     text = stringResource(R.string.module_repo_disclaimer_confirm),
                     onClick = { onDismiss(committed) },
+                    enabled = committed,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.textButtonColorsPrimary(),
                 )
