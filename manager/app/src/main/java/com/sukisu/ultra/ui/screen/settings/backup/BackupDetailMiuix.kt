@@ -119,8 +119,7 @@ fun BackupDetailMiuix(
                         Text(
                             // 这一组存在哪：恢复/删除之前该知道动的是哪些地方的文件。
                             // 本机和云端都写过就是两行（两处地址各不相同）。
-                            text = (listOf(groupSummary(group)) + groupLocationLines(group, state.cloudSavedUrl))
-                                .joinToString(BackupListFormatter.SEPARATOR),
+                            text = groupHeaderText(group, state.cloudSavedUrl),
                             fontSize = 13.sp,
                             color = colorScheme.onSurfaceVariantSummary,
                             modifier = Modifier.padding(top = 4.dp),

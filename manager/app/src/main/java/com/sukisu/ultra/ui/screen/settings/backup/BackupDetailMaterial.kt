@@ -78,9 +78,7 @@ fun BackupDetailMaterial(
                             supportingContent = {
                                 // 这一组存在哪：恢复/删除之前该知道动的是哪些地方的文件。
                                 // 本机和云端都写过就是两行（两处地址各不相同）。
-                                val lines = listOf(groupSummary(group)) +
-                                    groupLocationLines(group, state.cloudSavedUrl)
-                                Text(lines.joinToString(BackupListFormatter.SEPARATOR))
+                                Text(groupHeaderText(group, state.cloudSavedUrl))
                             },
                         )
                     }

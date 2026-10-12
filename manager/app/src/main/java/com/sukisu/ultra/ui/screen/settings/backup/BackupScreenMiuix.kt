@@ -840,9 +840,10 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        // 牌子跟时间同一行、靠右：它标的是"这一次写到哪几侧"，属于这一行的属性，
-                        // 掉到下面那行会跟"内容 · 项数"抢位置，也让人以为它只描述内容。
-                        Text(text = group.label, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        // 牌子紧跟在时间文字后面：它标的是"这一次写到哪几侧"，属于这一行的属性，
+                        // 掉到下面那行会跟"内容 · 项数"抢位置，也让人以为它只描述内容。右对齐
+                        // 会让它跑到屏幕另一头，读的时候得横跨整行去对，像是另一个字段。
+                        Text(text = group.label, fontSize = 16.sp)
                         group.origins.forEach { OriginTagMiuix(it) }
                     }
                     Text(

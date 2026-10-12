@@ -346,6 +346,9 @@ private fun OriginTagMaterial(origin: BackupOrigin) {
  * 同一句话说两次。本机这个目录别处没有，所以留着——用户是照着它去文件管理器找文件的。
  *
  * 常显，不跟着「本地」的勾选走：跟着勾选走的话，取消勾选会把这一行抽掉，下面的内容跟着跳。
+ *
+ * 左边不留额外内边距：外层 LazyColumn 已经给了 16dp，再补一份就和上面那句「长按任意一行可多选」
+ * 差出一格——两句小字同属一列，起点必须一样。
  */
 @Composable
 private fun LocationLineMaterial() {
@@ -353,7 +356,7 @@ private fun LocationLineMaterial() {
         text = stringResource(R.string.backup_location_local, BackupDefaults.LOCAL_DIR),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
+        modifier = Modifier.padding(top = 4.dp),
     )
 }
 
@@ -746,13 +749,13 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
                     },
                     headlineContent = {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            // 牌子跟时间同一行、靠右：它标的是"这一次写到哪几侧"，属于这一行的属性，
-                            // 掉到下面那行会跟"内容 · 项数"抢位置，也让人以为它只描述内容。
-                            Text(group.label, modifier = Modifier.weight(1f))
+                            // 牌子紧跟在时间文字后面：它标的是"这一次写到哪几侧"，属于这一行的属性，
+                            // 掉到下面那行会跟"内容 · 项数"抢位置，也让人以为它只描述内容。右对齐
+                            // 会让它跑到屏幕另一头，读的时候得横跨整行去对，像是另一个字段。
+                            Text(group.label)
                             group.origins.forEach { OriginTagMaterial(it) }
                         }
                     },

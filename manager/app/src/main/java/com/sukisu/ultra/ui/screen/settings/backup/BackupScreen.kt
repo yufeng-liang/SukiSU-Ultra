@@ -314,6 +314,21 @@ fun groupLocationLines(group: BackupGroup, cloudSavedUrl: String): List<String> 
     }
 
 /**
+ * 详情页头部那几行小字：摘要打头，每个来源各起一行。
+ *
+ * 两处地址接在摘要后面会连成"…本机备份在 A · 云端备份在 B"一整句，而用户是按行找"这一份在哪、
+ * 那一份在哪"的，所以每个来源各占一行。摘要是"这一组是什么"，跟第一个来源同行——它俩本来就
+ * 是一句话的两半，再拆一行只是让头部更占地方。
+ */
+@Composable
+fun groupHeaderText(group: BackupGroup, cloudSavedUrl: String): String {
+    val summary = groupSummary(group)
+    val locations = groupLocationLines(group, cloudSavedUrl)
+    if (locations.isEmpty()) return summary
+    return summary + BackupListFormatter.SEPARATOR + locations.joinToString("\n")
+}
+
+/**
  * 保留额度收起时的那一行：三个额度现在各是多少。
  *
  * 两个主题共用：这是措辞而不是布局，摆两份迟早只改一处。
