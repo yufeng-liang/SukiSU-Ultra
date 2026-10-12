@@ -723,7 +723,8 @@
     <string name="backup_target_line">%1$s %2$s: %3$s</string>
     <string name="backup_pick_a_target">Pick at least one location and one kind of content.</string>
     <string name="backup_empty_mixed">No backups in the selected locations yet. Back up now creates one.</string>
-    <string name="backup_origin_hint">With both checked, one backup creates a copy in each location.</string>
+    <string name="backup_origin_plan">Backing up to %1$s</string>
+    <string name="backup_origin_none">Pick at least one destination</string>
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
     <string name="backup_cloud_required">Configure the WebDAV server above and save it first.</string>
@@ -780,7 +781,7 @@
     <string name="backup_reason_external">Unexpected failure: %1$s</string>
 
     <string name="backup_auto_title">Automatic backup</string>
-    <string name="backup_auto_summary">Back up modules once after a module is installed successfully, and back up repo sources whenever they change, to the destinations checked below.</string>
+    <string name="backup_auto_summary">Back up modules once after an install, and repo sources whenever they change.</string>
     <string name="backup_auto_last">Last automatic backup: %1$s</string>
     <string name="backup_auto_never">not run yet</string>
     <string name="backup_auto_off">off</string>
@@ -807,6 +808,7 @@
     <string name="backup_restore_done">%1$d restored</string>
     <string name="backup_restore_partial">%1$d restored · %2$d failed</string>
     <string name="backup_restore_all_failed">none of the %1$d items could be restored</string>
+    <string name="backup_restore_deduped">items kept on both sides are restored from the local copy</string>
     <string name="backup_deleted">deleted %1$d items</string>
     <string name="backup_delete_confirm_title">Delete this backup?</string>
     <string name="backup_delete_confirm_body">Removes these %2$d items from %1$s. It cannot be undone.</string>

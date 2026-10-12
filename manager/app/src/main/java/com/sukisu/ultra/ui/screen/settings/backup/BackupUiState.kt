@@ -183,9 +183,6 @@ data class BackupUiState(
             kinds.isNotEmpty() &&
             (BackupKind.MODULE !in kinds || modulesUnavailable || selectedModuleIds.isNotEmpty())
 
-    /** 两侧都勾上时列表里每行要标出它在哪一侧；只勾一侧时标了也没信息量。 */
-    val showsOriginBadge: Boolean get() = origins.size > 1
-
     /** 稳定的展示顺序（本机在前），集合本身没有顺序。 */
     val orderedOrigins: List<BackupOrigin> get() = origins.sortedBy { it.ordinal }
 

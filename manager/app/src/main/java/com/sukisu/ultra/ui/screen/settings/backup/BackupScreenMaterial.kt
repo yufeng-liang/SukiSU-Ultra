@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.AutoBackupOutcome
+import com.sukisu.ultra.data.backup.BackupDefaults
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.RetentionLimit
@@ -344,15 +345,18 @@ private fun OriginTagMaterial(origin: BackupOrigin) {
  * snackbar 几秒就没了，而"文件在哪"是过几天才会想起来问的问题，所以它常驻在按钮下面。
  * 地址还没填的云端不显示——写一行空的地址等于什么都没说。
  */
+/**
+ * 「本机备份在 …」那一行。
+ *
+ * 只写本机：云端地址就写在上面那张 WebDAV 卡片的标题栏里（[CloudCardMaterial]），再写一遍是
+ * 同一句话说两次。本机这个目录别处没有，所以留着——用户是照着它去文件管理器找文件的。
+ *
+ * 常显，不跟着「本地」的勾选走：跟着勾选走的话，取消勾选会把这一行抽掉，下面的内容跟着跳。
+ */
 @Composable
-private fun LocationLineMaterial(origin: BackupOrigin, cloudUrl: String) {
-    val location = BackupLocation.full(origin, cloudUrl)
-    if (location.isBlank()) return
+private fun LocationLineMaterial() {
     Text(
-        text = stringResource(
-            if (origin == BackupOrigin.CLOUD) R.string.backup_location_cloud else R.string.backup_location_local,
-            location,
-        ),
+        text = stringResource(R.string.backup_location_local, BackupDefaults.LOCAL_DIR),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
@@ -558,15 +562,14 @@ private fun LazyListScope.backupTabItems(
                     )
                 }
             }
-            // 两个都勾上才出现：一次备份会写两份，这件事不说出来就像个 bug。
-            if (state.showsOriginBadge) {
-                Text(
-                    text = stringResource(R.string.backup_origin_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 16.dp, top = 4.dp),
-                )
-            }
+            // 常显（内容跟着勾选走）：原来那句提示只在两个都勾上时出现，出现的那一下会把
+            // 下面的「备份内容」整块推下去，而用户正要点的是那下面的东西。
+            Text(
+                text = originPlan(state),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+            )
         }
     }
     item {
@@ -628,7 +631,7 @@ private fun LazyListScope.backupTabItems(
             Text(stringResource(R.string.backup_now))
         }
     }
-    locationItems(state)
+    locationItems()
     // 保留额度是"设一次就不管"的东西，位置与 Miuix 那一版相同：比它更该先被看到的
     // （位置、内容、按钮）都在上面，比它更常用的自动备份开关在下面。
     item { RetentionCardMaterial(state, actions) }
@@ -665,18 +668,18 @@ private fun LazyListScope.backupTabItems(
                     )
                 }
             }
-            if (state.autoBackupWritesNothing) {
-                Text(
-                    text = stringResource(R.string.backup_auto_dest_none),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(start = 16.dp, top = 4.dp),
-                )
-            }
+            // 这一行小字二选一：要么是"一个目的地都没勾"的警告，要么是上次自动备份的结果。
+            // 两条都画的话，警告冒出来会把下面整体推下去——而它恰恰是勾选触发的。
+            val writesNothing = state.autoBackupWritesNothing
+            val lastFailed = state.autoBackupRecord?.outcome?.let { it != AutoBackupOutcome.OK } == true
             Text(
-                text = BackupText.autoBackupLine(context, state.autoBackupRecord, state.autoBackupEnabled),
+                text = if (writesNothing) {
+                    stringResource(R.string.backup_auto_dest_none)
+                } else {
+                    BackupText.autoBackupLine(context, state.autoBackupRecord, state.autoBackupEnabled)
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = if (state.autoBackupRecord?.outcome?.let { it != AutoBackupOutcome.OK } == true) {
+                color = if (writesNothing || lastFailed) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -690,7 +693,7 @@ private fun LazyListScope.backupTabItems(
 /** 「恢复」分页：已备份的清单。点一行进详情，恢复/导出/删除都只在那里发生。 */
 private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupActions) {
     item { CloudCardMaterial(state, actions) }
-    locationItems(state)
+    locationItems()
     if (state.loading) {
         item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
     }
@@ -791,8 +794,11 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
  * 两个分页都挂：「备份」页说的是"这次会写到哪"，「恢复」页说的是"列出来的这些在哪"。
  * 地址还没填的云端不显示——写一行空的地址等于什么都没说（见 [LocationLineMaterial]）。
  */
-private fun LazyListScope.locationItems(state: BackupUiState) {
-    items(state.orderedOrigins, key = { "location-${it.name}" }) { origin ->
-        LocationLineMaterial(origin = origin, cloudUrl = state.cloudSavedUrl)
-    }
+/**
+ * 「备份在哪」那一行。
+ *
+ * 两个分页都挂：「备份」页说的是"这次会写到哪"，「恢复」页说的是"列出来的这些在本机哪"。
+ */
+private fun LazyListScope.locationItems() {
+    item(key = "location-local") { LocationLineMaterial() }
 }

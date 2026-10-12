@@ -170,7 +170,20 @@ fun BackupDetailMiuix(
                 Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
                     CheckboxPreference(
                         title = stringResource(R.string.backup_detail_select_all),
-                        summary = stringResource(R.string.backup_module_selected, selected, group.rows.size),
+                        // 两侧都有时"已选 2/2"看着像要恢复两遍：同一句话在恢复结果里也会出现，
+                        // 用户在按下去之前和之后看到的是同一句。
+                        summary = buildList {
+                            add(
+                                stringResource(
+                                    R.string.backup_module_selected,
+                                    selected,
+                                    group.rows.size,
+                                ),
+                            )
+                            if (group.origins.size > 1) {
+                                add(stringResource(R.string.backup_restore_deduped))
+                            }
+                        }.joinToString(BackupListFormatter.SEPARATOR),
                         checked = state.allGroupEntriesSelected,
                         onCheckedChange = actions.onSetAllGroupEntries,
                     )

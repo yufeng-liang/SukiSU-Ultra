@@ -60,6 +60,23 @@ data class BackupRowLabels(
     val originLabel: (BackupOrigin) -> String,
 )
 
+/**
+ * 同一份内容本机与云端各有一条时只留一条，优先本机。
+ *
+ * 列表把两侧并成了一行，点进去就能看到两条同名的条目（"仓库源配置 · 云端"和"仓库源配置 · 本地"），
+ * 而恢复是逐条做的：默认全选就会把同一个模块装两遍、把同一张镜像刷两遍，"已恢复 2 项"也让用户
+ * 以为动了两个东西。两侧的归档名是一样的（同一次备份写出来的），所以按"类别 + 文件名"就能认出
+ * 是同一份内容。
+ *
+ * 优先本机：离线、快，而且两边本来就是同一份内容（读的时候还会按索引里的 sha256 校验）。
+ * 用户想指定云端那份时，把它单独勾上即可——只勾了一条就没有可去重的。
+ */
+internal fun oneCopyPerContent(rows: List<BackupRow>): List<BackupRow> {
+    val seen = mutableSetOf<Pair<BackupKind, String>>()
+    // 本机在前，于是"先到先留"留下的就是本机那份；同一侧内部的原有顺序不变。
+    return rows.sortedBy { it.origin.ordinal }.filter { seen.add(it.kind to it.fileName) }
+}
+
 object BackupListFormatter {
 
     /**

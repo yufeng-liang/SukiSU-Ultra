@@ -280,6 +280,22 @@ fun groupSummary(group: BackupGroup): String {
 }
 
 /**
+ * 「备份位置」下面那一行：这次会写到哪几处。
+ *
+ * 常显，内容跟着勾选走。它原来是"两个都勾上才冒出来"的一句提示，冒出来那一下会把下面的
+ * 「备份内容」整块推下去——用户正要点的是那下面的东西。常显之后高度不动，还顺带把"写到哪"
+ * 说清楚了；一个都没勾时说的就是"先去勾一个"。
+ */
+@Composable
+fun originPlan(state: BackupUiState): String {
+    if (state.origins.isEmpty()) return stringResource(R.string.backup_origin_none)
+    val separator = stringResource(R.string.backup_list_separator)
+    // map 是 inline 的（joinToString 的 lambda 不是），所以取字符串只能在 map 里做。
+    val labels = state.orderedOrigins.map { stringResource(BackupLabels.origin(it)) }.joinToString(separator)
+    return stringResource(R.string.backup_origin_plan, labels)
+}
+
+/**
  * 「备份存在哪」那几行：这一组写到哪几侧就写几行（本机一个目录、云端一个地址）。
  * 地址还没填的云端不写——写一行空地址等于什么都没说。
  */

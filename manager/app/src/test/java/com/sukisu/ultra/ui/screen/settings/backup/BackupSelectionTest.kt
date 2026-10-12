@@ -98,4 +98,80 @@ class BackupSelectionTest {
 
         assertTrue(state.selecting)
     }
+
+    private fun rowOf(fileName: String, origin: BackupOrigin) = BackupRow(
+        id = "${origin.name}/$fileName",
+        title = fileName,
+        subtitle = "",
+        fileName = fileName,
+        origin = origin,
+        originLabel = origin.name,
+        kind = BackupKind.MODULE,
+        createdAt = "2026-10-09T09:35:56Z",
+    )
+
+    /**
+     * 同一份内容本机与云端各一条时只留一条，且留下的是本机那份。
+     *
+     * 恢复是逐条做的：默认全选两条就会把同一个模块装两遍、把同一张镜像刷两遍，而"已恢复 2 项"
+     * 让用户以为动了两个东西。输入故意把云端放前面，证明留哪一条是按来源选的、不是按顺序。
+     */
+    @Test
+    fun `both sides of the same content collapse into the local copy`() {
+        val kept = oneCopyPerContent(
+            listOf(
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.CLOUD),
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
+            ),
+        )
+
+        assertEquals(listOf(BackupOrigin.LOCAL), kept.map { it.origin })
+    }
+
+    /** 只写了一侧的内容原样留着——去重不该动它。 */
+    @Test
+    fun `content that only exists on one side is left alone`() {
+        val rows = listOf(
+            rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
+            rowOf("module_b_1_20261009_093107.zip", BackupOrigin.LOCAL),
+        )
+
+        assertEquals(rows, oneCopyPerContent(rows))
+    }
+
+    /** 两条不同的内容各自两侧都有：去重后是两条，不是一条、也不是四条。 */
+    @Test
+    fun `each distinct content keeps exactly one row`() {
+        val kept = oneCopyPerContent(
+            listOf(
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.CLOUD),
+                rowOf("module_b_1_20261009_093107.zip", BackupOrigin.LOCAL),
+                rowOf("module_b_1_20261009_093107.zip", BackupOrigin.CLOUD),
+            ),
+        )
+
+        assertEquals(
+            listOf("module_a_1_20261009_093107.zip", "module_b_1_20261009_093107.zip"),
+            kept.map { it.fileName },
+        )
+    }
+
+    /** 同一侧内部的原有顺序不能被打乱：恢复是逐条走的，顺序变了用户看到的进度顺序就变了。 */
+    @Test
+    fun `rows on the same side keep their order`() {
+        val kept = oneCopyPerContent(
+            listOf(
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.CLOUD),
+                rowOf("module_b_1_20261009_093107.zip", BackupOrigin.CLOUD),
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
+            ),
+        )
+
+        assertEquals(
+            listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD),
+            kept.map { it.origin },
+        )
+        assertEquals("module_b_1_20261009_093107.zip", kept.last().fileName)
+    }
 }

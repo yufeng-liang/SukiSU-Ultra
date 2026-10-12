@@ -28,6 +28,7 @@ import com.sukisu.ultra.ui.screen.settings.backup.BackupRowLabels
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRunState
 import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
+import com.sukisu.ultra.ui.screen.settings.backup.oneCopyPerContent
 import com.sukisu.ultra.ui.screen.settings.backup.pruneSelection
 import com.sukisu.ultra.ui.util.BackupText
 import com.sukisu.ultra.ui.util.formatSessionTime
@@ -464,7 +465,11 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         // 不需要重启；模块和 boot 才需要。只恢复了仓库源时提示"重启生效"是一句谎话。
         val restoredKinds = mutableSetOf<BackupKind>()
         val failures = mutableListOf<String>()
-        selected.forEach { row ->
+        // 同一份内容本机与云端各有一条（列表把两侧并成了一行）。按内容只恢复一次、优先本机：
+        // 两边是同一份内容（读的时候还会按索引里的 sha256 校验），恢复两遍只是把同一个模块装两次、
+        // 把同一张镜像刷两次，而"已恢复 2 项"会让用户以为动了两个东西。
+        val chosen = oneCopyPerContent(selected)
+        chosen.forEach { row ->
             val entry = entryOf(row) ?: return@forEach
             repository.restore(row.origin, entry).fold(
                 onSuccess = { outcome ->
@@ -483,6 +488,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 loading = false,
                 message = buildList {
                     add(restoreCountMessage(restored, failures.size))
+                    // 两侧各有一份时把"只恢复了一次"说出来：用户看着两行、默认还全选，不说一句
+                    // 就不知道到底恢复了几份、动的是哪一份。
+                    if (chosen.size < selected.size) add(string(R.string.backup_restore_deduped))
                     // 恢复"成功"只是文件到位：模块要重启才加载，刷回去的原厂 boot 也要重启才真正
                     // 离开 KSU。只说"N 项已恢复"会让用户以为已经在跑了。
                     if (restored > 0 && restoredKinds.any { it != BackupKind.REPO_CONFIG }) {
