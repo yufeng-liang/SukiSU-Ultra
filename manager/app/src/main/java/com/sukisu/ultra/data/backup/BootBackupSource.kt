@@ -39,12 +39,18 @@ class BootBackupSource(
     private fun sha1Of(entry: RootFileEntry): String = entry.path.substringAfterLast('/').removePrefix("ksu_backup_")
 
     // [selected] 被忽略：这一栏能备份的只有 ksud 留下的那几张原厂镜像，没有"挑一张"的余地。
-    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatchingCancellable {
+    override suspend fun export(
+        selected: Set<String>?,
+        onPacking: (PackingProgress) -> Unit,
+    ): Result<ExportOutcome> = runCatchingCancellable {
         staging.cleanupStale()
         val timestamp = ArchiveNaming.timestamp(clock())
         val artifacts = mutableListOf<BackupArtifact>()
         val failures = mutableListOf<BackupFailure>()
-        stockImageFiles().forEach { file ->
+        val images = stockImageFiles()
+        images.forEachIndexed { index, file ->
+            // 一张镜像几十 MB，拷出来加算 sha256 要好几秒：报在拷贝之前，界面才知道在动。
+            onPacking(PackingProgress(index + 1, images.size))
             val sha1 = sha1Of(file)
             val staged = staging.newFile("boot-export-", ".img")
             if (!rootFiles.copyFrom(file.path, staged)) {
@@ -54,7 +60,7 @@ class BootBackupSource(
                     storage = SOURCE_STORAGE,
                     reason = BackupReason.ReadFailed(file.path, null),
                 )
-                return@forEach
+                return@forEachIndexed
             }
             val sha256 = staged.inputStream().use { it.sha256Hex() }
             val fileName = ArchiveNaming.bootArchiveName(sha1, timestamp)

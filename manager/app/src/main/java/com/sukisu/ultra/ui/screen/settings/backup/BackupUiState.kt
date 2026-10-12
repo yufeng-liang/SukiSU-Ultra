@@ -268,6 +268,17 @@ data class BackupRunState(
     /** 这个目标里的第几个归档（1 起）、一共几个；0 表示还没开始报。 */
     val fileIndex: Int = 0,
     val fileCount: Int = 0,
+    /**
+     * 还在打包：源正在把模块打成 zip / 把原厂镜像读出来，字节进度还没开始。
+     *
+     * 打包这一段没有任何字节数可报，却常常是整个备份里最慢的一段。它原来在界面上就是"进度条停在
+     * 0、下面写着 0 B / 0 B"——看着跟卡死一样。有了这个标记，弹窗那一段改画不确定进度并写明
+     * "正在打包第几个"（见 [packedIndex]）。
+     */
+    val packing: Boolean = false,
+    /** 打包到第几个归档、共几个；0 表示还不知道（源还没开口）。 */
+    val packedIndex: Int = 0,
+    val packedCount: Int = 0,
     val speedBytesPerSecond: Long = 0,
     /**
      * 跑完之后这次目标的平均速度（总字节 ÷ 耗时）。

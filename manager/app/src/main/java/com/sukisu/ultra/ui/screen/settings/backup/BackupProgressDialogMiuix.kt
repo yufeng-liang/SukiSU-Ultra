@@ -82,11 +82,13 @@ fun BackupProgressDialogMiuix(
                         modifier = Modifier.padding(top = 8.dp),
                     )
                     LinearProgressIndicator(
-                        progress = run.fraction,
+                        // 打包阶段没有字节可报：null = 不确定进度，条会自己走，不会杵在 0 上
+                        // 加一句"0 B / 0 B"那样看着像卡死。
+                        progress = if (run.packing) null else run.fraction,
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     )
                     Text(
-                        text = transferLine(run),
+                        text = if (run.packing) packingLine(run) else transferLine(run),
                         fontSize = 12.sp,
                         color = colorScheme.onSurfaceVariantSummary,
                         modifier = Modifier.padding(top = 8.dp),

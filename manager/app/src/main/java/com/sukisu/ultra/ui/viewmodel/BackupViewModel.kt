@@ -601,6 +601,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                         total = targets.size,
                         origin = origin,
                         kind = kind,
+                        // 先按"打包中"开局：这一刻确实什么都还没开始（连源都还没被叫起来），
+                        // 弹窗照不确定进度画并写"正在准备"，比"0 B / 0 B"的 0% 进度条诚实。
+                        packing = true,
                     ),
                 )
             }
@@ -608,21 +611,38 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 origin = origin,
                 kind = kind,
                 selected = if (kind == BackupKind.MODULE) selectedModules else null,
-            ) { progress ->
-                val speed = sampleSpeed(progress.sentBytes)
-                sentBytes = progress.sentBytes
-                _uiState.update { current ->
-                    current.copy(
-                        backupRun = current.backupRun?.copy(
-                            sentBytes = progress.sentBytes,
-                            totalBytes = progress.totalBytes,
-                            fileIndex = progress.fileIndex,
-                            fileCount = progress.fileCount,
-                            speedBytesPerSecond = speed,
-                        ),
-                    )
-                }
-            }
+                onProgress = { progress ->
+                    val speed = sampleSpeed(progress.sentBytes)
+                    sentBytes = progress.sentBytes
+                    _uiState.update { current ->
+                        current.copy(
+                            backupRun = current.backupRun?.copy(
+                                sentBytes = progress.sentBytes,
+                                totalBytes = progress.totalBytes,
+                                fileIndex = progress.fileIndex,
+                                fileCount = progress.fileCount,
+                                speedBytesPerSecond = speed,
+                                // 有字节出去了就说明打包早就结束：这条兜住"源忘了报收尾"
+                                // 以及开局那几帧，界面不会一直画不确定进度。
+                                packing = false,
+                            ),
+                        )
+                    }
+                },
+                // 打包那一段（源在产出归档）原来一条消息都没有：弹窗停在 0% 和"0 B / 0 B"上，
+                // 而它常常是最慢的一段。这里把"第几个/共几个"透出去，弹窗改画不确定进度。
+                onPacking = { packing ->
+                    _uiState.update { current ->
+                        current.copy(
+                            backupRun = current.backupRun?.copy(
+                                packing = !packing.finished,
+                                packedIndex = packing.index,
+                                packedCount = packing.total,
+                            ),
+                        )
+                    }
+                },
+            )
             // 平均速度只在真的推过东西时算：一次什么都没写的备份（全跳过/没有可备份的）算出
             // 0 B/s 是噪音，而且除以 0 会把耗时那一项也变成假的。
             val elapsedMs = System.currentTimeMillis() - startedAt

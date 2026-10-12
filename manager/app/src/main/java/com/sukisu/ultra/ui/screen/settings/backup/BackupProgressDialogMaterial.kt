@@ -66,12 +66,18 @@ fun BackupProgressDialogMaterial(
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    LinearProgressIndicator(
-                        progress = { run.fraction },
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    )
+                    // 打包阶段（源在打 zip / 读镜像）没有字节可报：画不确定进度。停在一个 0 的条
+                    // 上加一句"0 B / 0 B"就是用户看到的"点下去几秒没反应"。
+                    if (run.packing) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+                    } else {
+                        LinearProgressIndicator(
+                            progress = { run.fraction },
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        )
+                    }
                     Text(
-                        text = transferLine(run),
+                        text = if (run.packing) packingLine(run) else transferLine(run),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
@@ -117,6 +123,20 @@ internal fun transferLine(run: BackupRunState): String {
     }
     return parts.joinToString(BackupListFormatter.SEPARATOR)
 }
+
+/**
+ * 打包阶段那一行。
+ *
+ * 这一段没有字节数可报（归档还在生成，总字节要到打包完才知道），所以报"第几个 / 共几个"。
+ * 连条目数都还没有时（源刚被叫起来）说"正在准备"——总比"0 B / 0 B"强：后者看着像已经卡住了。
+ */
+@Composable
+internal fun packingLine(run: BackupRunState): String =
+    if (run.packedCount > 0) {
+        stringResource(R.string.backup_progress_packing, run.packedIndex, run.packedCount)
+    } else {
+        stringResource(R.string.backup_progress_preparing)
+    }
 
 /**
  * 跑完之后那行平均速度（总字节 ÷ 这次目标的耗时）。

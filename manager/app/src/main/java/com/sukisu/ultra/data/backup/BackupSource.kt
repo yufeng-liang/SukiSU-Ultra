@@ -19,8 +19,15 @@ interface BackupSource {
      * [selected] 是"只要这些 entryId"；null = 源里有什么就打包什么。模块用它支持用户勾选，
      * boot 忽略它（那一份镜像本来就只有一张）。单个条目失败应跳过该条目、并记进
      * [ExportOutcome.failures]，而不是整体失败。
+     *
+     * [onPacking] 报打包到第几个条目了：这一段没有任何字节数可报（归档还在生成），而它往往是整个
+     * 备份里最慢的一段，不报的话界面只能干等着（见 [PackingProgress]）。条目数一眼数得清的源
+     * （boot、仓库源配置）也报一条，界面据此知道"打包已经开始了"。
      */
-    suspend fun export(selected: Set<String>? = null): Result<ExportOutcome>
+    suspend fun export(
+        selected: Set<String>? = null,
+        onPacking: (PackingProgress) -> Unit = {},
+    ): Result<ExportOutcome>
 
     /** 从 [content] 恢复。[metaJson] 是归档的边车元数据，可能为 null（导入的第三方归档）。 */
     suspend fun restore(entry: BackupEntry, metaJson: String?, content: InputStream): Result<RestoreOutcome>

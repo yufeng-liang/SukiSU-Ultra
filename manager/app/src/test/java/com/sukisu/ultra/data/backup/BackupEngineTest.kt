@@ -94,12 +94,21 @@ private class FakeSource(
     override val kind: BackupKind,
     private val artifacts: List<BackupArtifact>,
     private val failures: List<BackupFailure> = emptyList(),
+    /** 打包期间要报的几条（真实模块源按模块逐条报）。 */
+    private val packReports: List<PackingProgress> = emptyList(),
+    /** 让 export 直接失败：用来证明"打包收尾"那条照样会到。 */
+    private val exportFails: Boolean = false,
 ) : BackupSource {
     /** 最近一次 [export] 收到的勾选集合：用来证明它被原样透传给了源。 */
     var lastSelection: Set<String>? = null
 
-    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> {
+    override suspend fun export(
+        selected: Set<String>?,
+        onPacking: (PackingProgress) -> Unit,
+    ): Result<ExportOutcome> {
         lastSelection = selected
+        packReports.forEach(onPacking)
+        if (exportFails) return Result.failure(IllegalStateException("packaging blew up"))
         return Result.success(ExportOutcome(artifacts, failures))
     }
 
@@ -283,6 +292,70 @@ class BackupEngineTest {
             // 第一个归档的上报都是 1/2，第二个都是 2/2——不会出现 0 或超过总数。
             assertTrue(seen.filter { it.sentBytes <= a.sizeBytes }.all { it.fileIndex == 1 })
             assertTrue(seen.filter { it.sentBytes > a.sizeBytes }.all { it.fileIndex == 2 })
+        }
+    }
+
+    /**
+     * 打包那一段原来一条上报都没有：界面停在"0 B / 0 B"的进度条上，看着跟卡死一样，
+     * 而它常常是整个备份里最慢的一段（11 个模块要先打成 zip）。
+     */
+    @Test
+    fun `packing progress is reported and closed before the first byte goes out`() {
+        runBlocking {
+            val order = mutableListOf<String>()
+            val source = FakeSource(
+                BackupKind.MODULE,
+                listOf(artifact("a", "sha-a")),
+                packReports = listOf(PackingProgress(1, 2), PackingProgress(2, 2)),
+            )
+
+            engine(listOf(FakeStorage("local")), source).backup(
+                BackupKind.MODULE,
+                onProgress = { order += "transfer" },
+                onPacking = { order += if (it.finished) "packing-done" else "packing-${it.index}/${it.total}" },
+            )
+
+            val firstTransfer = order.indexOf("transfer")
+            assertTrue("打包必须在写第一个字节之前报", firstTransfer > 0)
+            // 先逐条报打包、再收尾，然后才是字节进度；顺序反了界面会先画字节条再倒回"正在打包"。
+            assertEquals(listOf("packing-1/2", "packing-2/2", "packing-done"), order.take(firstTransfer))
+            assertTrue(
+                "打包收尾之后不该再有打包上报，否则进度条会从字节进度跳回不确定进度",
+                order.drop(firstTransfer).none { it.startsWith("packing") },
+            )
+        }
+    }
+
+    /** 源一条都没报（勾选的模块全被卸载了）时，收尾那条也得有，否则界面一直挂在"正在打包"。 */
+    @Test
+    fun `packing is closed even when the source reports nothing`() {
+        runBlocking {
+            val seen = mutableListOf<PackingProgress>()
+
+            engine(listOf(FakeStorage("local")), moduleSource(artifact("a", "sha-a")))
+                .backup(BackupKind.MODULE, onPacking = { seen += it })
+
+            assertEquals(listOf(PackingProgress(0, 0, finished = true)), seen)
+        }
+    }
+
+    /** 打包失败同样要收尾：这次备份已经结束了，界面不该还停"正在打包"。 */
+    @Test
+    fun `packing is closed even when the export fails`() {
+        runBlocking {
+            val seen = mutableListOf<PackingProgress>()
+            val source = FakeSource(
+                BackupKind.MODULE,
+                emptyList(),
+                packReports = listOf(PackingProgress(1, 3)),
+                exportFails = true,
+            )
+
+            val result = engine(listOf(FakeStorage("local")), source)
+                .backup(BackupKind.MODULE, onPacking = { seen += it })
+
+            assertTrue(result.isFailure)
+            assertEquals(listOf(PackingProgress(1, 3), PackingProgress(0, 0, finished = true)), seen)
         }
     }
 

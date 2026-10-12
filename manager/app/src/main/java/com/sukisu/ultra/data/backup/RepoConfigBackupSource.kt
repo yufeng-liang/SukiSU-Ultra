@@ -32,12 +32,18 @@ class RepoConfigBackupSource(
 
     override val kind: BackupKind = BackupKind.REPO_CONFIG
 
-    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatchingCancellable {
+    override suspend fun export(
+        selected: Set<String>?,
+        onPacking: (PackingProgress) -> Unit,
+    ): Result<ExportOutcome> = runCatchingCancellable {
         // selected 对这份源没有意义（没有可勾的条目），忽略——与 boot 同一约定。
         val sources = reader.load()
         // 一个源都没配过就没有"配置"可备份：交空结果，UI 按"没有新东西可存"处理，
         // 而不是给用户一条空 JSON 的备份记录。
         if (sources.isEmpty()) return@runCatchingCancellable ExportOutcome()
+        // 这份源没有可数的条目，但它照样是一次"打包"：报一条，界面才不会在这几毫秒里
+        // 因为"还没开始写字节"而显示成卡住。
+        onPacking(PackingProgress(1, 1))
         val json = render(sources).toByteArray(Charsets.UTF_8)
         val fileName = ArchiveNaming.repoConfigArchiveName(ArchiveNaming.timestamp(clock()))
         ExportOutcome(

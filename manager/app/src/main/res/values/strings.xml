@@ -821,6 +821,8 @@
     <string name="backup_cancelled">Backup cancelled. Anything already written is kept.</string>
     <string name="backup_progress_target">Target %1$d of %2$d · %3$s %4$s</string>
     <string name="backup_progress_files">file %1$d of %2$d</string>
+    <string name="backup_progress_packing">Packing %1$d of %2$d</string>
+    <string name="backup_progress_preparing">Preparing…</string>
     <string name="backup_result_title">Backup finished</string>
     <string name="backup_result_average_speed">Average %1$s/s</string>
     <string name="backup_done">Done</string>

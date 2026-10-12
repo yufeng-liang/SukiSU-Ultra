@@ -167,6 +167,7 @@ class BackupRepository(private val context: Context = ksuApp) {
         kind: BackupKind,
         selected: Set<String>? = null,
         onProgress: (TransferProgress) -> Unit = {},
+        onPacking: (PackingProgress) -> Unit = {},
     ): BackupRunResult = withContext(Dispatchers.IO) {
         if (origin == BackupOrigin.CLOUD && !cloudConfigured()) {
             return@withContext BackupRunResult(
@@ -180,7 +181,7 @@ class BackupRepository(private val context: Context = ksuApp) {
                 ),
             )
         }
-        engineFor(origin).backup(kind, selected, onProgress)
+        engineFor(origin).backup(kind, selected, onProgress, onPacking)
     }
 
     suspend fun list(origin: BackupOrigin, kind: BackupKind): Result<List<BackupEntry>> =

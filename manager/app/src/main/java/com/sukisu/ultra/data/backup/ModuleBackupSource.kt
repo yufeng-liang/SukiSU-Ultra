@@ -32,20 +32,29 @@ class ModuleBackupSource(
 
     override val kind: BackupKind = BackupKind.MODULE
 
-    override suspend fun export(selected: Set<String>?): Result<ExportOutcome> = runCatchingCancellable {
+    override suspend fun export(
+        selected: Set<String>?,
+        onPacking: (PackingProgress) -> Unit,
+    ): Result<ExportOutcome> = runCatchingCancellable {
         // 勾选的模块在打包期间可能被卸载：过滤后为空就是"没得备份"，交给上层按空结果处理，
         // 而不是把它当成错误——用户可能刚把勾上的模块删掉。
         val modules = lister.list()
-        exportAll(if (selected == null) modules else modules.filter { it.id in selected })
+        exportAll(if (selected == null) modules else modules.filter { it.id in selected }, onPacking)
     }
 
-    private suspend fun exportAll(modules: List<Module>): ExportOutcome {
+    private suspend fun exportAll(
+        modules: List<Module>,
+        onPacking: (PackingProgress) -> Unit,
+    ): ExportOutcome {
         val timestamp = ArchiveNaming.timestamp(clock())
         val device = deviceName()
         val createdAt = clock().toString()
         val artifacts = mutableListOf<BackupArtifact>()
         val failures = mutableListOf<BackupFailure>()
-        modules.forEach { module ->
+        modules.forEachIndexed { index, module ->
+            // 报在这个模块打包**之前**：点完就要看到东西在动，等这一个打完才报等于又停了一次，
+            // 而第一个模块往往就是最费时的那个。
+            onPacking(PackingProgress(index + 1, modules.size))
             val archived = archiver.archive(module).getOrElse { error ->
                 // 打包失败要报出来：静默跳过会让用户看到"written N"却不知道有模块没备上。
                 failures += BackupFailure(
@@ -53,7 +62,7 @@ class ModuleBackupSource(
                     storage = SOURCE_STORAGE,
                     reason = BackupReason.ArchiveFailed(module.id, externalTextOrNull(error)),
                 )
-                return@forEach
+                return@forEachIndexed
             }
             val fileName = ArchiveNaming.moduleArchiveName(module.id, module.versionCode, timestamp)
             val meta = ModuleBackupMeta(

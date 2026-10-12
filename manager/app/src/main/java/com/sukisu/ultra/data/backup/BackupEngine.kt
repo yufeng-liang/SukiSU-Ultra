@@ -32,19 +32,29 @@ class BackupEngine(
      * [onProgress] 按时间节流上报"这次目标已经推出去多少字节"（见 [CountingInputStream]）。
      * 总字节数取源产出的全部归档之和：被去重跳过的那些不会推出去，所以进度条最后可能差一点点，
      * 调用方在目标结束时按"完成"处理。
+     *
+     * [onPacking] 是打包阶段的进度（见 [PackingProgress]）：字节进度要到打包完才存在，而打包
+     * 本身往往是整个备份里最慢的一段，不报这一段界面就只能在 0 上干等。收尾那条由这里补，
+     * 不指望源记得——一个归档都没产出时源没有下一条可报。
      */
     suspend fun backup(
         kind: BackupKind,
         selected: Set<String>? = null,
         onProgress: (TransferProgress) -> Unit = {},
+        onPacking: (PackingProgress) -> Unit = {},
     ): BackupRunResult {
         val source = sources[kind]
             ?: return BackupRunResult(
                 kind,
                 failures = listOf(BackupFailure("", ENGINE_STORAGE, BackupReason.NoSource(kind))),
             )
-        val outcome = source.export(selected).getOrElse { error ->
-            return BackupRunResult(kind, failures = listOf(BackupFailure("", SOURCE_STORAGE, reasonOf(error))))
+        val outcome = try {
+            source.export(selected, onPacking).getOrElse { error ->
+                return BackupRunResult(kind, failures = listOf(BackupFailure("", SOURCE_STORAGE, reasonOf(error))))
+            }
+        } finally {
+            // 打包结束（含失败）：界面据此切回按字节的进度，否则"正在打包"会一直挂在那儿。
+            onPacking(PackingProgress(index = 0, total = 0, finished = true))
         }
         val written = mutableListOf<String>()
         val skipped = mutableListOf<String>()
