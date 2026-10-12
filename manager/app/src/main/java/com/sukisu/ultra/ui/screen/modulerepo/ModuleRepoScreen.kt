@@ -71,6 +71,7 @@ fun ModuleRepoScreen() {
         onSetSourceEnabled = viewModel::setSourceEnabled,
         onRenameSource = viewModel::renameSource,
         onDismissSourceError = viewModel::dismissSourceError,
+        onDisclaimerAccepted = viewModel::acceptDisclaimer,
     )
 
     when (LocalUiMode.current) {

@@ -129,6 +129,9 @@ fun ModuleRepoScreenMaterial(
     val refreshTick = remember { mutableIntStateOf(0) }
     val pullToRefreshState = rememberPullToRefreshState()
     var showSourcesDialog by remember { mutableStateOf(false) }
+    // 免责说明：没勾过"承诺"就每次进入本页都弹一次。取值只看进入时的这一份状态，
+    // 关掉之后由本地的 showDisclaimer 管着，不再跟着 state 的后续变化走。
+    var showDisclaimer by remember { mutableStateOf(!state.disclaimerAccepted) }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val snackbarHostState = remember { SnackbarHostState() }
@@ -318,6 +321,15 @@ fun ModuleRepoScreenMaterial(
         onDismissRequest = { showSourcesDialog = false },
         state = state,
         actions = actions,
+    )
+
+    RepoDisclaimerDialogMaterial(
+        show = showDisclaimer,
+        onDismiss = { committed ->
+            showDisclaimer = false
+            // 只有勾了"承诺"才落盘；没勾则什么都不记，下次进入仍会弹。
+            if (committed) actions.onDisclaimerAccepted()
+        },
     )
 }
 

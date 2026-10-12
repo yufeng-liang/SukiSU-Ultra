@@ -39,6 +39,11 @@ data class ModuleRepoUiState(
     val lastAddedSourceUrl: String? = null,
     /** Known repositories offered for one-tap adding, most modules first. */
     val candidates: List<RepoCandidateUi> = emptyList(),
+    /**
+     * 用户是否已勾过免责说明的"不再提示"。false 时每次进入本页都要弹一次（见
+     * [com.sukisu.ultra.data.repository.ModuleRepoDisclaimerPrefs]）。
+     */
+    val disclaimerAccepted: Boolean = false,
 )
 
 /**
@@ -70,6 +75,8 @@ data class ModuleRepoActions(
     val onRenameSource: (String, String) -> Unit,
     /** 关掉一条失败通知；参数是通知里显示的那条失败消息。 */
     val onDismissSourceError: (String) -> Unit,
+    /** 用户在免责说明里勾了"不再提示"：落盘，之后不再弹。不勾则不必调用，下次进入仍会弹。 */
+    val onDisclaimerAccepted: () -> Unit,
 )
 
 @Immutable

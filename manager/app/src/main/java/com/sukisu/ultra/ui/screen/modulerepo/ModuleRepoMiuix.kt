@@ -147,6 +147,9 @@ fun ModuleRepoScreenMiuix(
     val sourceBg = colorScheme.secondaryContainer.copy(alpha = 0.6f)
     val sourceTint = colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
     val showSourcesDialog = remember { mutableStateOf(false) }
+    // 免责说明：没勾过"承诺"就每次进入本页都弹一次。取值只看进入时的这一份状态，
+    // 关掉之后由本地的 showDisclaimer 管着，不再跟着 state 的后续变化走。
+    val showDisclaimer = remember { mutableStateOf(!state.disclaimerAccepted) }
 
     // 搜索框每次输入都会通过 onSearchStatusChange 送进 ViewModel（见 SearchBar），这里原先再回写
     // 一遍是第二条通路，除了让状态多抖一次没有作用，删掉。
@@ -688,6 +691,15 @@ fun ModuleRepoScreenMiuix(
         onDismissRequest = { showSourcesDialog.value = false },
         state = state,
         actions = actions,
+    )
+
+    RepoDisclaimerDialogMiuix(
+        show = showDisclaimer.value,
+        onDismiss = { committed ->
+            showDisclaimer.value = false
+            // 只有勾了"承诺"才落盘；没勾则什么都不记，下次进入仍会弹。
+            if (committed) actions.onDisclaimerAccepted()
+        },
     )
 }
 

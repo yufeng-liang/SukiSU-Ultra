@@ -209,6 +209,10 @@
     <string name="color_sakura">櫻花粉</string>
     <string name="network_offline">未連線至網路</string>
     <string name="module_repo_unavailable">模組倉庫目前無法使用，請稍後再試。</string>
+    <string name="module_repo_disclaimer_title">關於模組倉庫源</string>
+    <string name="module_repo_disclaimer_body">本頁的模組來自第三方模組倉庫，均未經過安全審核。\n\nKernelSU 內建的模組源就是這個官方源（modules.kernelsu.org），本應用預設使用它。官方源對每個模組的首次提交會做一次規則審核，但沒有程式碼審計，也沒有惡意軟體掃描——審核看的是垃圾內容、濫用、id 搶註這類規則，而不是模組在你裝置上做了什麼；後續更新自動發布、不再審核，也不驗證簽章與開發者身分。可一鍵加入的候選倉庫源同樣沒有經過任何審核。\n\n模組以 Root 權限執行，能讀寫系統分區、你的應用程式資料與網路請求。惡意模組、或被入侵的開發者帳號發布的模組，可能導致裝置無法開機（變磚）、資料遺失、帳號或錢財被盜刷、隱私外洩等後果，且往往難以恢復。\n\n提供自訂倉庫源與內建候選源，只是為了讓你更方便地找到模組，並不代表我們推薦、背書或擔保其中任何內容。是否安裝某個模組、以及由此帶來的一切風險與後果，都需要你自己判斷並承擔。請只從你信任的來源安裝模組。</string>
+    <string name="module_repo_disclaimer_commitment">我已閱讀並承諾自行承擔上述風險</string>
+    <string name="module_repo_disclaimer_confirm">我已知曉</string>
     <string name="network_retry">重試</string>
     <string name="tab_readme">自述檔</string>
     <string name="tab_releases">發行版本</string>

@@ -25,6 +25,14 @@ interface SettingsRepository {
     var moduleSortEnabledFirst: Boolean
     var moduleSortActionFirst: Boolean
     var moduleRepoSortOrder: Int
+
+    /**
+     * 模块仓库页的免责说明是否已被勾选"不再提示"。
+     *
+     * 默认 false：没勾过就每次进入模块仓库页都弹一次（见 [ModuleRepoDisclaimerPrefs]）。
+     */
+    var moduleRepoDisclaimerAccepted: Boolean
+
     var superuserShowSystemApps: Boolean
     var superuserShowOnlyPrimaryUserApps: Boolean
     var superuserSortOption: Int

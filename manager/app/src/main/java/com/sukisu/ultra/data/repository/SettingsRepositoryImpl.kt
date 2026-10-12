@@ -70,6 +70,23 @@ object ModuleContributionPrefs {
         firstInstallTime < cutoff
 }
 
+/**
+ * 模块仓库页免责说明的存储约定。
+ *
+ * 和 [ModuleContributionPrefs] 一样把 key 与默认值单独放出来，好让单测在 JVM 上锁住：
+ * 判据只有一句"没勾过就弹"，但它决定了每次进入模块仓库页要不要打断用户，改错一次就是
+ * 全体用户每次都被弹（或反过来，该弹的再没人看见）。
+ */
+object ModuleRepoDisclaimerPrefs {
+    const val KEY = "module_repo_disclaimer_accepted"
+
+    /** 默认没接受：免责说明至少要完整出现过一次。 */
+    const val DEFAULT = false
+
+    /** 只有明确勾选"不再提示"才不再弹；其余情况（含从未打开过）一律每次进入都弹。 */
+    fun shouldShow(accepted: Boolean = DEFAULT): Boolean = !accepted
+}
+
 class SettingsRepositoryImpl : SettingsRepository {
 
     private companion object {
@@ -176,6 +193,10 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var moduleRepoSortOrder: Int
         get() = prefs.getInt("module_repo_sort_order", RepoSort.UPDATED.ordinal)
         set(value) = prefs.edit { putInt("module_repo_sort_order", value) }
+
+    override var moduleRepoDisclaimerAccepted: Boolean
+        get() = prefs.getBoolean(ModuleRepoDisclaimerPrefs.KEY, ModuleRepoDisclaimerPrefs.DEFAULT)
+        set(value) = prefs.edit { putBoolean(ModuleRepoDisclaimerPrefs.KEY, value) }
 
     override var superuserShowSystemApps: Boolean
         get() = prefs.getBoolean("show_system_apps", false)

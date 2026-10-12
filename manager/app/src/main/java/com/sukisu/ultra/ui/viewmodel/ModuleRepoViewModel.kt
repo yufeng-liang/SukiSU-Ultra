@@ -59,6 +59,7 @@ class ModuleRepoViewModel(
                 offline = !hasAnyNetwork(ksuApp),
                 sources = sources,
                 candidates = candidatesFor(sources),
+                disclaimerAccepted = settingsRepo.moduleRepoDisclaimerAccepted,
             )
         }
 
@@ -241,6 +242,15 @@ class ModuleRepoViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * 用户在免责说明里勾了"不再提示"：落盘，之后进入本页不再弹。不勾则不会调用它，
+     * [ModuleRepoUiState.disclaimerAccepted] 保持 false，下次进来还会弹。
+     */
+    fun acceptDisclaimer() {
+        settingsRepo.moduleRepoDisclaimerAccepted = true
+        _uiState.update { it.copy(disclaimerAccepted = true) }
     }
 
     fun updateSearchStatus(status: SearchStatus) {
