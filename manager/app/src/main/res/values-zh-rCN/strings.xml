@@ -702,6 +702,7 @@
     <string name="backup_cloud_credential_failed">设置已保存，但密码没能存进去（系统密钥库不可用），请重新填写。</string>
     <string name="backup_cloud_found">云端有 %1$d 次备份（共 %2$d 项）可恢复，已加入下面的列表。</string>
     <string name="backup_cloud_hint">密码栏一律填「应用密码」，不是登录密码。</string>
+    <string name="backup_cloud_remembered">填过这家；点它会恢复上次填的内容</string>
     <string name="backup_origin_group">备份位置</string>
     <string name="backup_kind_group">备份内容</string>
     <plurals name="backup_module_count">

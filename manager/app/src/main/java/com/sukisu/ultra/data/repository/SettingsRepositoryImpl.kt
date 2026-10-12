@@ -245,6 +245,12 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = prefs.getBoolean("backup_cloud_enabled", false)
         set(value) = prefs.edit { putBoolean("backup_cloud_enabled", value) }
 
+    override var backupCloudProfiles: String
+        get() = prefs.getString("backup_cloud_profiles", "") ?: ""
+        set(value) = prefs.edit {
+            if (value.isBlank()) remove("backup_cloud_profiles") else putString("backup_cloud_profiles", value)
+        }
+
     override var backupAutoAfterInstall: Boolean
         get() = prefs.getBoolean("backup_auto_after_install", true)
         set(value) = prefs.edit { putBoolean("backup_auto_after_install", value) }

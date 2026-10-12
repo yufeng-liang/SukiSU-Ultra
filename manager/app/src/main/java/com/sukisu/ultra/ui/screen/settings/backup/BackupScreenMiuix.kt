@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,6 +46,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -54,6 +56,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -232,6 +236,24 @@ fun BackupMiuix(
 }
 
 /**
+ * 「这家填过」的小圆点（Miuix 版，与 Material 的 `RememberedDot` 同一件事）。
+ *
+ * 颜色跟主色走：在没选中的灰底芯片上，它是这一行里唯一的彩色，一眼就能挑出哪几家配过。
+ * 选中的芯片不用它——那家整块都是主色，点上去看不见，位子也留给"当前在这家"这件事本身。
+ */
+@Composable
+private fun RememberedDotMiuix() {
+    val description = stringResource(R.string.backup_cloud_remembered)
+    Box(
+        modifier = Modifier
+            .padding(end = 6.dp)
+            .size(8.dp)
+            .background(colorScheme.primary, CircleShape)
+            .semantics { contentDescription = description },
+    )
+}
+
+/**
  * 云端（WebDAV）那一块：收起时只占一行，展开是配置表单。
  *
  * 两个分页都挂。备份的人要在这儿填地址；**从云端恢复的人也是先想到恢复页**——填完保存就会自动
@@ -267,8 +289,10 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
+                // 这里说的是**已经生效**的那份（不是表单里正在编辑的草稿）：用户切到别家填了
+                // 一半就收起这块时，这一行要是跟着草稿走，就成了"备份会写到那儿"的一句谎话。
                 Text(
-                    text = state.cloudUrl.ifBlank {
+                    text = state.cloudSavedUrl.ifBlank {
                         stringResource(R.string.backup_cloud_summary_unset)
                     },
                     fontSize = 13.sp,
@@ -307,11 +331,15 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
                             // 选中的那个用主色，其余保持灰底——不这样区分的话，点完预设
                             // 用户只能从地址栏里的域名反推自己刚才点的是谁。
                             //
+                            // 没选中的那几个里，记着可用配置的前面加一个小圆点：切到别家再切回来
+                            // 时，用户得能看出哪几家是自己填过的（见 RememberedDotMiuix）。
+                            //
                             // 比标准按钮小一圈：它跟下面三个输入框是一组"填表"的东西，
                             // 和页面底部那个「立即备份」同样体量会把表单的层级顶乱。
+                            val remembered = preset.id in state.cloudRememberedSlots && preset.id != state.cloudSlot
                             Button(
                                 onClick = { actions.onSelectPreset(preset) },
-                                colors = if (preset == state.selectedPreset) {
+                                colors = if (preset.id == state.cloudSlot) {
                                     ButtonDefaults.buttonColorsPrimary()
                                 } else {
                                     ButtonDefaults.buttonColors()
@@ -320,7 +348,10 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
                                 minHeight = 34.dp,
                                 insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             ) {
-                                Text(text = preset.label, fontSize = 13.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (remembered) RememberedDotMiuix()
+                                    Text(text = preset.label, fontSize = 13.sp)
+                                }
                             }
                         }
                     }

@@ -38,6 +38,15 @@ interface SettingsRepository {
     var webDavUser: String
     var webDavPassword: String
     var backupCloudEnabled: Boolean
+
+    /**
+     * 各家服务商各记一份的云端配置（含没保存的草稿），JSON 原文，密码在里面是密文。
+     *
+     * 与上面那三个属性分工明确：上面那三个是**正在生效**的那一份，这里是"别家填到哪儿了"。
+     * 编解码在 [com.sukisu.ultra.data.backup.CloudProfileBookJson]。
+     */
+    var backupCloudProfiles: String
+
     var backupAutoAfterInstall: Boolean
 
     /**

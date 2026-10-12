@@ -10,11 +10,16 @@ import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.BackupRepository
 import com.sukisu.ultra.data.backup.BackupRunResult
+import com.sukisu.ultra.data.backup.CloudProfile
+import com.sukisu.ultra.data.backup.CloudProfileBook
+import com.sukisu.ultra.data.backup.CloudProfileBookJson
+import com.sukisu.ultra.data.backup.CloudSlots
+import com.sukisu.ultra.data.backup.CredentialCipher
+import com.sukisu.ultra.data.backup.KeystoreKeyProvider
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
 import com.sukisu.ultra.data.backup.OriginEntry
 import com.sukisu.ultra.data.backup.RestoreOutcome
 import com.sukisu.ultra.data.backup.WebDavPreset
-import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.backup.reasonOf
 import com.sukisu.ultra.data.repository.ModuleRepositoryImpl
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
@@ -35,6 +40,7 @@ import com.sukisu.ultra.ui.util.BackupText
 import com.sukisu.ultra.ui.util.formatSessionTime
 import com.sukisu.ultra.ui.util.isoToEpochMillis
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,28 +58,115 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private val repository = BackupRepository(application)
     private val settings = SettingsRepositoryImpl()
 
+    /**
+     * 各家服务商各记一份配置，只有一份生效。
+     *
+     * 开页面时先把它读回来：上一次填到一半就切走的地址、用户名和密码都还在
+     * （见 [CloudProfileBook]）。**不是**只在内存里存——用户切走页面时这个 ViewModel 就没了，
+     * 而"下次回来还在"正是他要的。
+     */
+    private var profiles: CloudProfileBook = CloudProfileBook.migrated(
+        CloudProfileBookJson.parse(settings.backupCloudProfiles, decrypt = ::decryptStoredPassword),
+        savedUrl = settings.webDavUrl,
+    )
+
+    /** 生效的那一份（`settings` 里的三个值），[CloudProfileBook] 拿它当"生效槽位"的真相。 */
+    private fun liveProfile() = CloudProfile(
+        url = settings.webDavUrl,
+        user = settings.webDavUser,
+        password = settings.webDavPassword,
+    )
+
     private val _uiState = MutableStateFlow(
-        BackupUiState(
-            cloudUrl = settings.webDavUrl,
-            cloudSavedUrl = settings.webDavUrl,
-            cloudUser = settings.webDavUser,
-            cloudPass = settings.webDavPassword,
-            cloudConfigured = repository.cloudConfigured(),
-            // 上次存的就是某个模板时，把那个预设的高亮恢复回来。
-            selectedPreset = WebDavPresets.match(settings.webDavUrl),
-            autoBackupEnabled = settings.backupAutoAfterInstall,
-            autoBackupLocal = settings.backupAutoLocal,
-            autoBackupCloud = settings.backupAutoCloud,
-            autoBackupRecord = repository.lastAutoBackup(),
-            moduleRetention = settings.backupRetention,
-            bootRetention = settings.backupBootRetention,
-        )
+        run {
+            val live = liveProfile()
+            // 没记过"最后在看哪一家"时按生效的那家开局；生效的地址对不上任何模板（手填的）
+            // 就落到手填槽位——这正是他上次配的那家。
+            val slot = profiles.last ?: profiles.active ?: CloudSlots.CUSTOM
+            val shown = profiles.profileFor(slot, live)
+            BackupUiState(
+                cloudUrl = shown.url,
+                cloudSavedUrl = live.url,
+                cloudUser = shown.user,
+                cloudPass = shown.password,
+                cloudSlot = slot,
+                cloudRememberedSlots = profiles.remembered(live),
+                cloudConfigured = repository.cloudConfigured(),
+                // 提示跟着**槽位**走，不跟地址走：Nextcloud 的模板带 `USERNAME` 占位符，
+                // 用户改完地址那一刻恰恰是最需要"去哪生成应用密码"这句话的时候。
+                cloudPresetHintRes = CloudSlots.presetOf(slot)?.hintRes,
+                autoBackupEnabled = settings.backupAutoAfterInstall,
+                autoBackupLocal = settings.backupAutoLocal,
+                autoBackupCloud = settings.backupAutoCloud,
+                autoBackupRecord = repository.lastAutoBackup(),
+                moduleRetention = settings.backupRetention,
+                bootRetention = settings.backupBootRetention,
+            )
+        }
     )
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
 
     /** 速度采样的上一次取值；每个目标重新起算。 */
     private var lastSampleAt = 0L
     private var lastSampleBytes = 0L
+
+    /**
+     * 草稿落盘的合并窗口。
+     *
+     * 每敲一个键就写一次盘是没必要的（还要顺带做一次 AES），但只在离开页面时写又会在进程被杀
+     * 时丢掉最后几下——400ms 之后写一次，两种毛病都没有。
+     */
+    private var persistJob: Job? = null
+
+    /**
+     * 草稿落盘。
+     *
+     * [immediate] 用在两个"再晚就丢了"的时刻：换服务商（用户接下来看到的会是另一家，这一刻
+     * 必须已经存住刚才那家）和 [onCleared]（协程作用域马上就没了，防抖那次永远不会跑）。
+     */
+    private fun persistProfiles(immediate: Boolean = false) {
+        persistJob?.cancel()
+        val raw = CloudProfileBookJson.render(profiles, encrypt = ::encryptForStorage)
+        if (immediate) {
+            settings.backupCloudProfiles = raw
+            return
+        }
+        persistJob = viewModelScope.launch {
+            delay(PROFILE_PERSIST_DELAY_MS)
+            settings.backupCloudProfiles = raw
+        }
+    }
+
+    /**
+     * 页面被销毁时把草稿补写一次。
+     *
+     * 用户"填了没保存就切到其他页面"正是走到这里：不补这一次，防抖里那次提交会随
+     * [viewModelScope] 一起被取消，回来时那几行字就是空的。
+     */
+    override fun onCleared() {
+        settings.backupCloudProfiles = CloudProfileBookJson.render(profiles, encrypt = ::encryptForStorage)
+        super.onCleared()
+    }
+
+    /** 加密失败（系统密钥库不可用）就返回 null，那一格密码不落盘——明文绝不写进 prefs。 */
+    private fun encryptForStorage(plaintext: String): String? =
+        runCatching { CredentialCipher.encrypt(KeystoreKeyProvider.key(), plaintext) }.getOrNull()
+
+    private fun decryptStoredPassword(envelope: String): String =
+        runCatching { CredentialCipher.decrypt(KeystoreKeyProvider.key(), envelope) }.getOrDefault("")
+
+    /** 把 [profiles] 的变化同步进界面：三个输入框、当前槽位、芯片上的点。 */
+    private fun applyProfileBook(slot: String, shown: CloudProfile, book: CloudProfileBook = profiles) =
+        _uiState.update {
+            it.copy(
+                cloudSlot = slot,
+                cloudUrl = shown.url,
+                cloudUser = shown.user,
+                cloudPass = shown.password,
+                cloudPresetHintRes = CloudSlots.presetOf(slot)?.hintRes,
+                cloudRememberedSlots = book.remembered(liveProfile()),
+            )
+        }
 
     /**
      * 正在跑的那次备份；【取消】靠它把这次传输真的掐断。
@@ -247,19 +340,24 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     fun toggleCloud() = _uiState.update { it.copy(cloudExpanded = !it.cloudExpanded) }
 
     /**
-     * 点了服务商预设：填好地址，把"去哪生成应用密码/要开什么"那句话显示出来，并确保表单是展开的。
+     * 点了服务商芯片：切到这一家，把它自己记着的那份填回表单。
      *
-     * 提示不清除——用户改地址（Nextcloud 的模板带 `USERNAME`，必须改）时那句话正好是最需要的。
+     * "切"不是"覆盖"：刚才那一家填到一半的内容先落进它自己的槽位（[CloudProfileBook.withEdit]
+     * 每次编辑都在写），所以来回点几家谁也不丢。这一家要是从没填过，就把模板填进地址栏——
+     * 空着的话用户得自己回忆模板长什么样。
+     *
+     * 落盘用 immediate：接下来屏幕上显示的是另一家，这一刻必须已经存住刚才那家。
      */
     fun selectPreset(preset: WebDavPreset) {
-        _uiState.update {
-            it.copy(
-                cloudUrl = preset.urlTemplate,
-                cloudPresetHintRes = preset.hintRes,
-                cloudExpanded = true,
-                selectedPreset = preset,
-            )
-        }
+        val slot = preset.id
+        val live = liveProfile()
+        val remembered = profiles.profileFor(slot, live)
+        // 从没碰过这一家（也没有生效的配置）时给一份模板开局。
+        val shown = if (remembered.isBlank) CloudProfile(url = preset.urlTemplate) else remembered
+        profiles = profiles.withEdit(slot, shown)
+        persistProfiles(immediate = true)
+        applyProfileBook(slot, shown)
+        _uiState.update { it.copy(cloudExpanded = true) }
     }
 
     /**
@@ -757,6 +855,10 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun saveCloud(url: String, user: String, pass: String) = viewModelScope.launch {
+        // 让位之前先把原来生效的那家收进它自己的槽位：不收的话，用户在别家点保存，这一家的
+        // 地址和密码就随着下面三行被覆盖而彻底消失，"配了多家"也就无从谈起。
+        val slot = _uiState.value.cloudSlot
+        profiles = profiles.withSaved(slot, liveProfile())
         settings.webDavUrl = url.trim()
         settings.webDavUser = user.trim()
         settings.webDavPassword = pass
@@ -766,6 +868,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         // 读不回来就照实说；表单里也清掉，那份密码确实没留下，不该装作留下了。
         val passwordLost = pass.isNotBlank() && settings.webDavPassword.isBlank()
         val configured = repository.cloudConfigured()
+        // 生效的那份就是上面刚写进去的 settings，所以这个槽位不再需要草稿（withSaved 已清掉）；
+        // 但它仍是"正在生效"的那家，[CloudProfileBook.remembered] 会让它的点继续亮着。
+        persistProfiles(immediate = true)
         _uiState.update {
             it.copy(
                 cloudUrl = url.trim(),
@@ -773,6 +878,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 cloudUser = user.trim(),
                 cloudPass = if (passwordLost) "" else pass,
                 cloudConfigured = configured,
+                cloudRememberedSlots = profiles.remembered(liveProfile()),
                 // 存好地址就把云端勾上并立刻去列一次：用户配云端就是为了看它上面已经有什么，
                 // 再让他自己勾一次、再等一次刷新是多余的两步。地址被清空时反过来摘掉勾选，
                 // 否则列表会一直报"请先配置"。
@@ -826,13 +932,30 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** 输入框编辑态。三个字段各自更新，互不覆盖。 */
-    fun editCloud(url: String? = null, user: String? = null, pass: String? = null) = _uiState.update {
-        it.copy(
-            cloudUrl = url ?: it.cloudUrl,
-            cloudUser = user ?: it.cloudUser,
-            cloudPass = pass ?: it.cloudPass,
+    /**
+     * 输入框编辑态。三个字段各自更新，互不覆盖。
+     *
+     * 每敲一下就把这一家的草稿改成当前的样子（防抖落盘）：用户随时可能直接切走，
+     * 那一刻来不及再去问"表单里现在是什么"。
+     */
+    fun editCloud(url: String? = null, user: String? = null, pass: String? = null) {
+        val current = _uiState.value
+        val edited = CloudProfile(
+            url = url ?: current.cloudUrl,
+            user = user ?: current.cloudUser,
+            password = pass ?: current.cloudPass,
         )
+        profiles = profiles.withEdit(current.cloudSlot, edited)
+        persistProfiles()
+        _uiState.update {
+            it.copy(
+                cloudUrl = edited.url,
+                cloudUser = edited.user,
+                cloudPass = edited.password,
+                // 填了东西就不再是"什么都没配"，芯片上的点要跟着亮起来。
+                cloudRememberedSlots = profiles.remembered(liveProfile()),
+            )
+        }
     }
 
     fun saveCloudFromState() = saveCloud(_uiState.value.cloudUrl, _uiState.value.cloudUser, _uiState.value.cloudPass)
@@ -949,6 +1072,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private companion object {
         /** 速度采样的最小间隔：比这更密的采样除以很小的 dt 会得到假的峰值。 */
         const val SPEED_SAMPLE_MS = 400L
+
+        /** 云端草稿落盘的合并窗口：比一次连打更宽，又不至于让"切走页面"丢掉刚敲的字。 */
+        const val PROFILE_PERSIST_DELAY_MS = 400L
     }
 
     /**

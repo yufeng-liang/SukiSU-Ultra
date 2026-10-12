@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -18,6 +19,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -58,6 +61,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -174,6 +179,26 @@ fun BackupMaterial(
 }
 
 /**
+ * 「这家填过」的小圆点。
+ *
+ * 挂在芯片的图标位上。切到别家再切回来时，用户得能看出哪几家是自己配过的——否则只能挨个点开
+ * 看地址栏对不对，而"我到底配没配过这家"正是这一步最容易犯嘀咕的地方。用点不用字：芯片这一行
+ * 本来就要折成两行，再给每家加两个字会把它挤成三行。
+ *
+ * 颜色跟主色走、和选中的勾同一个色系，但它只在**没选中**的芯片上出现（选中的位子留给勾）。
+ */
+@Composable
+private fun RememberedDot() {
+    val description = stringResource(R.string.backup_cloud_remembered)
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .background(MaterialTheme.colorScheme.primary, CircleShape)
+            .semantics { contentDescription = description },
+    )
+}
+
+/**
  * 云端（WebDAV）那一块：收起时只占一行，展开是配置表单。
  *
  * 两个分页都挂。备份的人要在这儿填地址；**从云端恢复的人也是先想到恢复页**——填完保存就会自动
@@ -199,9 +224,11 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
                     )
                 },
                 // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
+                // 这里说的是**已经生效**的那份（不是表单里正在编辑的草稿）：用户切到别家填了
+                // 一半就收起这块时，这一行要是跟着草稿走，就成了"备份会写到那儿"的一句谎话。
                 supportingContent = {
                     Text(
-                        text = state.cloudUrl.ifBlank {
+                        text = state.cloudSavedUrl.ifBlank {
                             stringResource(R.string.backup_cloud_summary_unset)
                         },
                         maxLines = 2,
@@ -233,21 +260,29 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     WebDavPresets.ALL.forEach { preset ->
-                        val selected = preset == state.selectedPreset
+                        val selected = preset.id == state.cloudSlot
+                        val remembered = preset.id in state.cloudRememberedSlots
                         // 选中的那个带勾并换成主色底——不这样区分的话，点完预设
                         // 用户只能从地址栏里的域名反推自己刚才点的是谁。
                         // 预设是"填个模板"的快捷方式，字比正文小一档：它跟下面三个输入框
                         // 是一组，和页面底部那个「立即备份」同样体量会把表单的层级顶乱。
+                        //
+                        // 没选中的那几个里，记着可用配置的加一个小圆点：切到别家再切回来时，
+                        // 用户得能看出哪几家是自己填过的，否则只能挨个点开试。
                         FilterChip(
                             selected = selected,
                             onClick = { actions.onSelectPreset(preset) },
                             label = {
                                 Text(preset.label, style = MaterialTheme.typography.labelMedium)
                             },
-                            leadingIcon = if (selected) {
-                                { Icon(Icons.Filled.Check, contentDescription = null) }
-                            } else {
-                                null
+                            leadingIcon = when {
+                                selected -> {
+                                    { Icon(Icons.Filled.Check, contentDescription = null) }
+                                }
+                                remembered -> {
+                                    { RememberedDot() }
+                                }
+                                else -> null
                             },
                         )
                     }

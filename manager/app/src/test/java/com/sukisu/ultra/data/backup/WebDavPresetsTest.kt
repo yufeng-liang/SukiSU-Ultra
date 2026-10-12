@@ -46,4 +46,22 @@ class WebDavPresetsTest {
         assertEquals(null, WebDavPresets.match(""))
         assertEquals(null, WebDavPresets.match("   "))
     }
+
+    @Test
+    fun `ids are unique and resolvable`() {
+        // id 是落盘用的槽位名（草稿按它认），重复的话两家会互相覆盖；改了 id 等于把用户
+        // 存下的草稿全丢掉，所以这条也顺便钉住"别随手改"。
+        assertEquals(WebDavPresets.ALL.size, WebDavPresets.ALL.map { it.id }.toSet().size)
+        WebDavPresets.ALL.forEach { preset ->
+            assertEquals(preset, WebDavPresets.byId(preset.id))
+        }
+        assertEquals(null, WebDavPresets.byId("nope"))
+        assertEquals(null, WebDavPresets.byId(null))
+    }
+
+    @Test
+    fun `no preset claims the custom slot name`() {
+        // 手填的地址也占一个槽位，撞名会让"我手填的那份"和某一家互相顶掉。
+        assertTrue(WebDavPresets.ALL.none { it.id == CloudSlots.CUSTOM })
+    }
 }

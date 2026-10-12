@@ -8,9 +8,10 @@ import com.sukisu.ultra.data.backup.BackupDefaults
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.BackupRunResult
+import com.sukisu.ultra.data.backup.CloudProfileBook
+import com.sukisu.ultra.data.backup.CloudSlots
 import com.sukisu.ultra.data.backup.RetentionLimit
 import com.sukisu.ultra.data.backup.WebDavPreset
-import com.sukisu.ultra.data.backup.WebDavPresets
 import com.sukisu.ultra.data.model.Module
 import java.io.File
 
@@ -115,12 +116,19 @@ data class BackupUiState(
      */
     val cloudExpanded: Boolean = false,
     /**
-     * 当前高亮的服务商预设。
+     * 当前在配哪一家（[CloudProfileBook] 的槽位名，见 [CloudSlots]）。
      *
-     * 点了哪个预设哪个就亮着——否则用户点完只能从地址栏里的域名反推刚才点的是谁。手动改地址
-     * 不取消高亮（改完多半还是那家的地址），重开页面时按地址再认一次（[WebDavPresets.match]）。
+     * 表单里那三个框显示的是**这一家**记着的值，不是"全局唯一一份"。芯片的高亮也看它——
+     * 原来靠地址去比对模板反推，用户改过地址（Nextcloud 的模板带 `USERNAME`，必须改）之后
+     * 就推不出来了，芯片会莫名其妙全灭。
      */
-    val selectedPreset: WebDavPreset? = null,
+    val cloudSlot: String = CloudSlots.CUSTOM,
+    /**
+     * 记着可用配置的槽位（[CloudProfileBook.remembered]）：芯片上给这几个打点。
+     *
+     * 不打点的话，用户切到别家再切回来只能靠记忆确认"我到底配没配过这家"。
+     */
+    val cloudRememberedSlots: Set<String> = emptySet(),
     /**
      * 已安装的模块，供用户勾选要备份哪几个。
      *
