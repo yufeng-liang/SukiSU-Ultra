@@ -42,7 +42,7 @@ class ModuleContributionRulesTest {
     ) = ContributionForm(
         meta = meta(),
         source = source,
-        uid = "2781460",
+        uid = "10086001",
         uidState = CoolapkUidState.Verified(nickname),
         consentChecked = consent,
         submitState = submitState,
@@ -95,7 +95,7 @@ class ModuleContributionRulesTest {
         )
         assertFalse(
             "填了 UID 但还没核实",
-            ContributionForm(meta = meta(), source = "https://a.example", uid = "2781460").requiredFilled,
+            ContributionForm(meta = meta(), source = "https://a.example", uid = "10086001").requiredFilled,
         )
         assertTrue(verifiedForm().requiredFilled)
     }
@@ -114,7 +114,7 @@ class ModuleContributionRulesTest {
             val form = ContributionForm(
                 meta = meta(),
                 source = "https://a.example",
-                uid = "2781460",
+                uid = "10086001",
                 uidState = state,
                 consentChecked = true,
             )
@@ -127,10 +127,10 @@ class ModuleContributionRulesTest {
     fun `the nickname comes from the verified lookup, never from the input box`() {
         // 署名只能来自酷安反查的结果：输入框里的只有 UID。
         assertEquals("酷友", verifiedForm(nickname = "酷友").nickname)
-        assertEquals("", ContributionForm(uid = "2781460").nickname)
+        assertEquals("", ContributionForm(uid = "10086001").nickname)
         assertEquals(
             "",
-            ContributionForm(uid = "2781460", uidState = CoolapkUidState.Unavailable).nickname,
+            ContributionForm(uid = "10086001", uidState = CoolapkUidState.Unavailable).nickname,
         )
     }
 
@@ -271,11 +271,11 @@ class ModuleContributionRulesTest {
         assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid(""))
         assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("123"))
         assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("abc"))
-        assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("2781460x"))
+        assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("10086001x"))
         assertFalse(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("1234567890123"))
         assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("1234"))
-        assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("2781460"))
-        assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid(" 2781460 "))
+        assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid("10086001"))
+        assertTrue(com.sukisu.ultra.ui.util.ModuleContribution.isValidUid(" 10086001 "))
     }
 
     // ── 所有权口令：这套算法第三份实现的钉子 ────────────────────────────────

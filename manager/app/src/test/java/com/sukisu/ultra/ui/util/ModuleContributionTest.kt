@@ -205,8 +205,8 @@ class ModuleContributionTest {
     @Test
     fun `the four documented uid states map to their results`() {
         assertEquals(
-            CoolapkUidLookup.Verified("彧祜"),
-            uidOf(200, """{"status":"verified","uid":"2781460","nickname":"彧祜"}"""),
+            CoolapkUidLookup.Verified("示例昵称"),
+            uidOf(200, """{"status":"verified","uid":"10086001","nickname":"示例昵称"}"""),
         )
         assertEquals(CoolapkUidLookup.NotFound, uidOf(200, """{"status":"not_found","uid":"99999999"}"""))
         assertEquals(CoolapkUidLookup.SelfReported, uidOf(200, """{"status":"self_reported","uid":"1"}"""))
@@ -235,8 +235,8 @@ class ModuleContributionTest {
     @Test
     fun `the user url carries the uid as a query parameter`() {
         assertEquals(
-            "https://sukisu-module-api.pages.dev/user?uid=2781460",
-            ModuleContribution.userUrl("2781460"),
+            "https://sukisu-module-api.pages.dev/user?uid=10086001",
+            ModuleContribution.userUrl("10086001"),
         )
     }
 
@@ -433,7 +433,7 @@ class ModuleContributionTest {
             kotlin.coroutines.Continuation::class.java,
         ).apply { isAccessible = true }
         val out = method.invoke(
-            ModuleContribution, zip, meta, "https://a.example", "2781460", "酷友", "ab12cd",
+            ModuleContribution, zip, meta, "https://a.example", "10086001", "酷友", "ab12cd",
             displayed, DirectContinuation,
         )
         // 本地拒绝路径在任何挂起点之前返回，直接拿到 SubmitResult；拿到协程哨兵就说明走岔了路。

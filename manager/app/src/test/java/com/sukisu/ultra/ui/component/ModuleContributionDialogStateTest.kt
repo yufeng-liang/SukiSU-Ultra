@@ -244,7 +244,7 @@ class ModuleContributionDialogStateTest {
             state.updateConsent(true)
             // updateUid 带 500ms 防抖；retryUidLookup 是同一份核实逻辑的"立刻再查一次"入口，
             // 并且它顺手把那条防抖任务取消了 —— 于是这里不用真等半秒，等的也不是时间。
-            state.updateUid("2781460")
+            state.updateUid("10086001")
             state.retryUidLookup()
             scope.drainAll()
             assertTrue(
