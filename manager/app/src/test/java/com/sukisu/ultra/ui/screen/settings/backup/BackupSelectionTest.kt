@@ -99,14 +99,18 @@ class BackupSelectionTest {
         assertTrue(state.selecting)
     }
 
-    private fun rowOf(fileName: String, origin: BackupOrigin) = BackupRow(
+    private fun rowOf(
+        fileName: String,
+        origin: BackupOrigin,
+        kind: BackupKind = BackupKind.MODULE,
+    ) = BackupRow(
         id = "${origin.name}/$fileName",
         title = fileName,
         subtitle = "",
         fileName = fileName,
         origin = origin,
         originLabel = origin.name,
-        kind = BackupKind.MODULE,
+        kind = kind,
         createdAt = "2026-10-09T09:35:56Z",
     )
 
@@ -173,5 +177,106 @@ class BackupSelectionTest {
             kept.map { it.origin },
         )
         assertEquals("module_b_1_20261009_093107.zip", kept.last().fileName)
+    }
+
+    /** 恢复一个模块只是重装那一个，不用拦。 */
+    @Test
+    fun `a single module needs no confirmation`() {
+        val confirm = restoreConfirmFor(listOf(rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL)))
+
+        assertEquals(RestoreConfirm.NONE, confirm)
+    }
+
+    /** 恢复一整组会把它们按备份里的版本重装一遍，备份可能比现在旧——要问。 */
+    @Test
+    fun `two modules need one confirmation`() {
+        val confirm = restoreConfirmFor(
+            listOf(
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
+                rowOf("module_b_1_20261009_093107.zip", BackupOrigin.LOCAL),
+            ),
+        )
+
+        assertEquals(RestoreConfirm.MANY, confirm)
+    }
+
+    /**
+     * 本机与云端各一份的模块，默认全选也只动一个：不该弹"恢复这 2 项"。
+     *
+     * 这是那个被用户问出来的问题——详情页默认全选，标题报 2 项而实际只恢复 1 项，
+     * 用户没法从标题判断自己到底要动几个东西。
+     */
+    @Test
+    fun `the two sides of one module need no confirmation`() {
+        val confirm = restoreConfirmFor(
+            listOf(
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.CLOUD),
+            ),
+        )
+
+        assertEquals(RestoreConfirm.NONE, confirm)
+    }
+
+    /**
+     * 仓库源两侧各一份时仍然要问。
+     *
+     * 去重把两条并成一条之后，"条数 > 1"这个条件不再成立；如果分支也跟着按行数放行，
+     * 单条仓库源恢复（整批替换全部源）就会从确认框下面溜过去。
+     */
+    @Test
+    fun `the two sides of a repo config still warn about the batch replace`() {
+        val fileName = "repo-config_20261009_093107.zip"
+        val confirm = restoreConfirmFor(
+            listOf(
+                rowOf(fileName, BackupOrigin.LOCAL, BackupKind.REPO_CONFIG),
+                rowOf(fileName, BackupOrigin.CLOUD, BackupKind.REPO_CONFIG),
+            ),
+        )
+
+        assertEquals(RestoreConfirm.REPO_CONFIG, confirm)
+    }
+
+    /** 仓库源与别的模块混选：条数已经 > 1，报的是"恢复好几条"那一句。 */
+    @Test
+    fun `a repo config mixed with a module counts as many`() {
+        val confirm = restoreConfirmFor(
+            listOf(
+                rowOf("repo-config_20261009_093107.zip", BackupOrigin.LOCAL, BackupKind.REPO_CONFIG),
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
+            ),
+        )
+
+        assertEquals(RestoreConfirm.MANY, confirm)
+    }
+
+    /** 原厂镜像单独一条也要问：恢复它等于把设备带回未 root 状态。 */
+    @Test
+    fun `a boot image asks on its own`() {
+        val confirm = restoreConfirmFor(
+            listOf(rowOf("boot_20261009_093107.zip", BackupOrigin.LOCAL, BackupKind.BOOT)),
+        )
+
+        assertEquals(RestoreConfirm.BOOT, confirm)
+    }
+
+    /** 原厂镜像和别的条混在一起时问的仍然是镜像那一句：不可逆的那件事优先。 */
+    @Test
+    fun `a boot image among other rows still asks about the boot image`() {
+        val confirm = restoreConfirmFor(
+            listOf(
+                rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
+                rowOf("module_b_1_20261009_093107.zip", BackupOrigin.LOCAL),
+                rowOf("boot_20261009_093107.zip", BackupOrigin.LOCAL, BackupKind.BOOT),
+            ),
+        )
+
+        assertEquals(RestoreConfirm.BOOT, confirm)
+    }
+
+    /** 一条都没勾：什么都不弹，别拿空列表去取 singleOrNull 的 kind。 */
+    @Test
+    fun `an empty selection needs no confirmation`() {
+        assertEquals(RestoreConfirm.NONE, restoreConfirmFor(emptyList()))
     }
 }

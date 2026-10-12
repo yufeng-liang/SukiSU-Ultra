@@ -26,7 +26,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sukisu.ultra.BuildConfig
 import com.sukisu.ultra.R
-import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
@@ -113,8 +112,8 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
             // 选中的里面有原厂镜像就必须先问一次：恢复它等于把设备带回未 root 状态，
             // 不可逆，而且用户未必知道自己勾上了它。
             val selection = state.openGroupSelection
-            when {
-                selection.any { it.kind == BackupKind.BOOT } -> confirmScope.launch {
+            when (restoreConfirmFor(selection)) {
+                RestoreConfirm.BOOT -> confirmScope.launch {
                     val confirmed = confirmDialog.awaitConfirm(
                         title = bootConfirmTitle,
                         content = bootConfirmBody,
@@ -124,11 +123,11 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
 
                 // 一次恢复好几条：详情页默认全选，这一下会把整组模块按备份里的版本重装一遍
                 // ——备份可能比现在旧，而且恢复没有撤销。多选里带仓库源时正文已说明会整批替换。
-                selection.size > 1 -> confirmScope.launch {
+                RestoreConfirm.MANY -> confirmScope.launch {
                     val confirmed = confirmDialog.awaitConfirm(
                         title = context.getString(
                             R.string.backup_restore_many_confirm_title,
-                            selection.size,
+                            oneCopyPerContent(selection).size,
                         ),
                         content = restoreManyConfirmBody,
                     ) == ConfirmResult.Confirmed
@@ -137,7 +136,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
 
                 // 单条仓库源恢复同样是整批替换：只恢复一条不拦的豁免理由（"只动那一个模块"）
                 // 对它不成立，所以单独问一次。
-                selection.singleOrNull()?.kind == BackupKind.REPO_CONFIG -> confirmScope.launch {
+                RestoreConfirm.REPO_CONFIG -> confirmScope.launch {
                     val confirmed = confirmDialog.awaitConfirm(
                         title = repoRestoreConfirmTitle,
                         content = repoRestoreConfirmBody,
@@ -145,7 +144,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
                     if (confirmed) viewModel.restoreSelected()
                 }
 
-                else -> viewModel.restoreSelected()
+                RestoreConfirm.NONE -> viewModel.restoreSelected()
             }
         },
         onShareSelected = viewModel::shareSelected,

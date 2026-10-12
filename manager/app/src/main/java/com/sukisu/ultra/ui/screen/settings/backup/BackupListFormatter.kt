@@ -77,6 +77,40 @@ internal fun oneCopyPerContent(rows: List<BackupRow>): List<BackupRow> {
     return rows.sortedBy { it.origin.ordinal }.filter { seen.add(it.kind to it.fileName) }
 }
 
+/** 「恢复勾选」按下之后要先问哪一句。 */
+internal enum class RestoreConfirm {
+    /** 不用问，直接恢复。 */
+    NONE,
+
+    /** 勾了原厂镜像：恢复它等于把设备带回未 root 状态，不可逆。 */
+    BOOT,
+
+    /** 一次恢复好几条：备份可能比现在旧，而且恢复没有撤销。 */
+    MANY,
+
+    /** 单条仓库源也是整批替换：那条"只动一个模块"的豁免理由对它不成立。 */
+    REPO_CONFIG,
+}
+
+/**
+ * 这次「恢复勾选」该弹哪个确认框。
+ *
+ * 条数按**内容**数算，不按行数：本机与云端各一份的只恢复一次（见 [oneCopyPerContent]），
+ * 拿行数去判会两头出错——标题说"恢复这 2 项"而实际只动一个，同时"两条同名、一份内容"的
+ * 仓库源恢复会从确认框下面溜过去。
+ *
+ * 原厂镜像不看条数：勾上一个就该问，它和别的条混在一起时也一样。
+ */
+internal fun restoreConfirmFor(selection: List<BackupRow>): RestoreConfirm {
+    val contents = oneCopyPerContent(selection)
+    return when {
+        selection.any { it.kind == BackupKind.BOOT } -> RestoreConfirm.BOOT
+        contents.size > 1 -> RestoreConfirm.MANY
+        contents.singleOrNull()?.kind == BackupKind.REPO_CONFIG -> RestoreConfirm.REPO_CONFIG
+        else -> RestoreConfirm.NONE
+    }
+}
+
 object BackupListFormatter {
 
     /**
