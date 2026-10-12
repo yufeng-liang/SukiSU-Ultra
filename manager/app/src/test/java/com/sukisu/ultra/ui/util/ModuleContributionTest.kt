@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.util
 
+import com.sukisu.ultra.ui.component.ModuleContributionRules
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
@@ -123,6 +124,28 @@ class ModuleContributionTest {
         // 同一个 403 的另一种原因（等级不够）不该被混成一句话：两种失败用户要做的事相反。
         val level = submitOf(403, """{"ok":false,"error":"投稿需要酷安等级 Lv2 及以上"}""")
         assertTrue(level.message, level.message.contains("Lv2"))
+    }
+
+    @Test
+    fun `a non 2xx reason is bounded so a giant error body cannot become the error line`() {
+        // 这一句是对话框里**原样渲染**的一行错误提示，而服务端并不保证它是"给人看的一句话"：
+        // 中间夹着 Cloudflare，出错时回的是上游栈回显 / 整页 HTML，几 KB 起步。
+        // 不设上限，一次失败就会把口令行下面撑出一整屏网页 —— 用户既读不出原因，也复制不了口令。
+        val giant = "E".repeat(5_000)
+        val result = submitOf(503, """{"ok":false,"error":"$giant"}""")
+        assertFalse(result.ok)
+        // 钉住上限本身：谁把 200 改成别的数（或把这层 take 删掉），这条就红。
+        assertEquals("E".repeat(200) + "（服务端返回 HTTP 503）", result.message)
+        // 非 JSON 的错误页压根进不了 error 字段，落到那句短兜底，同样撑不出屏幕。
+        val html = submitOf(503, "<html><body>" + "x".repeat(4_000) + "</body></html>")
+        assertEquals("投稿失败（服务端返回 HTTP 503）", html.message)
+        // 上限不能把重掷判据要吃的那半句切掉：proofWasAlreadyUsed 认的是句首的「口令已经用过」。
+        val used = "这个口令已经用过，请重新生成后再提交"
+        val rotated = submitOf(403, """{"ok":false,"error":"$used${"（请重试）".repeat(400)}"}""")
+        assertTrue(
+            "截断后判据仍要认得出这一句",
+            ModuleContributionRules.proofWasAlreadyUsed(rotated.message),
+        )
     }
 
     @Test

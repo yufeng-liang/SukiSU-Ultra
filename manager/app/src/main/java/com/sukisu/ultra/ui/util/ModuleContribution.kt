@@ -159,6 +159,17 @@ object ModuleContribution {
     /** id 的长度上限。索引里 id 是归并键，超长的只可能是恶意构造。 */
     private const val MAX_ID_LENGTH = 64
 
+    /**
+     * 非 2xx 时从 body 里带出的 `error` 最多留多少个字。
+     *
+     * 这一句是要被对话框原样渲染成一行错误提示的，而服务端那一侧不是"给人看的一句话"的
+     * 保证方：中间夹了 Cloudflare，出错时回的可能是整页 HTML、上游栈回显，几 KB 起步。
+     * 不设上限，一次失败就会把口令行下面撑出一屏网页，用户既读不出原因，也复制不了口令。
+     * 上限之上的部分对判据没有价值：[com.sukisu.ultra.ui.component.ModuleContributionRules.proofWasAlreadyUsed]
+     * 认的是这句话的开头（「这个口令已经用过……」）。
+     */
+    private const val MAX_ERROR_REASON_CHARS = 200
+
     /** 酷安 UID：4~12 位纯数字（与 Worker / 网页端同一约定）。 */
     private val UID_RE = Regex("\\d{4,12}")
 
@@ -348,6 +359,8 @@ object ModuleContribution {
      * [com.sukisu.ultra.ui.component.ModuleContributionRules.proofWasAlreadyUsed]
      * 那条"只有口令已用过才重掷 nonce"的判定也永远拿不到依据——它会退化成"从不重掷"。
      * HTTP 码一起留在消息里：body 不是 JSON、或压根没有 error 时，那句话就是用户仅有的信息。
+     * error 取前 [MAX_ERROR_REASON_CHARS] 个字：这一句会被原样渲染成一行错误提示，
+     * 而中间的 Cloudflare 出错时回的是整页 HTML / 上游栈回显，不设上限就会撑出一屏网页。
      */
     private fun readSubmitResult(response: Response): SubmitResult {
         if (!response.isSuccessful) {
@@ -355,6 +368,7 @@ object ModuleContribution {
             val reason = runCatching { response.body.string() }.getOrNull()
                 ?.let { text -> runCatching { JSONObject(text).optString("error") }.getOrNull() }
                 ?.takeIf { it.isNotBlank() }
+                ?.take(MAX_ERROR_REASON_CHARS)
             return SubmitResult(false, null, reason?.let { "$it$withCode" } ?: "投稿失败$withCode")
         }
         val body = runCatching { response.body.string() }.getOrNull()

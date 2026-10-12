@@ -339,7 +339,11 @@ class ModuleContributionRulesTest {
         assertNotEquals(proofPrefixFor(id, zipA), proofPrefixFor(id, zipB))
         assertEquals(proofPrefixFor(id, zipA), proofPrefixFor(id, zipA))
         // 顺序也是公式的一部分：id 在前、包体哈希在后，反过来就是另一串（Worker 同一条形状）。
+        // 光 assertNotEquals 挡不住顺序漂——实现整个翻成 `"$zipSha:$id"` 时，两个入参跟着对调，
+        // 这行照样不相等。所以反过来的那一串另钉一个外部算出的黄金值：
+        // 翻顺序后 proofPrefixFor(id, zipA) 会算出 0909426c，与上面钉住的 4f91ceb8 直接冲突。
         assertNotEquals(proofPrefixFor(id, zipA), proofPrefixFor(zipA, id))
+        assertEquals("0909426c", proofPrefixFor(zipA, id))
     }
 
     @Test

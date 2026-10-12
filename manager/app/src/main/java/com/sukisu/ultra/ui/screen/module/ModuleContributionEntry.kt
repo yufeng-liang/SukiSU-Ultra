@@ -87,7 +87,9 @@ object ModuleContributionEntry {
      *
      * [uid] 是投稿人填的酷安 UID，[nickname] 是核实出来的昵称 —— 两者一起发给服务端：
      * 昵称公开展示，UID 用于审核与追责（服务端把 UID 定为必收字段）。
-     * [nonce] 是所有权口令的随机部分，服务端拿它和模块 id 拼出口令、比对酷安签名。
+     * [nonce] 是所有权口令的随机部分。服务端算口令前缀用的是「模块 id + 整包 sha256」
+     * （`sha256("<id>:<整包 sha256>")` 的前 8 位，见 [com.sukisu.ultra.ui.util.proofPrefixFor]），
+     * 拼上这一串去酷安签名里比对——只改 id 或只换包都会让口令作废。
      */
     suspend fun submit(
         zip: File,
