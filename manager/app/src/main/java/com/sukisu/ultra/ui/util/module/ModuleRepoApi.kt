@@ -163,9 +163,25 @@ private suspend fun fetchRegistryModuleDetail(
     val parsed = runCatching { parseRegistryDetail(body, baseUrl, moduleId) }.getOrNull() ?: return null
     // The readme is a path on the registry, served as HTML, and only worth a request when the
     // document names one.
-    val readme = parsed.readmeUrl?.let { fetchText(it) }.orEmpty()
+    val readme = parsed.readmeUrl?.let { fetchText(it) }?.let { absolutizeSitePaths(it, baseUrl) }.orEmpty()
     return parsed.detail.copy(readme = readme, readmeHtml = readme)
 }
+
+/**
+ * 注册表的 readme 与更新日志里，图片和链接写的是**站点根相对**路径（`/assets/…`）。
+ *
+ * 这些内容在应用自己的 WebView 里渲染，而那里 `/assets/` 这个路径被资源加载器认领了（markdown
+ * 渲染器自带的样式就走那条路）。资源加载器先比 authority 再比路径，所以只要把地址补成绝对的，
+ * 请求的 authority 不再是它认的那个域名，WebView 才会真的去网上取——否则注册表的图片会全部被
+ * 当成应用资源去找，一张都加载不出来。
+ */
+internal fun absolutizeSitePaths(html: String, baseUrl: String): String {
+    if (html.isEmpty()) return html
+    return SITE_RELATIVE_ATTRIBUTE.replace(html) { match -> match.groupValues[1] + baseUrl }
+}
+
+/** 只认真正的站点根相对路径：`//host/…` 这种协议相对地址不能碰。 */
+private val SITE_RELATIVE_ATTRIBUTE = Regex("""((?:src|href)=")/(?!/)""")
 
 /**
  * The detail document of a registry module, split from its readme so the network fetch of that
@@ -209,7 +225,7 @@ internal fun parseRegistryDetail(body: String, baseUrl: String, moduleId: String
             tagName = r.optString("tag", "").trim().ifEmpty { r.optString("version", "") },
             publishedAt = r.optString("publishedAt", ""),
             // The registry renders the changelog to HTML for us, like the module page it sits on.
-            descriptionHTML = r.optString("changelogHtml", ""),
+            descriptionHTML = absolutizeSitePaths(r.optString("changelogHtml", ""), baseUrl),
             assets = assets,
         )
     }

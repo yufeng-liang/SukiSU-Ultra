@@ -801,7 +801,7 @@ private fun ReadmePage(
 @Composable
 fun ReleasesPage(
     detailReleases: List<ReleaseArg>,
-    hasInstallableArchive: Boolean,
+    showNoArchiveHint: Boolean,
     innerPadding: PaddingValues,
     scrollBehavior: ScrollBehavior,
     backdrop: LayerBackdrop?,
@@ -832,7 +832,7 @@ fun ReleasesPage(
             overscrollEffect = null,
         ) {
             // 索引里根本没有可安装产物时，页面上原来只有一个空列表：没有安装入口，也没有一句解释。
-            if (!hasInstallableArchive) {
+            if (showNoArchiveHint) {
                 item(key = "no_installable_archive") {
                     RepoEmptyPrompt(hint = stringResource(R.string.module_repo_no_installable_archive))
                 }
@@ -1372,7 +1372,7 @@ fun ModuleRepoDetailScreenMiuix(
 
                 1 -> ReleasesPage(
                     detailReleases = state.detailReleases,
-                    hasInstallableArchive = state.module.releases.any { it.assets.isNotEmpty() },
+                    showNoArchiveHint = state.showNoArchiveHint(),
                     innerPadding = innerPadding,
                     scrollBehavior = scrollBehavior,
                     backdrop = backdrop,

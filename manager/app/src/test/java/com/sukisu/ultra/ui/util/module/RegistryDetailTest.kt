@@ -154,4 +154,45 @@ class RegistryDetailTest {
         assertEquals("", parsed.detail.homepageUrl)
         assertEquals("", parsed.detail.sourceUrl)
     }
+
+    @Test
+    fun `site-relative images and links are made absolute`() {
+        val html = """
+            <img src="/assets/logo.png" alt="logo">
+            <a href="/zh-CN/modules/CertBridge/">page</a>
+        """.trimIndent()
+
+        assertEquals(
+            """
+            <img src="https://modules.kernelsu.org/assets/logo.png" alt="logo">
+            <a href="https://modules.kernelsu.org/zh-CN/modules/CertBridge/">page</a>
+            """.trimIndent(),
+            absolutizeSitePaths(html, base),
+        )
+    }
+
+    @Test
+    fun `absolute, protocol-relative and anchor addresses are left alone`() {
+        val html = """
+            <img src="https://cdn.example.com/a.png">
+            <img src="//cdn.example.com/b.png">
+            <a href="#usage">usage</a>
+            <a href="readme.md">readme</a>
+        """.trimIndent()
+
+        assertEquals(html, absolutizeSitePaths(html, base))
+        assertEquals("", absolutizeSitePaths("", base))
+    }
+
+    @Test
+    fun `the changelog of a registry release is absolutized too`() {
+        val json = """
+            {"releases": [{"tag": "v1", "changelogHtml": "<img src=\"/assets/x.png\">"}]}
+        """.trimIndent()
+
+        assertEquals(
+            """<img src="https://modules.kernelsu.org/assets/x.png">""",
+            parseRegistryDetail(json, base, "m").detail.releases.single().descriptionHTML,
+        )
+    }
 }

@@ -82,6 +82,20 @@ data class ModuleRepoDetailUiState(
     val sourceUrl: String,
 )
 
+/**
+ * 版本页该不该说"这个仓库没有可安装的包"。
+ *
+ * 两个来源都要看：MMRL 与 KernelSU 数组索引的 releases 在列表阶段就有了（[RepoModuleArg.releases]），
+ * 而注册表索引根本不带下载地址，它的是打开页面之后才从模块自己的文档里读回来的
+ * （[detailReleases]）——只看前者，每个注册表模块一进来都会先挂一句错话。
+ *
+ * 还要等详情抓完（[readmeLoaded]）才敢说：抓取期间两个来源都可能是空的，那只是"还不知道"。
+ */
+internal fun ModuleRepoDetailUiState.showNoArchiveHint(): Boolean =
+    readmeLoaded &&
+        module.releases.none { it.assets.isNotEmpty() } &&
+        detailReleases.none { it.assets.isNotEmpty() }
+
 @Immutable
 data class ModuleRepoDetailActions(
     val onBack: () -> Unit,
