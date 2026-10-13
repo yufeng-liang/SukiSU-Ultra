@@ -27,6 +27,8 @@ enum class BackupTab { BACKUP, RESTORE }
 @Immutable
 data class BackupUiState(
     val loading: Boolean = false,
+    /** 恢复任务专属进度；null 表示没有正在运行的恢复。 */
+    val restoreRun: RestoreRunState? = null,
     /** 当前分页。默认停在「备份」：进这一页多半是要备一份。 */
     val tab: BackupTab = BackupTab.BACKUP,
     /**
@@ -305,6 +307,24 @@ internal fun pruneSelection(selected: Set<String>, groups: List<BackupGroup>): S
  * 备份弹窗的状态：正在跑哪个目标、推了多少字节、多快，跑完则是结果。
  */
 @Immutable
+data class RestoreRunState(
+    val current: Int,
+    val total: Int,
+    val label: String,
+    val done: Boolean = false,
+    val cancelled: Boolean = false,
+    /**
+     * 跑完之后的结果话术（"已恢复 3 项" / "已恢复 2 项 · 1 项失败"）。
+     *
+     * 结果留在弹窗里，而不是只发一条几秒就消失的 snackbar：恢复是一串 root 操作，
+     * 用户按完就去干别的了，回来看时弹窗必须自己说清动了几个、错了几个。
+     */
+    val result: String = "",
+    /** 失败明细（哪一项、为什么），与结果分开列，弹窗里逐行显示。 */
+    val failures: List<String> = emptyList(),
+)
+
+@Immutable
 data class BackupRunState(
     /** 第几个目标（1 起），和 [total] 一起显示"2/4"。 */
     val current: Int,
@@ -452,6 +472,8 @@ data class BackupActions(
     val onDismissBackupRun: () -> Unit,
     /** 取消正在跑的备份：已经写好的那几份留着，传了一半的那份停下。 */
     val onCancelBackupRun: () -> Unit,
+    val onCancelRestore: () -> Unit,
+    val onDismissRestoreRun: () -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
     /** 自动备份写到哪几处：和手动备份的「备份位置」同一套三档（本地 / 云端 / 本地+云端）。 */

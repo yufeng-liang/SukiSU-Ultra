@@ -157,6 +157,8 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onShareConsumed = viewModel::consumeShare,
         onDismissBackupRun = viewModel::dismissBackupRun,
         onCancelBackupRun = viewModel::cancelBackupRun,
+        onCancelRestore = viewModel::cancelRestore,
+        onDismissRestoreRun = viewModel::dismissRestoreRun,
         onDeleteChecked = {
             // 删的是文件，删完找不回来；而且这一组可能本机和云端都有，所以要说清动的是哪些地方。
             // 说的是**勾中的那几条**：只勾了本地就只删本地，正文里的"从本地删除这 1 项"就是
@@ -221,11 +223,15 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     // 备份详情是这一页里的一层，不是另一条路由：系统返回键得先退回列表，否则用户从详情页
     // 往回滑就直接离开了整个备份页。
     val openGroup = state.openGroup
-    BackHandler(enabled = openGroup != null) { viewModel.closeGroup() }
+    BackHandler(enabled = openGroup != null && state.restoreRun?.done != false) { viewModel.closeGroup() }
 
     // 多选是这一页里的另一层：返回键先退出多选，而不是把整页关掉——手上还勾着几份东西时
     // 一下退出整页，那几步勾选就白做了。
     BackHandler(enabled = state.selecting) { viewModel.clearSelection() }
+
+    // 模块安装/boot 刷写不可安全中断的阶段只允许显式取消并等待当前源返回；恢复期间暂时拦截
+    // 页面返回，避免 root 操作在详情消失后静默继续。
+    BackHandler(enabled = state.restoreRun?.done == false) { }
 
     // 进/出详情走一次横向推入推出：硬切会让人以为刚才那下点空了。返回时列表滑回来的方向
     // 反过来，和系统返回手势的方向一致。

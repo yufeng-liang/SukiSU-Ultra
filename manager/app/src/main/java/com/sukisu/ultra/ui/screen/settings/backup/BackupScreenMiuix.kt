@@ -87,6 +87,7 @@ import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.SliderDefaults
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TabRowDefaults
 import top.yukonga.miuix.kmp.basic.Text
@@ -96,6 +97,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Close
+import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -162,21 +164,16 @@ fun BackupMiuix(
                                 //
                                 // 自己画而不是用 TextButton：这个版本的 Miuix 只给了 Primary 那套
                                 // textButtonColors，没有 error 变体，所以这里拿 Text 直接染成误差色。
-                                Text(
-                                    text = stringResource(R.string.backup_selection_delete),
-                                    fontSize = 16.sp,
-                                    color = if (state.selectedGroups.isNotEmpty() && !state.loading) {
-                                        colorScheme.error
-                                    } else {
-                                        colorScheme.error.copy(alpha = DISABLED_ALPHA)
-                                    },
-                                    modifier = Modifier
-                                        .padding(horizontal = 12.dp)
-                                        .clickable(
-                                            enabled = state.selectedGroups.isNotEmpty() && !state.loading,
-                                            onClick = actions.onDeleteSelected,
-                                        ),
-                                )
+                                IconButton(
+                                    onClick = actions.onDeleteSelected,
+                                    enabled = state.selectedGroups.isNotEmpty() && !state.loading,
+                                ) {
+                                    Icon(
+                                        imageVector = MiuixIcons.Delete,
+                                        contentDescription = stringResource(R.string.backup_selection_delete),
+                                        tint = colorScheme.error,
+                                    )
+                                }
                             }
                         },
                         bottomContent = {
@@ -233,6 +230,11 @@ fun BackupMiuix(
         state = state,
         onDismiss = actions.onDismissBackupRun,
         onCancel = actions.onCancelBackupRun,
+    )
+    RestoreProgressDialogMiuix(
+        run = state.restoreRun,
+        onDismiss = actions.onDismissRestoreRun,
+        onCancel = actions.onCancelRestore,
     )
 }
 
@@ -901,8 +903,11 @@ private fun LazyListScope.backupTabItems(
 private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupActions) {
     item { CloudCardMiuix(state, actions) }
     locationItems()
+    if (state.loading) {
+        item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) }
+    }
     // 空列表必须给一句话：什么都不显示的话，用户分不清"没有备份"和"这一页坏了"。
-    state.emptyText?.let { empty ->
+    state.emptyText?.takeUnless { state.loading }?.let { empty ->
         item {
             Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
                 Text(

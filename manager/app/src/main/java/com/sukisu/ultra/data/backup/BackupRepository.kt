@@ -352,28 +352,43 @@ class BackupRepository(private val context: Context = ksuApp) {
      * 之后点"恢复"就会拿它去装模块。名字认不出来时才退回调用方给的那个。
      */
     suspend fun importFromSaf(uri: Uri, kind: BackupKind): Result<BackupKind> = withContext(Dispatchers.IO) {
-        // document provider 的 lastPathSegment 是内部段（primary:Download/x.zip），不是文件名。
-        val name = uri.getFileName(context)
-            ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileNameUnresolved))
-        val actualKind = ArchiveNaming.kindOf(name) ?: kind
-        workStaging.cleanupStale()
-        val staged = workStaging.newFile("import-", ".bin")
-        try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                staged.outputStream().use { input.copyTo(it) }
-            } ?: return@withContext Result.failure(BackupReasonException(BackupReason.FileUnreadable))
-            // 导入也按当时的设置现装配引擎（见 engineFor）。
-            engineFor(listOf(BackupOrigin.LOCAL)).importFrom(
-                storage = localStorage,
-                kind = actualKind,
-                fileName = name,
-                metaFileName = null,
-                size = staged.length(),
-                open = { staged.inputStream() },
-                metaJson = null,
-            ).map { actualKind }
-        } finally {
-            staged.delete()
+        // 整段都收进 Result：这里的失败（选的文件打不开、超过导入上限、索引写不进去）是要给用户
+        // 看的一句话，不是崩溃。取消照旧上抛，别把"用户离开页面"变成一次普通失败。
+        runCatchingCancellable {
+            // document provider 的 lastPathSegment 是内部段（primary:Download/x.zip），不是文件名。
+            val name = uri.getFileName(context)
+                ?: throw BackupReasonException(BackupReason.FileNameUnresolved)
+            val actualKind = ArchiveNaming.kindOf(name) ?: kind
+            workStaging.cleanupStale()
+            val staged = workStaging.newFile("import-", ".bin")
+            try {
+                // provider 声称的大小靠不住，所以按实际读出来的字节封顶：超限当场停下，既不把
+                // staging 撑到没有上限，也不让这份归档被登记进列表（登记了就是恢复时才炸）。
+                val stagedBytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                    staged.outputStream().use { output ->
+                        input.copyBoundedTo(output, BackupLimits.MAX_IMPORT_BYTES, name)
+                    }
+                } ?: throw BackupReasonException(BackupReason.FileUnreadable)
+                // 对照实际拷贝字节，拒绝流中途截断/长度变化。
+                val declaredSize = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)
+                    ?.use { cursor -> if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null }
+                if (declaredSize != null && declaredSize != stagedBytes) {
+                    throw BackupReasonException(BackupReason.FileUnreadable)
+                }
+                // 导入也按当时的设置现装配引擎（见 engineFor）。
+                engineFor(listOf(BackupOrigin.LOCAL)).importFrom(
+                    storage = localStorage,
+                    kind = actualKind,
+                    fileName = name,
+                    metaFileName = null,
+                    size = stagedBytes,
+                    open = { staged.inputStream() },
+                    metaJson = null,
+                ).getOrThrow()
+                actualKind
+            } finally {
+                staged.delete()
+            }
         }
     }
 }

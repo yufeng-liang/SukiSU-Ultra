@@ -118,6 +118,10 @@ object AutoBackupRecordJson {
             is BackupReason.BootIdentityMismatch -> put("type", "boot_identity_mismatch").put("sha1", reason.sha1)
             is BackupReason.BootFlashFailed -> put("type", "boot_flash_failed").putExternal(reason.external)
             BackupReason.FileUnreadable -> put("type", "file_unreadable")
+            is BackupReason.ImportTooLarge -> put("type", "import_too_large")
+                .put("path", reason.path).put("limitBytes", reason.limitBytes)
+            is BackupReason.ImportIndexWriteFailed -> put("type", "import_index_write_failed")
+                .putExternal(reason.external)
             BackupReason.FileNameUnresolved -> put("type", "file_name_unresolved")
             is BackupReason.DuplicateContent -> put("type", "duplicate_content").put("existing", reason.existing)
             is BackupReason.External -> put("type", "external").put("text", reason.text)
@@ -163,6 +167,11 @@ object AutoBackupRecordJson {
             "boot_identity_mismatch" -> BackupReason.BootIdentityMismatch(json.optString("sha1"))
             "boot_flash_failed" -> BackupReason.BootFlashFailed(json.externalOrNull())
             "file_unreadable" -> BackupReason.FileUnreadable
+            "import_too_large" -> BackupReason.ImportTooLarge(
+                path = json.optString("path"),
+                limitBytes = json.optLong("limitBytes"),
+            )
+            "import_index_write_failed" -> BackupReason.ImportIndexWriteFailed(json.externalOrNull())
             "file_name_unresolved" -> BackupReason.FileNameUnresolved
             "duplicate_content" -> BackupReason.DuplicateContent(json.optString("existing"))
             "external" -> BackupReason.External(json.optString("text"))

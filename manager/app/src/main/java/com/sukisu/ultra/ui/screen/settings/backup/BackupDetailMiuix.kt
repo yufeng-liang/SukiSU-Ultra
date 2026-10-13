@@ -88,7 +88,7 @@ fun BackupDetailMiuix(
                         title = group.label,
                         scrollBehavior = scrollBehavior,
                         navigationIcon = {
-                            IconButton(onClick = actions.onCloseGroup) {
+                            IconButton(onClick = actions.onCloseGroup, enabled = state.restoreRun?.done != false) {
                                 Icon(imageVector = MiuixIcons.Back, contentDescription = null)
                             }
                         }

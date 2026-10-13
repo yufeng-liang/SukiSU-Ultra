@@ -183,6 +183,11 @@ fun BackupMaterial(
         onDismiss = actions.onDismissBackupRun,
         onCancel = actions.onCancelBackupRun,
     )
+    RestoreProgressDialogMaterial(
+        run = state.restoreRun,
+        onDismiss = actions.onDismissRestoreRun,
+        onCancel = actions.onCancelRestore,
+    )
 }
 
 /**
@@ -876,7 +881,7 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
     if (state.loading) {
         item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
     }
-    state.emptyText?.let { empty ->
+    state.emptyText?.takeUnless { state.loading }?.let { empty ->
         item {
             Text(
                 empty,

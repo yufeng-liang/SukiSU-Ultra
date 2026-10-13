@@ -778,7 +778,13 @@
     <string name="backup_reason_boot_missing">This device has no stock image with sha1 %1$s, so this backup cannot be restored here. It probably came from another device.</string>
     <string name="backup_reason_boot_identity">The content of this boot backup does not match the identity it claims (sha1 %1$s), so it was not flashed.</string>
     <string name="backup_reason_boot_flash_failed">Restoring the stock image failed.</string>
-    <string name="backup_reason_file_unreadable">The selected file could not be opened.</string>
+    <string name="backup_reason_file_unreadable">The selected file could not be opened or its reported size changed.</string>
+    <string name="backup_reason_import_too_large">The selected file (%1$s) exceeds the %2$d MiB import limit.</string>
+    <string name="backup_reason_import_index_write_failed">The archive could not be added to the backup list. Any temporary copy was removed.</string>
+    <string name="backup_restore_progress_title">Restoring backups</string>
+    <string name="backup_restore_progress_item">Restoring %1$d of %2$d: %3$s</string>
+    <string name="backup_restore_cancelled">Restore cancelled. Items already restored remain applied.</string>
+    <string name="backup_restore_result_title">Restore finished</string>
     <string name="backup_reason_file_name">The name of the selected file could not be determined.</string>
     <string name="backup_reason_duplicate_content">This file matches a backup you already have (%1$s) — nothing to import.</string>
     <string name="backup_reason_external">Unexpected failure: %1$s</string>

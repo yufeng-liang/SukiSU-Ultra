@@ -73,7 +73,7 @@ fun BackupDetailMaterial(
                 title = { Text(group.label) },
                 colors = expressiveTopAppBarColors(),
                 navigationIcon = {
-                    IconButton(onClick = actions.onCloseGroup) {
+                    IconButton(onClick = actions.onCloseGroup, enabled = state.restoreRun?.done != false) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },

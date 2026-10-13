@@ -1,5 +1,7 @@
 package com.sukisu.ultra.data.backup
 
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.InputStream
@@ -204,27 +206,53 @@ class BackupEngine(
     /**
      * 删掉 [entries] 这几条备份。
      *
-     * 顺序是先删文件再改索引：删不掉的文件必须留在索引里——从索引里摘掉却把文件留在盘上，
-     * 那份归档就再也没人指向它了，用户既看不到也清不掉。索引写不回去时把删掉的名字重新挂上，
-     * 否则"文件没了但索引还写着"会让列表点开就是空的。
+     * 索引和盘上的文件必须始终对得上，否则列表里会出现"点开恢复必失败、再删也删不掉"的死条目。
+     * 所以顺序是**先提交不含目标项的索引，再删文件**：索引写不进去时什么都还没动，用户看到原
+     * 列表，重试即可。文件删到一半失败（某项被占用、后端只读）时，把已经删掉的那些从索引里
+     * 摘掉、没删掉的留在索引里——已经不在盘上的条目留在列表里只会变成一个永远失败的死条目。
      */
     suspend fun delete(storage: BackupStorage, entries: List<BackupEntry>): Result<Unit> = runCatchingCancellable {
         if (entries.isEmpty()) return@runCatchingCancellable
         withIndexLock(storage.id) {
             val index = readIndex(storage).getOrThrow()
             val targets = index.filter { candidate -> entries.any { it.fileName == candidate.fileName } }
-            val removed = mutableListOf<BackupEntry>()
+            if (targets.isEmpty()) return@withIndexLock
+            storage.writeText(ArchiveNaming.INDEX_FILE, BackupManifest.renderEntries(index - targets.toSet()))
+                .getOrThrow()
+
+            // 真的从盘上消失了的那些。归档删掉了、边车 meta 没删掉也算：索引指向归档，
+            // 留着一个没有归档的条目比留下一个没人引用的 meta 文件糟得多。
+            val deleted = mutableListOf<BackupEntry>()
+            var failure: Throwable? = null
             targets.forEach { entry ->
-                val archive = storage.delete(entry.fileName)
-                val meta = entry.metaFileName?.let { storage.delete(it) } ?: Result.success(Unit)
-                if (archive.isSuccess && meta.isSuccess) {
-                    removed += entry
-                } else {
-                    throw (archive.exceptionOrNull() ?: meta.exceptionOrNull())!!
+                var archiveGone = false
+                try {
+                    storage.delete(entry.fileName).getOrThrow()
+                    archiveGone = true
+                    entry.metaFileName?.let { storage.delete(it).getOrThrow() }
+                    deleted += entry
+                } catch (error: Throwable) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    if (archiveGone) deleted += entry
+                    if (failure == null) failure = error
                 }
             }
-            storage.writeText(ArchiveNaming.INDEX_FILE, BackupManifest.renderEntries(index - removed.toSet()))
-                .getOrThrow()
+            // 抓成 val：failure 是被上面的 lambda 改过的 var，智能转换在它身上不成立。
+            val primary = failure
+            if (primary != null) {
+                // 把索引拉回"盘上实际剩下来的东西"：这次删成功的摘掉，失败的留着让用户重试。
+                // 回滚本身失败也不改变主因，只挂成 suppressed。
+                try {
+                    storage.writeText(
+                        ArchiveNaming.INDEX_FILE,
+                        BackupManifest.renderEntries(index - deleted.toSet()),
+                    ).getOrThrow()
+                } catch (rollback: Throwable) {
+                    if (rollback is kotlinx.coroutines.CancellationException) throw rollback
+                    primary.addSuppressed(rollback)
+                }
+                throw primary
+            }
         }
     }
 
@@ -233,9 +261,15 @@ class BackupEngine(
         storage: BackupStorage,
         entry: BackupEntry,
     ): Result<RestoreOutcome> = runCatchingCancellable {
-        val source = sources.getValue(entry.kind)
+        // 没有对应源就当场报"这类内容没有来源"，而不是让 Map.getValue 抛一句 NoSuchElementException：
+        // 那句话既不像原因，也没法被 BackupText 翻译成用户看得懂的话。
+        val source = sources[entry.kind]
+            ?: throw BackupReasonException(BackupReason.NoSource(entry.kind))
+        // 边车元数据读不到有两种，必须分开：文件本来就没有（后端约定返回空文本）＝这份备份没存
+        // 状态，按"没有"处理；文件在却读失败（网络断、权限没了）＝不能装作没有，否则模块会以
+        // 启用状态装回去、和备份时不一样，而界面上还显示"已恢复"。
         val metaJson = entry.metaFileName
-            ?.let { name -> storage.readText(name).getOrNull() }
+            ?.let { name -> storage.readText(name).getOrThrow() }
             ?.takeIf { it.isNotBlank() }
         storage.get(entry.fileName).getOrThrow().use { raw ->
             source.restore(entry, metaJson, verify(raw, entry)).getOrThrow()
@@ -284,12 +318,30 @@ class BackupEngine(
     ): Result<Unit> = runCatchingCancellable {
         val requested = ArchiveNaming.safeFileName(fileName)
             .ifBlank { ArchiveNaming.IMPORTED_FALLBACK_NAME }
+        if (size > BackupLimits.MAX_IMPORT_BYTES) {
+            throw BackupReasonException(BackupReason.ImportTooLarge(requested, BackupLimits.MAX_IMPORT_BYTES))
+        }
         val adopted = sources[kind]?.metaForImport(open, size)
         val resolvedMeta = metaJson ?: adopted?.metaJson
         // 先算校验和，再进索引锁：同一个文件被导两次只该收一份，而"是不是同一份内容"只能靠它
-        // 判断（文件名可以改、大小可以一样）。哈希要整读一遍文件，不该占着锁——模块安装后的
-        // 自动备份也等这把锁。算不出来就整次拒绝：留个空 sha 等于让恢复全程不做内容校验。
-        val sha256 = open().use { it.sha256Hex() }
+        // 判断（文件名可以改、大小可以一样）。同时再次限制实际流长度，不信任 SAF 声明的 size。
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        var actualSize = 0L
+        open().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (actualSize > BackupLimits.MAX_IMPORT_BYTES - count) {
+                    throw BackupReasonException(BackupReason.ImportTooLarge(requested, BackupLimits.MAX_IMPORT_BYTES))
+                }
+                actualSize += count
+                digest.update(buffer, 0, count)
+            }
+        }
+        if (actualSize != size) throw BackupReasonException(BackupReason.FileUnreadable)
+        val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
         withIndexLock(storage.id) {
             val index = readIndex(storage).getOrThrow()
             DuplicatePolicy.findDuplicate(index, kind, sha256)?.let { existing ->
@@ -300,25 +352,37 @@ class BackupEngine(
             storage.put(finalName, size, open = open).getOrThrow()
 
             val metaName = if (resolvedMeta != null) ArchiveNaming.metaFileNameFor(finalName) else metaFileName
-            if (metaName != null && resolvedMeta != null) storage.writeText(metaName, resolvedMeta).getOrThrow()
+            try {
+                if (metaName != null && resolvedMeta != null) storage.writeText(metaName, resolvedMeta).getOrThrow()
 
-            val entryId = adopted?.entryId
-                ?: metaJson?.let { runCatching { BackupManifest.parseModuleMeta(it).entryId }.getOrNull() }
-                    ?.takeIf { it.isNotBlank() }
-                ?: finalName
-            val entry = BackupEntry(
-                kind = kind,
-                entryId = entryId,
-                fileName = finalName,
-                metaFileName = metaName,
-                sizeBytes = size,
-                sha256 = sha256,
-                createdAt = clock().toString(),
-            )
-            storage.writeText(
-                ArchiveNaming.INDEX_FILE,
-                BackupManifest.renderEntries(index.filterNot { it.fileName == finalName } + entry),
-            ).getOrThrow()
+                val entryId = adopted?.entryId
+                    ?: metaJson?.let { runCatching { BackupManifest.parseModuleMeta(it).entryId }.getOrNull() }
+                        ?.takeIf { it.isNotBlank() }
+                    ?: finalName
+                val entry = BackupEntry(
+                    kind = kind,
+                    entryId = entryId,
+                    fileName = finalName,
+                    metaFileName = metaName,
+                    sizeBytes = size,
+                    sha256 = sha256,
+                    createdAt = clock().toString(),
+                )
+                storage.writeText(
+                    ArchiveNaming.INDEX_FILE,
+                    BackupManifest.renderEntries(index.filterNot { it.fileName == finalName } + entry),
+                ).getOrElse { error ->
+                    throw BackupReasonException(BackupReason.ImportIndexWriteFailed(externalTextOrNull(error)))
+                }
+            } catch (error: Throwable) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                // 回滚是尽力而为：清不掉只作为附加信息挂在主因下面。让清理的异常顶掉主因，
+                // 用户看到的就是"删除失败"，而真正的原因（索引写不进去）反而没提。
+                // 只清真的写过的那两个：meta 名是调用方给的，没写就不该去删同名文件。
+                if (metaName != null && resolvedMeta != null) cleanupQuietly(storage, metaName, error)
+                cleanupQuietly(storage, finalName, error)
+                throw error
+            }
         }
     }
 
@@ -337,6 +401,16 @@ class BackupEngine(
 
     private suspend fun <T> withIndexLock(storageId: String, block: suspend () -> T): T =
         indexLocks.computeIfAbsent(storageId) { Mutex() }.withLock { block() }
+
+    /** 尽力删掉一个半成品文件：删不掉不改变 [primary]，只把它记进 suppressed。 */
+    private suspend fun cleanupQuietly(storage: BackupStorage, path: String, primary: Throwable) {
+        try {
+            storage.delete(path).getOrThrow()
+        } catch (cleanup: Throwable) {
+            if (cleanup is kotlinx.coroutines.CancellationException) throw cleanup
+            primary.addSuppressed(cleanup)
+        }
+    }
 
     private companion object {
         /** 进程级：同一个后端 id 的索引读-改-写串行化，跨 BackupRepository 实例生效。 */

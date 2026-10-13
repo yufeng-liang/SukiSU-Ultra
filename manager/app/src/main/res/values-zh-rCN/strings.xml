@@ -772,7 +772,13 @@
     <string name="backup_reason_boot_missing">本机没有 sha1 为 %1$s 的原厂镜像，无法在这里恢复这份备份。它可能来自另一台设备。</string>
     <string name="backup_reason_boot_identity">这份 boot 备份的内容与它自称的身份不符（sha1 %1$s），已拒绝刷入。</string>
     <string name="backup_reason_boot_flash_failed">恢复原厂镜像失败。</string>
-    <string name="backup_reason_file_unreadable">无法打开所选文件。</string>
+    <string name="backup_reason_file_unreadable">无法打开所选文件，或文件实际大小与报告值不一致。</string>
+    <string name="backup_reason_import_index_write_failed">无法将归档加入备份列表，临时副本已清理。</string>
+    <string name="backup_reason_import_too_large">所选文件（%1$s）超过 %2$d MiB 导入上限。</string>
+    <string name="backup_restore_progress_title">正在恢复备份</string>
+    <string name="backup_restore_progress_item">正在恢复第 %1$d/%2$d 项：%3$s</string>
+    <string name="backup_restore_cancelled">已取消恢复，已经恢复的项目仍然保留。</string>
+    <string name="backup_restore_result_title">恢复结果</string>
     <string name="backup_reason_file_name">无法获取所选文件的文件名。</string>
     <string name="backup_reason_duplicate_content">该文件与已有备份（%1$s）内容相同，无需重复导入。</string>
     <string name="backup_reason_external">未预期的失败：%1$s</string>

@@ -25,6 +25,7 @@ import com.sukisu.ultra.data.repository.ModuleRepositoryImpl
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ui.screen.settings.backup.BackupGroup
 import com.sukisu.ultra.ui.screen.settings.backup.BackupGrouping
+import com.sukisu.ultra.ui.screen.settings.backup.BackupLabels
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
 import com.sukisu.ultra.ui.screen.settings.backup.BackupResult
 import com.sukisu.ultra.ui.screen.settings.backup.BackupResultRow
@@ -32,6 +33,7 @@ import com.sukisu.ultra.ui.screen.settings.backup.BackupRow
 import com.sukisu.ultra.ui.screen.settings.backup.BackupTab
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRowLabels
 import com.sukisu.ultra.ui.screen.settings.backup.BackupRunState
+import com.sukisu.ultra.ui.screen.settings.backup.RestoreRunState
 import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
 import com.sukisu.ultra.ui.screen.settings.backup.oneCopyPerContent
@@ -190,6 +192,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 所以取消了就是取消，不会在结果里多出一条莫名其妙的错误。
      */
     private var backupJob: Job? = null
+    private var restoreJob: Job? = null
 
     /** 当前列表里的条目（带各自的来源）：恢复/导出靠它回到正确的那一侧。 */
     private var entries: List<OriginEntry> = emptyList()
@@ -643,8 +646,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun restoreSelected() = viewModelScope.launch {
         val selected = _uiState.value.openGroupSelection
-        if (selected.isEmpty()) return@launch
-        _uiState.update { it.copy(loading = true, message = null) }
+        if (selected.isEmpty() || restoreJob?.isActive == true) return@launch
+        restoreJob = coroutineContext[Job]
+        val chosen = oneCopyPerContent(selected)
+        _uiState.update {
+            it.copy(
+                loading = true,
+                message = null,
+                restoreRun = RestoreRunState(current = 0, total = chosen.size, label = ""),
+            )
+        }
         var restored = 0
         // 恢复了什么决定要不要提示重启：仓库源配置只是整批替换 prefs，仓库页每次打开都现读，
         // 不需要重启；模块和 boot 才需要。只恢复了仓库源时提示"重启生效"是一句谎话。
@@ -653,25 +664,50 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         // 同一份内容本机与云端各有一条（列表把两侧并成了一行）。按内容只恢复一次、优先本机：
         // 两边是同一份内容（读的时候还会按索引里的 sha256 校验），恢复两遍只是把同一个模块装两次、
         // 把同一张镜像刷两次，而"已恢复 2 项"会让用户以为动了两个东西。
-        val chosen = oneCopyPerContent(selected)
-        chosen.forEach { row ->
-            val entry = entryOf(row) ?: return@forEach
-            repository.restore(row.origin, entry).fold(
-                onSuccess = { outcome ->
-                    if (outcome.success) {
-                        restored++
-                        restoredKinds += row.kind
-                    } else {
-                        failures += BackupText.restoreFailure(context(), outcome.reason)
-                    }
-                },
-                onFailure = { error -> failures += describe(error) },
-            )
+        var cancelled = false
+        try {
+            chosen.forEachIndexed { index, row ->
+                _uiState.update {
+                    it.copy(
+                        restoreRun = RestoreRunState(
+                            current = index + 1,
+                            total = chosen.size,
+                            label = string(BackupLabels.kind(row.kind)),
+                        ),
+                    )
+                }
+                val entry = entryOf(row) ?: return@forEachIndexed
+                repository.restore(row.origin, entry).fold(
+                    onSuccess = { outcome ->
+                        if (outcome.success) {
+                            restored++
+                            restoredKinds += row.kind
+                        } else {
+                            failures += BackupText.restoreFailure(context(), outcome.reason)
+                        }
+                    },
+                    onFailure = { error -> failures += describe(error) },
+                )
+            }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            cancelled = true
+        } finally {
+            restoreJob = null
         }
         _uiState.update {
             it.copy(
                 loading = false,
+                restoreRun = RestoreRunState(
+                    current = if (cancelled) restored + failures.size else chosen.size,
+                    total = chosen.size,
+                    label = "",
+                    done = true,
+                    cancelled = cancelled,
+                    result = restoreCountMessage(restored, failures.size),
+                    failures = failures.distinct(),
+                ),
                 message = buildList {
+                    if (cancelled) add(string(R.string.backup_restore_cancelled))
                     add(restoreCountMessage(restored, failures.size))
                     // 两侧各有一份时把"只恢复了一次"说出来：用户看着两行、默认还全选，不说一句
                     // 就不知道到底恢复了几份、动的是哪一份。
@@ -687,6 +723,19 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
         // 恢复会改动源本身，列表要跟着更新。
         refresh()
+    }
+
+    fun cancelRestore() {
+        val running = restoreJob ?: return
+        if (running.isActive) {
+            running.cancel()
+        }
+    }
+
+    fun dismissRestoreRun() {
+        if (_uiState.value.restoreRun?.done == true) {
+            _uiState.update { it.copy(restoreRun = null) }
+        }
     }
 
     private fun restoreCountMessage(restored: Int, failed: Int): String = when {

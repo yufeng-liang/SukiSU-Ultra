@@ -2,6 +2,9 @@ package com.sukisu.ultra.data.backup
 
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.io.OutputStream
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 object BackupLimits {
     /**
@@ -13,6 +16,27 @@ object BackupLimits {
      * 都做不到，那才是真正的丢索引。
      */
     const val MAX_TEXT_BYTES: Long = 8L * 1024 * 1024
+
+    /** SAF 手动导入上限：兼顾大型模块与 boot 镜像，同时限制缓存占用和 hash/拷贝时长。 */
+    const val MAX_IMPORT_BYTES: Long = 2L * 1024 * 1024 * 1024
+}
+
+/** 将用户选择的归档流限制在 [limit] 内；不把超出的字节写入 staging。 */
+internal suspend fun InputStream.copyBoundedTo(output: OutputStream, limit: Long, path: String): Long {
+    require(limit >= 0L) { "limit must be non-negative" }
+    val chunk = ByteArray(64 * 1024)
+    var copied = 0L
+    while (true) {
+        currentCoroutineContext().ensureActive()
+        val read = read(chunk)
+        if (read < 0) break
+        if (copied > limit - read) {
+            throw BackupReasonException(BackupReason.ImportTooLarge(path, limit))
+        }
+        output.write(chunk, 0, read)
+        copied += read
+    }
+    return copied
 }
 
 /**

@@ -73,6 +73,11 @@ object BackupText {
         is BackupReason.BootIdentityMismatch -> ReasonText(R.string.backup_reason_boot_identity, listOf(shortHash(reason.sha1)))
         is BackupReason.BootFlashFailed -> ReasonText(R.string.backup_reason_boot_flash_failed)
         BackupReason.FileUnreadable -> ReasonText(R.string.backup_reason_file_unreadable)
+        is BackupReason.ImportTooLarge -> ReasonText(
+            R.string.backup_reason_import_too_large,
+            listOf(reason.path, reason.limitBytes / (1024L * 1024L)),
+        )
+        is BackupReason.ImportIndexWriteFailed -> ReasonText(R.string.backup_reason_import_index_write_failed)
         BackupReason.FileNameUnresolved -> ReasonText(R.string.backup_reason_file_name)
         is BackupReason.DuplicateContent -> ReasonText(R.string.backup_reason_duplicate_content, listOf(reason.existing))
         is BackupReason.External -> ReasonText(R.string.backup_reason_external, listOf(Redaction.redactMessage(reason.text)))

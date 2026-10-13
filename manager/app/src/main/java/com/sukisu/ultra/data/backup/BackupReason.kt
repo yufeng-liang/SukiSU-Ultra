@@ -99,6 +99,12 @@ sealed interface BackupReason {
     /** 打不开用户选的文件。 */
     data object FileUnreadable : BackupReason
 
+    /** 用户选择的导入归档超过允许大小。 */
+    data class ImportTooLarge(val path: String, val limitBytes: Long) : BackupReason
+
+    /** 导入阶段生成的备份索引提交失败；文件回滚后没有新增条目。 */
+    data class ImportIndexWriteFailed(val external: String?) : BackupReason
+
     /** 拿不到用户选中文件的文件名。 */
     data object FileNameUnresolved : BackupReason
 

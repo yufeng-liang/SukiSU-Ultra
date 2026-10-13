@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.time.Instant
 
@@ -17,6 +18,10 @@ private class FakeStorage(
     private val failIndexRead: Boolean = false,
     private val failDeletes: Boolean = false,
     private val failMetaWrites: Boolean = false,
+    private val failIndexWrites: Boolean = false,
+    private val failMetaRead: Boolean = false,
+    /** 只让某一个路径删不掉：用来构造"删到一半失败"。 */
+    var failDeleteOf: String? = null,
     override val reportsTransferProgress: Boolean = false,
 ) : BackupStorage {
     val files = mutableMapOf<String, ByteArray>()
@@ -42,7 +47,9 @@ private class FakeStorage(
         ?: Result.failure(NoSuchElementException(relativePath))
 
     override suspend fun delete(relativePath: String): Result<Unit> {
-        if (failDeletes) return Result.failure(IllegalStateException("$id is read-only"))
+        if (failDeletes || relativePath == failDeleteOf) {
+            return Result.failure(IllegalStateException("$id is read-only"))
+        }
         files.remove(relativePath)
         return Result.success(Unit)
     }
@@ -52,10 +59,16 @@ private class FakeStorage(
         if (failIndexRead && relativePath == ArchiveNaming.INDEX_FILE) {
             return Result.failure(BackupReasonException(BackupReason.ReadFailed(relativePath, "$id is down")))
         }
+        if (failMetaRead && relativePath.endsWith(".meta.json")) {
+            return Result.failure(BackupReasonException(BackupReason.ReadFailed(relativePath, "$id is down")))
+        }
         return Result.success(files[relativePath]?.decodeToString() ?: "")
     }
 
     override suspend fun writeText(relativePath: String, text: String): Result<Unit> {
+        if (failIndexWrites && relativePath == ArchiveNaming.INDEX_FILE) {
+            return Result.failure(IllegalStateException("$id cannot write index"))
+        }
         if (failMetaWrites && relativePath.endsWith(".meta.json")) {
             // 真实后端（LocalBackupStorage / WebDavBackupStorage）写失败时抛的就是这个类型。
             return Result.failure(
@@ -105,6 +118,9 @@ private class FakeSource(
     /** 被打包的次数：一次备份写到几处都只该是 1（同一批内容打包一遍）。 */
     var exportCount = 0
 
+    /** 最近一次 [restore] 收到的边车元数据：用来证明"读不到"没有被当成"没有"。 */
+    var lastRestoreMeta: String? = null
+
     override suspend fun export(
         selected: Set<String>?,
         onPacking: (PackingProgress) -> Unit,
@@ -117,6 +133,7 @@ private class FakeSource(
     }
 
     override suspend fun restore(entry: BackupEntry, metaJson: String?, content: InputStream): Result<RestoreOutcome> {
+        lastRestoreMeta = metaJson
         // 真实源都会把内容读到底（落盘再交给 ksud），校验也发生在读到末尾时。
         content.use { it.readBytes() }
         return Result.success(RestoreOutcome(true))
@@ -203,6 +220,25 @@ class BackupEngineTest {
         }
     }
 
+    /** 索引写失败时不会触碰归档；用户仍能从原列表恢复或重试删除。 */
+    @Test
+    fun `a failed delete index commit leaves the archive and original manifest intact`() {
+        runBlocking {
+            val storage = FakeStorage("local", failIndexWrites = true)
+            val engine = engine(listOf(storage), moduleSource(artifact("a", "sha-a")))
+            val stored = entry("a").copy(metaFileName = "module_a_1_20261008_120000.zip.meta.json")
+            val before = BackupManifest.renderEntries(listOf(stored))
+            storage.files[ArchiveNaming.INDEX_FILE] = before.toByteArray()
+            storage.files[stored.fileName] = "payload-a".toByteArray()
+            storage.files[stored.metaFileName!!] = "{}".toByteArray()
+
+            assertTrue(engine.delete(storage, listOf(stored)).isFailure)
+            assertTrue(storage.files.containsKey(stored.fileName))
+            assertTrue(storage.files.containsKey(stored.metaFileName))
+            assertEquals(before, storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString())
+        }
+    }
+
     /** 删不掉的文件必须留在索引里，否则那份归档再也没人指向它，用户既看不到也清不掉。 */
     @Test
     fun `a failed delete leaves both the file and its index entry in place`() {
@@ -217,6 +253,143 @@ class BackupEngineTest {
                 listOf("a"),
                 BackupManifest.parseEntries(storage.files.getValue("index.json").decodeToString()).map { it.entryId }
             )
+        }
+    }
+
+    /**
+     * 只删掉一部分时索引必须和盘上剩下来的东西对上：已经删掉的不能还留在列表里
+     * （点开恢复只会失败、再删也删不掉），没删掉的必须留着让用户重试。
+     */
+    @Test
+    fun `delete keeps the manifest in step with the archives it could actually remove`() {
+        runBlocking {
+            val storage = FakeStorage("local")
+            val engine = engine(listOf(storage), moduleSource(artifact("a", "sha-a"), artifact("b", "sha-b")))
+            engine.backup(BackupKind.MODULE)
+            val listed = engine.list(storage, BackupKind.MODULE).getOrThrow()
+            val a = listed.first { it.entryId == "a" }
+            val b = listed.first { it.entryId == "b" }
+            storage.failDeleteOf = b.fileName
+
+            assertTrue(engine.delete(storage, listOf(a, b)).isFailure)
+
+            assertFalse(storage.files.containsKey(a.fileName))
+            assertTrue(storage.files.containsKey(b.fileName))
+            assertEquals(
+                listOf("b"),
+                BackupManifest.parseEntries(storage.files.getValue(ArchiveNaming.INDEX_FILE).decodeToString())
+                    .map { it.entryId },
+            )
+        }
+    }
+
+    /** 声明的尺寸就超限：连读都不该读，更不该在盘上留下任何东西。 */
+    @Test
+    fun `import refuses an archive whose declared size is over the limit`() {
+        runBlocking {
+            val storage = FakeStorage("local")
+            val engine = engine(listOf(storage), moduleSource())
+            val name = "module_big_1_20261008_120000.zip"
+
+            val result = engine.importFrom(
+                storage = storage,
+                kind = BackupKind.MODULE,
+                fileName = name,
+                metaFileName = null,
+                size = BackupLimits.MAX_IMPORT_BYTES + 1,
+                open = { ByteArrayInputStream("payload".toByteArray()) },
+                metaJson = null,
+            )
+
+            assertEquals(
+                BackupReason.ImportTooLarge(name, BackupLimits.MAX_IMPORT_BYTES),
+                (result.exceptionOrNull() as BackupReasonException).reason,
+            )
+            assertTrue(storage.files.isEmpty())
+        }
+    }
+
+    /** 归档写进去了、索引却提交失败：不能留下"盘上有、列表里没有"的半条。 */
+    @Test
+    fun `import cleans up what it wrote when the index cannot be committed`() {
+        runBlocking {
+            val storage = FakeStorage("local", failIndexWrites = true)
+            val engine = engine(listOf(storage), moduleSource())
+            val body = "payload-b".toByteArray()
+
+            val result = engine.importFrom(
+                storage = storage,
+                kind = BackupKind.MODULE,
+                fileName = "module_b_1_20261008_120000.zip",
+                metaFileName = null,
+                size = body.size.toLong(),
+                open = { ByteArrayInputStream(body) },
+                metaJson = "{}",
+            )
+
+            assertTrue((result.exceptionOrNull() as? BackupReasonException)?.reason is BackupReason.ImportIndexWriteFailed)
+            assertTrue(storage.files.isEmpty())
+        }
+    }
+
+    /**
+     * 边车 meta 读不到（网络断、权限没了）时不能装作"这份备份没存状态"：那会把模块以启用状态
+     * 装回去、和备份时不一样，而界面上还写着"已恢复"。
+     */
+    @Test
+    fun `restore fails instead of silently dropping unreadable sidecar meta`() {
+        runBlocking {
+            val storage = FakeStorage("local", failMetaRead = true)
+            val stored = entry("a", sha256 = "").copy(metaFileName = "module_a_1_20261008_120000.zip.meta.json")
+            storage.files[ArchiveNaming.INDEX_FILE] = BackupManifest.renderEntries(listOf(stored)).toByteArray()
+            storage.files[stored.fileName] = "body-a".toByteArray()
+
+            assertTrue(engine(listOf(storage), FakeSource(BackupKind.MODULE, emptyList())).restore(storage, stored).isFailure)
+        }
+    }
+
+    /** 边车 meta 本来就不存在（旧备份、导入的归档）按"没有状态"处理，恢复照常进行。 */
+    @Test
+    fun `restore treats a missing sidecar meta as no recorded state`() {
+        runBlocking {
+            val storage = FakeStorage("local")
+            val source = FakeSource(BackupKind.MODULE, emptyList())
+            val stored = entry("a", sha256 = "").copy(metaFileName = "module_a_1_20261008_120000.zip.meta.json")
+            storage.files[ArchiveNaming.INDEX_FILE] = BackupManifest.renderEntries(listOf(stored)).toByteArray()
+            storage.files[stored.fileName] = "body-a".toByteArray()
+
+            assertTrue(engine(listOf(storage), source).restore(storage, stored).getOrThrow().success)
+            assertNull(source.lastRestoreMeta)
+        }
+    }
+
+    /** 导入拷贝按字节封顶：provider 声称的大小靠不住，流本身超了就必须当场停下。 */
+    @Test
+    fun `the import copy stops at the limit instead of writing past it`() {
+        runBlocking {
+            val out = ByteArrayOutputStream()
+
+            val error = runCatching {
+                ByteArrayInputStream(ByteArray(100) { 1 }).copyBoundedTo(out, limit = 64, path = "big.zip")
+            }.exceptionOrNull()
+
+            assertEquals(
+                BackupReason.ImportTooLarge("big.zip", 64),
+                (error as BackupReasonException).reason,
+            )
+            assertTrue(out.size() <= 64)
+        }
+    }
+
+    @Test
+    fun `the import copy passes through content that fits the limit`() {
+        runBlocking {
+            val out = ByteArrayOutputStream()
+
+            val copied = ByteArrayInputStream(ByteArray(64) { 7 }).copyBoundedTo(out, limit = 64, path = "ok.zip")
+
+            assertEquals(64L, copied)
+            assertEquals(64, out.size())
         }
     }
 
