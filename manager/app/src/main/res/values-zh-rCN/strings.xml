@@ -761,7 +761,7 @@
     <string name="backup_origin_local">本地</string>
     <string name="backup_origin_cloud">云端</string>
     <string name="backup_cloud_required">请先在上面配置 WebDAV 服务器并保存。</string>
-    <string name="backup_cloud_chip_locked">填写并保存地址后才能选择「云端」。</string>
+    <string name="backup_cloud_chip_locked">配置好上面的云端后，才能选择「云端」。</string>
     <string name="backup_cloud_test_ok">连接正常</string>
     <string name="backup_restored">已恢复 %s</string>
     <string name="backup_exported">已导出 %s</string>

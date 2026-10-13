@@ -766,7 +766,7 @@
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
     <string name="backup_cloud_required">Configure the WebDAV server above and save it first.</string>
-    <string name="backup_cloud_chip_locked">Save an address first to make Cloud selectable.</string>
+    <string name="backup_cloud_chip_locked">Set up Cloud above before you can select it.</string>
     <string name="backup_cloud_test_ok">Connection OK</string>
     <string name="backup_restored">Restored %s</string>
     <string name="backup_exported">Exported %s</string>
