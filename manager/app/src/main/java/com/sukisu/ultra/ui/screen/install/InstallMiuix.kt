@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -99,6 +100,7 @@ internal fun InstallScreenMiuix(
     snackbarHost: SnackbarHostState,
 ) {
     val enableBlur = LocalEnableBlur.current
+    val context = LocalContext.current
     val scrollBehavior = MiuixScrollBehavior()
     val backdrop = rememberBlurBackdrop(enableBlur)
     val blurActive = backdrop != null
@@ -241,12 +243,17 @@ internal fun InstallScreenMiuix(
                                 .fillMaxWidth()
                                 .padding(top = 12.dp),
                         ) {
+                            val lkmKmi = uiState.currentKmi
                             BasicComponent(
-                                title = stringResource(id = R.string.install_upload_lkm_file),
+                                title = if (lkmKmi.isNotBlank()) {
+                                    stringResource(R.string.install_upload_lkm_file_with_kmi, lkmKmi)
+                                } else {
+                                    stringResource(id = R.string.install_upload_lkm_file)
+                                },
                                 summary = (uiState.lkmSelection as? LkmSelection.LkmUri)?.let {
                                     stringResource(
                                         id = R.string.selected_lkm,
-                                        it.uri.lastPathSegment ?: "(file)"
+                                        displayNameOf(context, it.uri) ?: "(file)"
                                     )
                                 },
                                 onClick = actions.onUploadLkm,

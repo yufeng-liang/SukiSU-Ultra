@@ -40,6 +40,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
@@ -72,6 +73,7 @@ internal fun InstallScreenMaterial(
     snackBarHost: SnackbarHostState,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val context = LocalContext.current
 
     val isAbDevice by produceState(initialValue = false) {
         value = isAbDevice()
@@ -176,13 +178,22 @@ internal fun InstallScreenMaterial(
                                     null
                                 )
                             },
-                            headlineContent = { Text(stringResource(R.string.install_upload_lkm_file)) },
+                            headlineContent = {
+                                val kmi = uiState.currentKmi
+                                Text(
+                                    if (kmi.isNotBlank()) {
+                                        stringResource(R.string.install_upload_lkm_file_with_kmi, kmi)
+                                    } else {
+                                        stringResource(R.string.install_upload_lkm_file)
+                                    }
+                                )
+                            },
                             supportingContent = {
                                 (uiState.lkmSelection as? LkmSelection.LkmUri)?.let {
                                     Text(
                                         stringResource(
                                             R.string.selected_lkm,
-                                            it.uri.lastPathSegment ?: "(file)"
+                                            displayNameOf(context, it.uri) ?: "(file)"
                                         )
                                     )
                                 }

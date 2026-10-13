@@ -47,11 +47,15 @@ sealed class InstallMethod : Parcelable {
     open val summary: String? = null
 }
 
-fun isKoFile(context: Context, uri: Uri): Boolean {
-    val seg = uri.lastPathSegment ?: ""
-    if (seg.endsWith(".ko", ignoreCase = true)) return true
-
-    return try {
+/**
+ * The file name a picked document should be shown as.
+ *
+ * DocumentsUI hands back `content://` URIs whose last path segment is usually
+ * the provider's document id (a bare number like `378`), not the file name, so
+ * ask the provider first and only fall back to the URI itself.
+ */
+fun displayNameOf(context: Context, uri: Uri): String? {
+    val fromProvider = try {
         context.contentResolver.query(
             uri,
             arrayOf(OpenableColumns.DISPLAY_NAME),
@@ -60,14 +64,14 @@ fun isKoFile(context: Context, uri: Uri): Boolean {
             null
         )?.use { cursor ->
             val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (idx != -1 && cursor.moveToFirst()) {
-                val name = cursor.getString(idx)
-                name?.endsWith(".ko", ignoreCase = true) == true
-            } else {
-                false
-            }
-        } ?: false
+            if (idx != -1 && cursor.moveToFirst()) cursor.getString(idx) else null
+        }
     } catch (_: Throwable) {
-        false
+        null
     }
+
+    return fromProvider?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment
 }
+
+fun isKoFile(context: Context, uri: Uri): Boolean =
+    displayNameOf(context, uri)?.endsWith(".ko", ignoreCase = true) == true
