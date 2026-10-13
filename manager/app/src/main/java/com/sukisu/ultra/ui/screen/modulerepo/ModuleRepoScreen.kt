@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.screen.modulerepo
 
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -11,6 +12,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.sukisu.ultra.R
+import com.sukisu.ultra.data.registry.DownloadVerificationException
 import com.sukisu.ultra.data.repository.releasePageUrl
 import com.sukisu.ultra.data.repository.repositoryUrl
 import com.sukisu.ultra.ui.LocalUiMode
@@ -18,6 +21,7 @@ import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.navigation3.LocalNavigator
 import com.sukisu.ultra.ui.navigation3.Route
 import com.sukisu.ultra.ui.screen.flash.FlashIt
+import com.sukisu.ultra.ui.util.DownloadManager
 import com.sukisu.ultra.ui.util.formatRepoTime
 import com.sukisu.ultra.ui.util.module.fetchModuleDetail
 import com.sukisu.ultra.ui.viewmodel.ModuleRepoViewModel
@@ -165,3 +169,23 @@ fun ModuleRepoDetailScreen(module: RepoModuleArg) {
 /** The newest asset's address, or null when the module's index offered none. */
 private fun RepoModuleArg.latestDownloadUrl(): String? =
     releases.firstOrNull()?.assets?.firstOrNull()?.downloadUrl
+
+/**
+ * Why a download ended as failed, in one sentence. Registry downloads can additionally be
+ * rejected before they start (host not on the allowlist) or deleted after they arrive
+ * (size / SHA-256 mismatch), which is worth saying out loud instead of a bare "failed".
+ */
+fun downloadFailureMessage(
+    context: Context,
+    state: DownloadManager.DownloadState,
+    fileName: String,
+): String = when (state.verificationFailure) {
+    DownloadVerificationException.Reason.URL_NOT_ALLOWED ->
+        context.getString(R.string.module_repo_download_url_blocked)
+
+    DownloadVerificationException.Reason.SIZE_MISMATCH,
+    DownloadVerificationException.Reason.SHA256_MISMATCH ->
+        context.getString(R.string.module_repo_download_verify_failed, fileName)
+
+    null -> context.getString(R.string.download_failed_content, fileName)
+}

@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
+import com.sukisu.ultra.data.registry.ExpectedFile
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.util.module.LatestVersionInfo
 import okhttp3.Request
@@ -17,6 +18,9 @@ import okhttp3.Request
  * [altUrl] is tried once when [url] fails, which lets a repository whose declared asset
  * host has moved still install: the index keeps the old host while the files follow the
  * project to its new one.
+ *
+ * [expected] is the size + SHA-256 a registry release declared; [onFailed] reports the last
+ * failed state (including a verification failure) instead of returning silently.
  */
 suspend fun download(
     url: String,
@@ -24,17 +28,21 @@ suspend fun download(
     altUrl: String? = null,
     onDownloaded: (Uri) -> Unit = {},
     onDownloading: () -> Unit = {},
-    onProgress: (Int) -> Unit = {}
+    onProgress: (Int) -> Unit = {},
+    expected: ExpectedFile? = null,
+    onFailed: (DownloadManager.DownloadState) -> Unit = {},
 ) {
     onDownloading()
 
     val candidates = listOfNotNull(url, altUrl?.takeIf { it.isNotBlank() && it != url })
+    var lastState: DownloadManager.DownloadState? = null
     for ((index, candidate) in candidates.withIndex()) {
         val downloadId = DownloadManager.enqueue(
             context = ksuApp,
             url = candidate,
             fileName = fileName,
             onCompleted = onDownloaded,
+            expected = expected,
         )
 
         val state = DownloadManager.downloads
@@ -46,10 +54,14 @@ suspend fun download(
             }[downloadId]
 
         if (state?.status == DownloadManager.Status.COMPLETED) return
+        lastState = state
         if (index < candidates.lastIndex) {
             Log.w("Downloader", "download failed for $candidate, retrying ${candidates[index + 1]}")
         }
     }
+
+    val failed = lastState
+    if (failed != null) withContext(Dispatchers.Main) { onFailed(failed) }
 }
 
 internal suspend fun isDownloadAvailable(uri: Uri): Boolean = withContext(Dispatchers.IO) {
