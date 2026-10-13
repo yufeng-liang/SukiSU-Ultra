@@ -67,6 +67,16 @@ data class BackupUiState(
      */
     val openGroupSelected: Set<String> = emptySet(),
     /**
+     * 详情页里被收起来的那些来源（本机 / 云端）。
+     *
+     * 本机与云端各有一份时，两侧分成两段显示，每段自己收放：只想看云端那份时，不必把本机那
+     * 几行也摊在屏幕上。默认全部展开——进这一页就是来看"这一份里有什么"的，先收起来等于把答
+     * 案藏起来；只有条目多（一次装十几个模块）时才需要把按钮和列表拉回同一屏。
+     *
+     * 存"收起来的"而不是"展开的"：默认是展开，用空集当默认值就不必在每个入口重新灌一遍初值。
+     */
+    val openGroupCollapsed: Set<BackupOrigin> = emptySet(),
+    /**
      * 多选模式下勾中的分组 id。
      *
      * 存 id 而不是分组对象：列表刷新（恢复、删除、云端那份在别处被删）会换出一批新的分组
@@ -184,12 +194,18 @@ data class BackupUiState(
      * 现在按「立即备份」有没有意义。
      *
      * 模块一个都没勾时按下去只会得到"写入 0 项"——那不是结果，是用户还没勾完。位置和内容都
-     * 空着同理。列表读不出来时不能拦（那是一次读失败，不是用户的选择）。
+     * 空着同理。列表读不出来时不能拦（那是一次读失败，不是用户的选择）；一个模块都没装时
+     * 同理——没有可勾的对象，不能因此把 boot / 仓库源那两项也一起锁死。
      */
     val canBackUp: Boolean
         get() = origins.isNotEmpty() &&
             kinds.isNotEmpty() &&
-            (BackupKind.MODULE !in kinds || modulesUnavailable || selectedModuleIds.isNotEmpty())
+            (
+                BackupKind.MODULE !in kinds ||
+                    modulesUnavailable ||
+                    modules.isEmpty() ||
+                    selectedModuleIds.isNotEmpty()
+                )
 
     /** 稳定的展示顺序（本机在前），集合本身没有顺序。 */
     val orderedOrigins: List<BackupOrigin> get() = origins.sortedBy { it.ordinal }
@@ -202,6 +218,18 @@ data class BackupUiState(
      */
     val autoBackupTargets: AutoBackupPolicy.AutoBackupTargets
         get() = AutoBackupPolicy.targets(autoBackupLocal, autoBackupCloud, cloudConfigured)
+
+    /**
+     * 同上，集合形态——「自动备份位置」那个下拉框用它。
+     *
+     * 判定仍然只有 [autoBackupTargets] 一处：下拉框指着哪一档，数据层就写哪几处，不会出现
+     * "框里说云端、实际没写"。
+     */
+    val autoBackupOrigins: Set<BackupOrigin>
+        get() = buildSet {
+            if (autoBackupTargets.local) add(BackupOrigin.LOCAL)
+            if (autoBackupTargets.cloud) add(BackupOrigin.CLOUD)
+        }
 
     /** 自动备份开着但一个目的地都没勾。界面据此挂一句说明，不然开关开着却什么都没发生。 */
     val autoBackupWritesNothing: Boolean
@@ -234,17 +262,33 @@ data class BackupUiState(
         get() = openGroup?.rows.orEmpty().filter { it.id in openGroupSelected }
 
     /**
-     * 详情页里的"全选"是否处于选中态。
+     * 打开的这一份备份里，某一侧（本机 / 云端）的勾选情况。
      *
-     * 按"每一行都勾上了"判断，不比较数量：[openGroupSelected] 是行 id 的集合，切进切出另一组
-     * 备份、或列表刷新换出一批新行之后，里面可能留着别组的 id。数量刚好相等时按数量判断会显示
-     * 成"已全选"，而屏幕上明明有没勾的行——用户正是靠这个方框知道自己要恢复哪几条。
+     * 两侧分开成两段之后，"全选"是按段算的：分母是这一侧的行数，不是整组的行数。放在这里而不是
+     * 两个主题各算一遍——各写一份，迟早有一边把分母写成整组，于是"本机 1/1"被读成"整组 1/4"，
+     * 那一侧的勾选框再也画不出全选。
      */
-    val allGroupEntriesSelected: Boolean
-        get() {
-            val rows = openGroup?.rows.orEmpty()
-            return rows.isNotEmpty() && rows.all { it.id in openGroupSelected }
-        }
+    fun picksOf(origin: BackupOrigin): OriginPicks {
+        val rows = openGroup?.rows.orEmpty().filter { it.origin == origin }
+        return OriginPicks(picked = rows.count { it.id in openGroupSelected }, total = rows.size)
+    }
+}
+
+/**
+ * 某一侧条目的勾选情况，供详情页那一段的标题行画勾选框。
+ */
+@Immutable
+data class OriginPicks(
+    /** 这一侧勾上了几条。 */
+    val picked: Int,
+    /** 这一侧一共几条。 */
+    val total: Int,
+) {
+    /** 这一侧全都勾上了。空的一段不算——没东西可勾的段不该画成"全选"。 */
+    val allSelected: Boolean get() = total > 0 && picked == total
+
+    /** 勾了一部分：标题行的勾选框画成半选，收起来也看得出刚挑过。 */
+    val partial: Boolean get() = picked in 1 until total
 }
 
 /**
@@ -370,20 +414,30 @@ data class BackupActions(
     /** 切到「备份」或「恢复」分页。 */
     val onSelectTab: (BackupTab) -> Unit,
     val onToggleOrigin: (BackupOrigin) -> Unit,
+    /** 整批指定写到哪几处（下拉框那三项：本地 / 云端 / 本地+云端）。 */
+    val onSelectOrigins: (Set<BackupOrigin>) -> Unit,
     val onToggleKind: (BackupKind) -> Unit,
     val onBackup: () -> Unit,
     /** 点开一次备份看详情。**不在这里恢复任何东西**——列表行点一下就恢复等于给误触点了个火。 */
     val onOpenGroup: (BackupGroup) -> Unit,
     val onCloseGroup: () -> Unit,
+    /** 详情页：展开/收起某一侧的条目（点那一段的标题行）。 */
+    val onToggleGroupOrigin: (BackupOrigin) -> Unit,
     /** 详情页：勾选/取消一个条目。 */
     val onToggleGroupEntry: (String) -> Unit,
-    val onSetAllGroupEntries: (Boolean) -> Unit,
+    /** 详情页：把某一侧的条目一次全勾上 / 全取消。 */
+    val onSetOriginEntries: (BackupOrigin, Boolean) -> Unit,
     /** 恢复勾中的那些条目。boot 的那次二次确认由界面在调它之前问。 */
     val onRestoreSelected: () -> Unit,
     /** 导出/分享勾中的那些条目（一条给原样归档，多条打成一个 zip）。 */
     val onShareSelected: () -> Unit,
-    /** 删掉这一整组备份。界面先问一次。 */
-    val onDeleteGroup: () -> Unit,
+    /**
+     * 删掉勾中的那些条目。界面先问一次。
+     *
+     * 跟着勾选走而不是"删整组"：本机与云端各有一份时，"删掉整组"和"删掉我勾的这一份"是两件
+     * 事，只勾了本地的人心里想的是本地那份（见 BackupViewModel.deleteChecked）。
+     */
+    val onDeleteChecked: () -> Unit,
     /** 长按一行进入多选模式，并把这一行勾上。 */
     val onStartSelection: (BackupGroup) -> Unit,
     /** 多选模式下点一行：勾上 / 取消。 */
@@ -400,9 +454,8 @@ data class BackupActions(
     val onCancelBackupRun: () -> Unit,
     val onImport: () -> Unit,
     val onSetAutoBackup: (Boolean) -> Unit,
-    /** 自动备份写到哪：本机 / 云端各一个。 */
-    val onSetAutoBackupLocal: (Boolean) -> Unit,
-    val onSetAutoBackupCloud: (Boolean) -> Unit,
+    /** 自动备份写到哪几处：和手动备份的「备份位置」同一套三档（本地 / 云端 / 本地+云端）。 */
+    val onSelectAutoBackupOrigins: (Set<BackupOrigin>) -> Unit,
     /** 保留额度：模块 / boot 各几次。值由数据层钳过，界面传原值即可。 */
     val onSetModuleRetention: (Int) -> Unit,
     val onSetBootRetention: (Int) -> Unit,

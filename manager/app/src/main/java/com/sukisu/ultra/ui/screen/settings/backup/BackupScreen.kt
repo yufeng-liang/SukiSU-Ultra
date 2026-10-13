@@ -11,13 +11,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -35,6 +38,7 @@ import com.sukisu.ultra.ui.navigation3.LocalNavigator
 import com.sukisu.ultra.ui.viewmodel.BackupViewModel
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.SnackbarHostState as MiuixSnackbarHostState
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
@@ -102,12 +106,14 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onBack = { navigator.pop() },
         onSelectTab = viewModel::selectTab,
         onToggleOrigin = viewModel::toggleOrigin,
+        onSelectOrigins = viewModel::setOrigins,
         onToggleKind = viewModel::toggleKind,
         onBackup = viewModel::backupNow,
         onOpenGroup = viewModel::openGroup,
         onCloseGroup = viewModel::closeGroup,
+        onToggleGroupOrigin = viewModel::toggleGroupOrigin,
+        onSetOriginEntries = viewModel::setOriginEntries,
         onToggleGroupEntry = viewModel::toggleGroupEntry,
-        onSetAllGroupEntries = viewModel::setAllGroupEntries,
         onRestoreSelected = {
             // 选中的里面有原厂镜像就必须先问一次：恢复它等于把设备带回未 root 状态，
             // 不可逆，而且用户未必知道自己勾上了它。
@@ -151,22 +157,25 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onShareConsumed = viewModel::consumeShare,
         onDismissBackupRun = viewModel::dismissBackupRun,
         onCancelBackupRun = viewModel::cancelBackupRun,
-        onDeleteGroup = {
+        onDeleteChecked = {
             // 删的是文件，删完找不回来；而且这一组可能本机和云端都有，所以要说清动的是哪些地方。
-            state.openGroup?.let { group ->
+            // 说的是**勾中的那几条**：只勾了本地就只删本地，正文里的"从本地删除这 1 项"就是
+            // 接下来真正会发生的事——以前这里说的是整组，用户勾了一半也会看到"这 2 项"。
+            val checked = state.openGroupSelection
+            if (checked.isNotEmpty()) {
                 confirmScope.launch {
                     val separator = context.getString(R.string.backup_list_separator)
-                    val originLabel = BackupLabels.groupOrigins(group)
-                        .joinToString(separator) { context.getString(it) }
+                    val originLabel = checked.map { it.origin }.distinct().sorted()
+                        .joinToString(separator) { context.getString(BackupLabels.origin(it)) }
                     val confirmed = confirmDialog.awaitConfirm(
                         title = deleteConfirmTitle,
                         content = context.getString(
                             R.string.backup_delete_confirm_body,
                             originLabel,
-                            group.rows.size,
+                            checked.size,
                         ),
                     ) == ConfirmResult.Confirmed
-                    if (confirmed) viewModel.deleteGroup()
+                    if (confirmed) viewModel.deleteChecked()
                 }
             }
         },
@@ -193,8 +202,7 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
             }
         },
         onSetAutoBackup = viewModel::setAutoBackup,
-        onSetAutoBackupLocal = viewModel::setAutoBackupLocal,
-        onSetAutoBackupCloud = viewModel::setAutoBackupCloud,
+        onSelectAutoBackupOrigins = viewModel::setAutoBackupOrigins,
         onSetModuleRetention = viewModel::setModuleRetention,
         onSetBootRetention = viewModel::setBootRetention,
         onToggleRetention = viewModel::toggleRetention,
@@ -224,8 +232,18 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
     //
     // contentKey 只看"是不是详情页"：刷新列表（恢复/删除之后）会让分组对象换一份新的，
     // 按对象比较会把它当成一次页面切换，白白重放一遍动画。
+    //
+    // 这一层自己铺上页面底色：进出详情是两边同时淡入淡出，中途整屏都是半透明的，而这一页
+    // 本身压在设置那一级导航里——底下不铺东西的话，淡到一半透出来的是设置页，看着像切详情
+    // 时底下还露着另一页。铺上和两页 Scaffold 一样的底色，淡入淡出就只在这块底色上发生。
     AnimatedContent(
         targetState = openGroup,
+        modifier = Modifier.background(
+            when (uiMode) {
+                UiMode.Miuix -> MiuixTheme.colorScheme.surface
+                UiMode.Material -> MaterialTheme.colorScheme.surfaceContainer
+            }
+        ),
         transitionSpec = {
             if (targetState != null) {
                 (slideInHorizontally { it } + fadeIn(tween(PAGE_MS))) togetherWith
@@ -279,19 +297,23 @@ fun groupSummary(group: BackupGroup): String {
 }
 
 /**
- * 「备份位置」下面那一行：这次会写到哪几处。
+ * 位置下拉框里那几档的顺序：0 = 本地，1 = 云端，2 = 本地+云端。
  *
- * 常显，内容跟着勾选走。它原来是"两个都勾上才冒出来"的一句提示，冒出来那一下会把下面的
- * 「备份内容」整块推下去——用户正要点的是那下面的东西。常显之后高度不动，还顺带把"写到哪"
- * 说清楚了；一个都没勾时说的就是"先去勾一个"。
+ * 「备份位置」和「自动备份位置」共用这一处映射：同一份下标含义被两个下拉框读，各写一份迟早
+ * 会出现"Material 指着第 2 档、Miuix 指着第 0 档"。云端没配好时只有第 0 档，下标一律回落到 0。
  */
-@Composable
-fun originPlan(state: BackupUiState): String {
-    if (state.origins.isEmpty()) return stringResource(R.string.backup_origin_none)
-    val separator = stringResource(R.string.backup_list_separator)
-    // map 是 inline 的（joinToString 的 lambda 不是），所以取字符串只能在 map 里做。
-    val labels = state.orderedOrigins.map { stringResource(BackupLabels.origin(it)) }.joinToString(separator)
-    return stringResource(R.string.backup_origin_plan, labels)
+internal fun originOptionIndex(origins: Set<BackupOrigin>, cloudReady: Boolean): Int = when {
+    !cloudReady -> 0
+    BackupOrigin.LOCAL in origins && BackupOrigin.CLOUD in origins -> 2
+    BackupOrigin.CLOUD in origins -> 1
+    else -> 0
+}
+
+/** 第 [index] 档对应的写入位置；云端没配好时无论点了哪一档都只能是本地。 */
+internal fun originsForOption(cloudReady: Boolean, index: Int): Set<BackupOrigin> = when {
+    !cloudReady || index == 0 -> setOf(BackupOrigin.LOCAL)
+    index == 1 -> setOf(BackupOrigin.CLOUD)
+    else -> setOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD)
 }
 
 /**
@@ -314,18 +336,17 @@ fun groupLocationLines(group: BackupGroup, cloudSavedUrl: String): List<String> 
     }
 
 /**
- * 详情页头部那几行小字：摘要打头，每个来源各起一行。
+ * 详情页头部那几行小字：摘要一行，每个来源各起一行。
  *
- * 两处地址接在摘要后面会连成"…本机备份在 A · 云端备份在 B"一整句，而用户是按行找"这一份在哪、
- * 那一份在哪"的，所以每个来源各占一行。摘要是"这一组是什么"，跟第一个来源同行——它俩本来就
- * 是一句话的两半，再拆一行只是让头部更占地方。
+ * 地址接在摘要后面会连成"… · 本机备份在 A"一整句，而用户是按行找"这一份在哪、那一份在哪"的，
+ * 所以摘要自己也占一行、每个来源再各占一行——三行各自说一件事，扫一眼就能对上号。
  */
 @Composable
 fun groupHeaderText(group: BackupGroup, cloudSavedUrl: String): String {
     val summary = groupSummary(group)
     val locations = groupLocationLines(group, cloudSavedUrl)
     if (locations.isEmpty()) return summary
-    return summary + BackupListFormatter.SEPARATOR + locations.joinToString("\n")
+    return (listOf(summary) + locations).joinToString("\n")
 }
 
 /**

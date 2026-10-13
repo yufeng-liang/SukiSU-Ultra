@@ -87,6 +87,12 @@ annotation class SegmentedColumnDsl
 private fun defaultSegmentedColors(): ListItemColors = ListItemDefaults.segmentedColors(
     containerColor = colorScheme.surfaceBright,
     disabledContainerColor = colorScheme.surfaceBright,
+    // 勾上之后整行不再换底色：勾选框自己已经在说"这个选中了"，再铺一层对比色是同一句话
+    // 说两遍；而且一行亮起来会把旁边没选中的行衬暗，看着像那几行不能点。选中行的底色和
+    // 两种文字色都保持与未选中时一致，变的只有勾选框本身。
+    selectedContainerColor = colorScheme.surfaceBright,
+    selectedContentColor = colorScheme.onSurface,
+    selectedSupportingContentColor = colorScheme.onSurfaceVariant,
     supportingContentColor = colorScheme.onSurfaceVariant
 )
 
@@ -228,8 +234,18 @@ fun SegmentedColumn(
                                     alpha = (progress * 1.5f).coerceIn(0f, 1f)
                                 }
                         ) {
+                            // 六种状态给同一副四角：这一行的圆角是"第几行"算出来的，和按下/选中无关。
+                            // 以前只改 shape，勾选中的行会落回 M3 单行卡片那副 16dp 圆角——组里每勾上
+                            // 一行就鼓成一张独立的卡片，同一组里的行于是宽窄一致、四角各说各话。
                             CompositionLocalProvider(
-                                LocalListItemShapes provides ListItemDefaults.segmentedShapes(0, 1).copy(shape = shape)
+                                LocalListItemShapes provides ListItemDefaults.segmentedShapes(0, 1).copy(
+                                    shape = shape,
+                                    selectedShape = shape,
+                                    pressedShape = shape,
+                                    focusedShape = shape,
+                                    hoveredShape = shape,
+                                    draggedShape = shape,
+                                )
                             ) {
                                 Column(modifier = Modifier.padding(top = gap)) {
                                     entry.content()

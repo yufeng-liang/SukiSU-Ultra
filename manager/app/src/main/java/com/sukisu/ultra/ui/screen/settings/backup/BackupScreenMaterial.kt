@@ -1,13 +1,7 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
 import android.content.Context
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +9,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,30 +40,31 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.rememberSliderState
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.AutoBackupOutcome
 import com.sukisu.ultra.data.backup.BackupDefaults
@@ -76,14 +72,20 @@ import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.RetentionLimit
 import com.sukisu.ultra.data.backup.WebDavPresets
+import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.ExpressiveTabRow
 import com.sukisu.ultra.ui.component.material.SegmentedCheckboxItem
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
+import com.sukisu.ultra.ui.component.material.SegmentedColumnScope
+import com.sukisu.ultra.ui.component.material.SegmentedDropdownItem
+import com.sukisu.ultra.ui.component.material.SegmentedItemContainer
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
 import com.sukisu.ultra.ui.component.material.SegmentedSwitchItem
-import com.sukisu.ultra.ui.component.material.TonalCard
+import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.ultra.ui.util.BackupText
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -99,13 +101,18 @@ fun BackupMaterial(
     // 对方那页的偏移上。
     val listState = if (state.tab == BackupTab.BACKUP) backupListState else restoreListState
 
-    Scaffold(
+    // 底色交给 ExpressiveScaffold（surfaceContainer），和设置页同一套：以前这里用默认的
+    // Scaffold，页面底色是 colorScheme.background（纯白），而列表行是 surfaceBright（近白），
+    // 白压白就看不出一行从哪儿开始；顶栏自己又刷一层白，跟下面 surfaceContainer 的分页栏正面
+    // 撞色。底色统一之后，行自己"浮"了出来，顶栏和分页栏也连成了同一块。
+    ExpressiveScaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 // 多选时顶栏换成"正在多选"的操作栏：标题说勾了几份，左边是取消、右边是删除。
                 // 列表行上的勾选框已经在说"选了什么"，这里补上"选了多少、能干什么"。
                 TopAppBar(
+                    colors = expressiveTopAppBarColors(),
                     title = {
                         Text(
                             if (state.selecting) {
@@ -213,14 +220,13 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
                 label = "cloudArrow",
             )
             SegmentedListItem(
-                // 这一栏是整页最上面的一块，标题要比列表项默认的正文体量明显：
-                // 字号大两号再加一档字重，扫一眼就知道这一栏说的是云端。
+                // 这一栏是整页最上面的一块，但字号要跟别的列表行一致：自己放大两号之后，
+                // 它跟下面每一行的标题都不在一个尺度上，看着像另一个控件（用户一眼就看出来了）。
+                // 层次靠位置和下面那行地址来立，不靠把标题撑大。
                 headlineContent = {
                     Text(
                         stringResource(R.string.backup_cloud_title),
                         style = MaterialTheme.typography.titleMedium,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
                     )
                 },
                 // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
@@ -246,109 +252,117 @@ private fun CloudCardMaterial(state: BackupUiState, actions: BackupActions) {
             )
         }
         item(visible = state.cloudExpanded) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text(
-                    stringResource(R.string.backup_cloud_intro),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // 面板自己不带底色，得接着标题行的卡面往下画：不接的话标题行收在 4dp 的内圆角上、
+            // 下面一截直接落在页面底色上，看着像一张被切掉下半截的卡片。
+            SegmentedItemContainer { CloudPanelMaterial(state, actions) }
+        }
+    }
+}
+
+/** 云端那一块展开后的表单，装在 [SegmentedItemContainer] 里（见 [CloudCardMaterial]）。 */
+@Composable
+private fun CloudPanelMaterial(state: BackupUiState, actions: BackupActions) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(
+            stringResource(R.string.backup_cloud_intro),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            // 四个预设放不下一行会折成两行，而 FlowRow 的行间距默认是 0：
+            // 折起来的第二行边框直接贴在上一行上，看着像重叠。
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            WebDavPresets.ALL.forEach { preset ->
+                val selected = preset.id == state.cloudSlot
+                val remembered = preset.id in state.cloudRememberedSlots
+                // 选中的那个带勾并换成主色底——不这样区分的话，点完预设
+                // 用户只能从地址栏里的域名反推自己刚才点的是谁。
+                // 预设是"填个模板"的快捷方式，字比正文小一档：它跟下面三个输入框
+                // 是一组，和页面底部那个「立即备份」同样体量会把表单的层级顶乱。
+                //
+                // 没选中的那几个里，记着可用配置的加一个小圆点：切到别家再切回来时，
+                // 用户得能看出哪几家是自己填过的，否则只能挨个点开试。
+                FilterChip(
+                    selected = selected,
+                    onClick = { actions.onSelectPreset(preset) },
+                    label = {
+                        Text(preset.label, style = MaterialTheme.typography.labelMedium)
+                    },
+                    leadingIcon = when {
+                        selected -> {
+                            { Icon(Icons.Filled.Check, contentDescription = null) }
+                        }
+                        remembered -> {
+                            { RememberedDot() }
+                        }
+                        else -> null
+                    },
                 )
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    // 四个预设放不下一行会折成两行，而 FlowRow 的行间距默认是 0：
-                    // 折起来的第二行边框直接贴在上一行上，看着像重叠。
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    WebDavPresets.ALL.forEach { preset ->
-                        val selected = preset.id == state.cloudSlot
-                        val remembered = preset.id in state.cloudRememberedSlots
-                        // 选中的那个带勾并换成主色底——不这样区分的话，点完预设
-                        // 用户只能从地址栏里的域名反推自己刚才点的是谁。
-                        // 预设是"填个模板"的快捷方式，字比正文小一档：它跟下面三个输入框
-                        // 是一组，和页面底部那个「立即备份」同样体量会把表单的层级顶乱。
-                        //
-                        // 没选中的那几个里，记着可用配置的加一个小圆点：切到别家再切回来时，
-                        // 用户得能看出哪几家是自己填过的，否则只能挨个点开试。
-                        FilterChip(
-                            selected = selected,
-                            onClick = { actions.onSelectPreset(preset) },
-                            label = {
-                                Text(preset.label, style = MaterialTheme.typography.labelMedium)
-                            },
-                            leadingIcon = when {
-                                selected -> {
-                                    { Icon(Icons.Filled.Check, contentDescription = null) }
-                                }
-                                remembered -> {
-                                    { RememberedDot() }
-                                }
-                                else -> null
-                            },
-                        )
-                    }
-                }
-                // 点预设只是把地址填好，"去哪生成应用密码/要先开什么"才是真正会卡住人的
-                // 那一步，所以那句话必须跟着显示出来（内容来自 WebDavPresets 里的 hintRes）。
-                state.cloudPresetHintRes?.let { hintRes ->
-                    Text(
-                        stringResource(hintRes),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-                OutlinedTextField(
-                    value = state.cloudUrl,
-                    onValueChange = actions.onUrlChange,
-                    label = { Text(stringResource(R.string.backup_cloud_url)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                )
-                OutlinedTextField(
-                    value = state.cloudUser,
-                    onValueChange = actions.onUserChange,
-                    label = { Text(stringResource(R.string.backup_cloud_user)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                )
-                OutlinedTextField(
-                    value = state.cloudPass,
-                    onValueChange = actions.onPassChange,
-                    label = { Text(stringResource(R.string.backup_cloud_password)) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                )
-                // 这句话说的就是上面那个密码框，贴在它下面才读得通；放到表单最底下
-                // 会跟"测试连接/保存"挤在一起，看着像按钮的说明。
-                Text(
-                    stringResource(R.string.backup_cloud_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                // 两个动作等宽铺满一行：一长一短看着像没对齐的标签，而且"保存"是这一步的
-                // 落点，铺开之后它比"测试连接"更好按。层级靠描边/实心区分——两个都是实心时，
-                // 用户得读一遍字才知道该按哪个。
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    OutlinedButton(
-                        onClick = actions.onTestCloud,
-                        enabled = !state.loading,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(stringResource(R.string.backup_cloud_test))
-                    }
-                    Button(
-                        onClick = actions.onSaveCloud,
-                        enabled = !state.loading,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(stringResource(R.string.backup_cloud_save))
-                    }
-                }
+            }
+        }
+        // 点预设只是把地址填好，"去哪生成应用密码/要先开什么"才是真正会卡住人的
+        // 那一步，所以那句话必须跟着显示出来（内容来自 WebDavPresets 里的 hintRes）。
+        state.cloudPresetHintRes?.let { hintRes ->
+            Text(
+                stringResource(hintRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+        OutlinedTextField(
+            value = state.cloudUrl,
+            onValueChange = actions.onUrlChange,
+            label = { Text(stringResource(R.string.backup_cloud_url)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        )
+        OutlinedTextField(
+            value = state.cloudUser,
+            onValueChange = actions.onUserChange,
+            label = { Text(stringResource(R.string.backup_cloud_user)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        )
+        OutlinedTextField(
+            value = state.cloudPass,
+            onValueChange = actions.onPassChange,
+            label = { Text(stringResource(R.string.backup_cloud_password)) },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        )
+        // 这句话说的就是上面那个密码框，贴在它下面才读得通；放到表单最底下
+        // 会跟"测试连接/保存"挤在一起，看着像按钮的说明。
+        Text(
+            stringResource(R.string.backup_cloud_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        // 两个动作等宽铺满一行：一长一短看着像没对齐的标签，而且"保存"是这一步的
+        // 落点，铺开之后它比"测试连接"更好按。层级靠描边/实心区分——两个都是实心时，
+        // 用户得读一遍字才知道该按哪个。
+        Row(
+            Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = actions.onTestCloud,
+                enabled = !state.loading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.backup_cloud_test))
+            }
+            Button(
+                onClick = actions.onSaveCloud,
+                enabled = !state.loading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.backup_cloud_save))
             }
         }
     }
@@ -407,54 +421,158 @@ private fun GroupTitle(text: String) {
 }
 
 /**
- * 「模块」那一行下面的勾选入口。
+ * 「模块」那一行：勾选框管"这次备不备模块 / 全不全选"，行本身点开是挑具体模块。
  *
- * 默认全选、整块收起：多数人是要全部，把十几个模块铺出来只会把下面的按钮和列表顶走。
+ * 以前这里是两行——一行「模块」开关、一行「选择要备份的模块」入口，说的是同一件事，想看具体
+ * 模块还得先知道要往下点第二行。合成一行之后：勾选框默认全选，再点一下就是全不选（顺带把
+ * "模块"这一栏也关掉，见 `BackupViewModel.setAllModules`），点行展开子项。
+ *
+ * 展开挑过之后勾选框会变成半选：它此刻回答的不是"备不备模块"，而是"挑齐了没有"。
  */
 @Composable
-private fun ModulePickerHeaderMaterial(state: BackupUiState, actions: BackupActions) {
+private fun ModuleRowMaterial(state: BackupUiState, actions: BackupActions) {
     val rotation by animateFloatAsState(
         targetValue = if (state.modulesExpanded) 180f else 0f,
         label = "modulesArrow",
     )
+    // 列表读不到、或一个模块都没装时没有可全选的对象，这一格就只剩"要不要备模块"本身的意思；
+    // 有列表时它表示的就是"是不是一个不落"。
+    val selectedCount = state.modules.count { it.id in state.selectedModuleIds }
+    val allSelected = state.modules.isEmpty() || selectedCount == state.modules.size
+    // 只勾了一部分时画成半选。画成空的话，展开挑完再收起来，这一行看起来和"一个都没勾"完全
+    // 一样——刚挑的那几个就像没被记住。
+    val partial = selectedCount in 1 until state.modules.size
+    // 没得挑的时候不给一个点了没反应的行：箭头和点击一起去掉，只留那一格开关。
+    val expandable = state.modules.isNotEmpty()
     SegmentedListItem(
-        headlineContent = { Text(stringResource(R.string.backup_module_select)) },
-        supportingContent = {
-            Text(
-                stringResource(
-                    R.string.backup_module_selected,
-                    state.selectedModuleIds.size,
-                    state.modules.size,
-                ),
-            )
+        onClick = if (expandable) actions.onToggleModules else null,
+        leadingContent = {
+            if (partial) {
+                // 半选时点一下就是全选：从"挑了几个"再往前走一步，只剩"全都要"。
+                TriStateCheckbox(
+                    state = ToggleableState.Indeterminate,
+                    onClick = { actions.onSetAllModules(true) },
+                    modifier = Modifier.size(24.dp),
+                )
+            } else {
+                Checkbox(
+                    checked = allSelected,
+                    onCheckedChange = actions.onSetAllModules,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         },
+        headlineContent = { Text(stringResource(R.string.backup_kind_module)) },
+        supportingContent = { Text(moduleSummary(state)) },
         trailingContent = {
-            Icon(
-                imageVector = Icons.Filled.ExpandMore,
-                contentDescription = stringResource(R.string.expand),
-                modifier = Modifier.graphicsLayer { rotationZ = rotation },
-            )
+            if (expandable) {
+                Icon(
+                    imageVector = Icons.Filled.ExpandMore,
+                    contentDescription = stringResource(R.string.expand),
+                    modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                )
+            }
         },
-        onClick = actions.onToggleModules,
     )
 }
 
-/** 调用方只在有模块可挑时才调用它。 */
+/**
+ * 「模块」那一行的副标题：已选几个 / 一共几个。
+ *
+ * 收起时这一行是唯一能看出"是不是全选"的地方，展开时它跟着每一行的勾实时变。
+ */
 @Composable
-private fun ModulePickerListMaterial(state: BackupUiState, actions: BackupActions) {
-    val disabledLabel = stringResource(R.string.backup_row_disabled)
-    SegmentedCheckboxItem(
-        title = stringResource(R.string.backup_module_select_all),
-        checked = state.selectedModuleIds.size == state.modules.size,
-        onCheckedChange = actions.onSetAllModules,
+private fun moduleSummary(state: BackupUiState): String = when {
+    state.modulesUnavailable -> stringResource(R.string.backup_module_unavailable)
+    state.modules.isEmpty() -> stringResource(R.string.backup_module_none)
+    else -> stringResource(
+        R.string.backup_module_selected,
+        state.selectedModuleIds.size,
+        state.modules.size,
     )
+}
+
+/**
+ * 模块清单 / 备份详情页里的一行细目（模块名 + 版本号，或备份条目名 + 大小）。
+ *
+ * 比这一页的主行小一号、矮一档：这是"挂在主行下面"的一层。以前用 [SegmentedCheckboxItem]
+ * 铺，M3 的 ListItem 给两行内容留了 72dp 的最小高度（一行 200px），一屏只放得下五个模块，
+ * 而且每个模块名和"模块"这一栏本身一样重——主次分不出来。这里自己搭一行：标题降一档到
+ * bodyMedium，上下各留 6dp，行高落到 140px 上下，字号和间距一起收。
+ *
+ * 行得自己铺卡面：`SegmentedColumn` 只算圆角和行距，底色是行自己画的（见 [SegmentedItemContainer]）。
+ * 勾选框只报状态、点击整行都算，所以 `Checkbox` 的 `onCheckedChange` 传 null。
+ */
+@Composable
+internal fun SubEntryRowMaterial(
+    title: String,
+    summary: String?,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    SegmentedItemContainer {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onCheckedChange(!checked) }
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = null,
+                modifier = Modifier.size(24.dp),
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    // 12dp：勾选框 24dp + 这一档，标题的左边缘才和上面主行（M3 ListItem 的
+                    // 16dp 内边距 + 24dp 勾选框 + 16dp 间距）落在同一条竖线上。
+                    .padding(start = 12.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                summary?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 「模块」那一行下面的勾选列表：每张勾选卡各占这一组的一行。
+ *
+ * 每行都得是这一组自己的一行，而不是塞进同一个条目里的一摞行——条目的四角是这一组按位置算给
+ * 它的，一摞行共用同一副四角、行与行之间也没有那 2dp 的缝，铺出来是一摞边缘带缺口的圆角条。
+ *
+ * 「全选」不在这里：它已经搬到上面那一行的勾选框上（[ModuleRowMaterial]），再摆一行就是
+ * 同一件事的第二遍。
+ *
+ * 调用方只在有模块可挑时才调用它。
+ */
+private fun SegmentedColumnScope.modulePickerRowsMaterial(
+    state: BackupUiState,
+    actions: BackupActions,
+    disabledLabel: String,
+) {
     state.modules.forEach { module ->
-        SegmentedCheckboxItem(
-            title = ModuleOptionText.title(module),
-            summary = ModuleOptionText.summary(module, disabledLabel),
-            checked = module.id in state.selectedModuleIds,
-            onCheckedChange = { actions.onToggleModule(module.id) },
-        )
+        item(key = "module-row-${module.id}", visible = state.modulesExpanded) {
+            SubEntryRowMaterial(
+                title = ModuleOptionText.title(module),
+                summary = ModuleOptionText.summary(module, disabledLabel),
+                checked = module.id in state.selectedModuleIds,
+                onCheckedChange = { actions.onToggleModule(module.id) },
+            )
+        }
     }
 }
 
@@ -463,11 +581,15 @@ private fun ModulePickerListMaterial(state: BackupUiState, actions: BackupAction
  *
  * 默认收起，理由与 Miuix 那一版相同（见 `RetentionCardMiuix`）。两个主题共用同一份取值与
  * 提交时机——滑块只在松手时提交，中途不落盘。
+ *
+ * 结构和云端那一块（[CloudCardMaterial]）一样：标题行是这一组的一行，展开的面板是下一行、
+ * 用 [SegmentedItemContainer] 接着卡面往下画。以前这里是"TonalCard 里再套一层横向 16dp 内边距"，
+ * 于是整块比上下都窄一圈，四角也就和别的行对不齐了。
  */
 @Composable
 private fun RetentionCardMaterial(state: BackupUiState, actions: BackupActions) {
-    TonalCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-        Column(modifier = Modifier.padding(16.dp)) {
+    SegmentedColumn {
+        item {
             val rotation by animateFloatAsState(
                 targetValue = if (state.retentionExpanded) 180f else 0f,
                 label = "retentionArrow",
@@ -484,12 +606,13 @@ private fun RetentionCardMaterial(state: BackupUiState, actions: BackupActions) 
                 },
                 onClick = actions.onToggleRetention,
             )
-            AnimatedVisibility(
-                visible = state.retentionExpanded,
-                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(tween(EXPAND_MS)),
-                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(tween(EXPAND_MS)),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        }
+        item(visible = state.retentionExpanded) {
+            SegmentedItemContainer {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     Text(
                         text = stringResource(R.string.backup_retention_summary),
                         style = MaterialTheme.typography.bodySmall,
@@ -514,7 +637,12 @@ private fun RetentionCardMaterial(state: BackupUiState, actions: BackupActions) 
     }
 }
 
-/** 一个额度滑块：标题、当前值、一条 1…[max] 的滑轨。 */
+/**
+ * 一个额度滑块：标题、当前值、一条 1…[max] 的滑轨。
+ *
+ * 值跟在标题同一行、说明另起一行铺满宽度：说明长起来会折成两行，值要是和说明挤在一行里，
+ * 折行之后它正好落在句子中间，读起来像句子的一部分。
+ */
 @Composable
 private fun RetentionSliderMaterial(
     title: String,
@@ -528,22 +656,35 @@ private fun RetentionSliderMaterial(
         steps = max - RetentionLimit.MIN - 1,
         trackRange = RetentionLimit.MIN.toFloat()..max.toFloat(),
     )
+    // 滑轨上没有刻度，手指滑过去既没有声音也没有阻力：只有每跨过一档震一下，用户才知道
+    // "又过了一格、现在是第几格"（Miuix 那一版用的是它滑块自带的 Step 触感，这里是同一件事）。
+    // 初始值不震：进页面时不该有反馈，那是"你动了它"才有的东西。
+    val haptic = LocalHapticFeedback.current
+    LaunchedEffect(sliderState) {
+        snapshotFlow { sliderState.value.roundToInt() }
+            .distinctUntilChanged()
+            .drop(1)
+            .collect { haptic.performHapticFeedback(HapticFeedbackType.VirtualKey) }
+    }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(text = title, style = MaterialTheme.typography.titleSmall)
-                summary?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
             Text(
                 text = stringResource(R.string.backup_retention_count, sliderState.value.roundToInt()),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        summary?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
         Slider(
@@ -568,58 +709,53 @@ private fun LazyListScope.backupTabItems(
 ) {
     item { CloudCardMaterial(state, actions) }
     item {
-        Column {
-            GroupTitle(stringResource(R.string.backup_origin_group))
-            SegmentedColumn {
-                item {
-                    SegmentedCheckboxItem(
-                        title = stringResource(R.string.backup_origin_local),
-                        checked = BackupOrigin.LOCAL in state.origins,
-                        onCheckedChange = { actions.onToggleOrigin(BackupOrigin.LOCAL) },
-                    )
-                }
-                item {
-                    // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜；把原因
-                    // 挂在它自己的副标题上，就不用再单独占一行小字。
-                    SegmentedCheckboxItem(
-                        title = stringResource(R.string.backup_origin_cloud),
-                        summary = if (state.cloudConfigured) {
-                            null
-                        } else {
-                            stringResource(R.string.backup_cloud_chip_locked)
-                        },
-                        checked = BackupOrigin.CLOUD in state.origins,
-                        enabled = state.cloudConfigured,
-                        onCheckedChange = { actions.onToggleOrigin(BackupOrigin.CLOUD) },
-                    )
-                }
+        // 「备份位置」的三档（本地 / 云端 / 本地+云端）挤进一行下拉框，和设置页的「界面风格」
+        // 同一副样子：以前是两个各自独立的勾选框，"两个都要"这件事得靠用户自己把两下点凑
+        // 出来，而它恰恰是最常用的那一档。原来那行小字提示搬到了这一行的副标题上——写到哪
+        // 已经写在行尾，不用再单占一行。
+        SegmentedColumn {
+            item {
+                val localLabel = stringResource(R.string.backup_origin_local)
+                val cloudLabel = stringResource(R.string.backup_origin_cloud)
+                SegmentedDropdownItem(
+                    title = stringResource(R.string.backup_origin_group),
+                    // 这一行只写"这里是干什么的"：选中的是哪一档由右边那个值说了，副标题再复述
+                    // 一遍（"备份写到 本地+云端"）就是同一句话在一行里出现两次。
+                    summary = if (state.cloudConfigured) {
+                        stringResource(R.string.backup_origin_hint)
+                    } else {
+                        // 没配地址时"云端"这一档根本不存在，得说清楚为什么少了它。
+                        stringResource(R.string.backup_cloud_chip_locked)
+                    },
+                    // 第三档写成"本地+云端"，不用列表分隔符拼成"本地、云端"：这一档是一个**组合**
+                    // （两处都要），顿号读起来像是在重复列前两项。
+                    items = if (state.cloudConfigured) {
+                        listOf(localLabel, cloudLabel, localLabel + "+" + cloudLabel)
+                    } else {
+                        listOf(localLabel)
+                    },
+                    selectedIndex = originOptionIndex(state.origins, state.cloudConfigured),
+                    onItemSelected = { index ->
+                        actions.onSelectOrigins(originsForOption(state.cloudConfigured, index))
+                    },
+                )
             }
-            // 常显（内容跟着勾选走）：原来那句提示只在两个都勾上时出现，出现的那一下会把
-            // 下面的「备份内容」整块推下去，而用户正要点的是那下面的东西。
-            Text(
-                text = originPlan(state),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, top = 4.dp),
-            )
         }
     }
     item {
+        val disabledLabel = stringResource(R.string.backup_row_disabled)
         Column {
             GroupTitle(stringResource(R.string.backup_kind_group))
             SegmentedColumn {
-                item {
-                    // 模块这一行直接写数量：不写的话，"选模块"那一步看不出到底有几个模块。
-                    // 读不到列表、或一个模块都没装时，这里就是唯一能说明白的地方。
-                    SegmentedCheckboxItem(
-                        title = stringResource(R.string.backup_kind_module),
-                        summary = when {
-                            state.modulesUnavailable -> stringResource(R.string.backup_module_unavailable)
-                            state.modules.isEmpty() -> stringResource(R.string.backup_module_none)
-                            else -> pluralStringResource(R.plurals.backup_module_count, state.modules.size, state.modules.size)
-                        },
-                        checked = BackupKind.MODULE in state.kinds,
-                        onCheckedChange = { actions.onToggleKind(BackupKind.MODULE) },
+                // 模块这一行自己就是入口：勾选框管全选，点行展开具体模块。展开的那几行紧跟在
+                // 它下面——中间隔着 boot 和仓库源的话，"点开这一行"就不成立了。
+                item { ModuleRowMaterial(state = state, actions = actions) }
+                // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
+                if (state.modules.isNotEmpty()) {
+                    modulePickerRowsMaterial(
+                        state = state,
+                        actions = actions,
+                        disabledLabel = disabledLabel,
                     )
                 }
                 item {
@@ -642,22 +778,18 @@ private fun LazyListScope.backupTabItems(
                         onCheckedChange = { actions.onToggleKind(BackupKind.REPO_CONFIG) },
                     )
                 }
-                // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
-                if (BackupKind.MODULE in state.kinds && state.modules.isNotEmpty()) {
-                    item { ModulePickerHeaderMaterial(state = state, actions = actions) }
-                    item(visible = state.modulesExpanded) {
-                        ModulePickerListMaterial(state = state, actions = actions)
-                    }
-                }
             }
         }
     }
     item {
         // 这一页只剩一个动作了（导入搬去了恢复页，它不产生新备份，只是把别处的一份收进来），
         // 那就铺满整行——半个宽度的主按钮看着像还有别的选项没显示出来。
+        //
+        // 按钮常亮：它的灰/亮原来跟着"勾了哪些位置和内容"走，进出这一页、在上面改勾选时都会
+        // 闪一下，看着像坏了；而"能不能备"这件事，上面那几行的勾选框已经写清楚了。真按下去却
+        // 没东西可备时，由 viewmodel 把原因说出来（见 `BackupViewModel.backupNow`）。
         Button(
             onClick = actions.onBackup,
-            enabled = !state.loading && state.canBackUp,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.backup_now))
@@ -671,35 +803,50 @@ private fun LazyListScope.backupTabItems(
     // 用户真正要点的备份项挤下去。
     item {
         Column {
-            SegmentedSwitchItem(
-                title = stringResource(R.string.backup_auto_title),
-                summary = stringResource(R.string.backup_auto_summary),
-                checked = state.autoBackupEnabled,
-                onCheckedChange = actions.onSetAutoBackup,
-            )
-            // 目的地是自动备份的子选项：总开关关着时它们没有意义，灰掉而不是藏起来——
-            // 藏起来用户就不知道"自动备份还能挑地方"，灰着至少看得见，也知道要先开总开关。
+            // 总开关和它下面那一行目的地是同一组的两段。
             SegmentedColumn {
                 item {
-                    SegmentedCheckboxItem(
-                        title = stringResource(R.string.backup_origin_local),
-                        checked = state.autoBackupLocal,
-                        enabled = state.autoBackupEnabled,
-                        onCheckedChange = actions.onSetAutoBackupLocal,
+                    SegmentedSwitchItem(
+                        title = stringResource(R.string.backup_auto_title),
+                        summary = stringResource(R.string.backup_auto_summary),
+                        checked = state.autoBackupEnabled,
+                        onCheckedChange = actions.onSetAutoBackup,
                     )
                 }
+                // 目的地是自动备份的子选项：总开关关着时它没有意义，所以**灰着不响应**，但要看得见。
+                // 藏起来的话，"自动备份还能挑地方"这件事就只有在打开开关的那一刻才会被发现；
+                // 灰着至少把这一栏摆在那儿，也顺带说明它和上面那个开关是一组。
                 item {
-                    // 和「备份位置」同一个规矩：没配好地址就锁住，并说明为什么。勾了也写不出去，
-                    // 让它停在"看着生效其实不生效"的样子只会让人以为云端备份在跑。
-                    SegmentedCheckboxItem(
-                        title = stringResource(R.string.backup_origin_cloud),
-                        summary = if (state.cloudConfigured) null else stringResource(R.string.backup_cloud_chip_locked),
-                        checked = state.autoBackupTargets.cloud,
-                        enabled = state.autoBackupEnabled && state.cloudConfigured,
-                        onCheckedChange = actions.onSetAutoBackupCloud,
+                    // 目的地做成和上面「备份位置」一模一样的下拉框：这两处选的都是"写到哪几
+                    // 处"，同一件事在两个地方长出两种控件（一边下拉、一边开关）只会让人以为是
+                    // 两套规则。原来那两个开关还各占半行，现在一行下拉就说完了。
+                    val localLabel = stringResource(R.string.backup_origin_local)
+                    val cloudLabel = stringResource(R.string.backup_origin_cloud)
+                    SegmentedDropdownItem(
+                        title = stringResource(R.string.backup_auto_origin_group),
+                        // 副标题只说这一栏是干什么的；没配地址时换成锁住的理由（和上面那行同一个说法）。
+                        summary = if (state.cloudConfigured) {
+                            stringResource(R.string.backup_auto_origin_hint)
+                        } else {
+                            stringResource(R.string.backup_cloud_chip_locked)
+                        },
+                        items = if (state.cloudConfigured) {
+                            listOf(localLabel, cloudLabel, localLabel + "+" + cloudLabel)
+                        } else {
+                            listOf(localLabel)
+                        },
+                        enabled = state.autoBackupEnabled,
+                        selectedIndex = originOptionIndex(state.autoBackupOrigins, state.cloudConfigured),
+                        onItemSelected = { index ->
+                            actions.onSelectAutoBackupOrigins(
+                                originsForOption(state.cloudConfigured, index)
+                            )
+                        },
                     )
                 }
             }
+            // 上次自动备份的结果留在卡片**外面**：它是"这个功能最近干了什么"的流水账，不是
+            // 这一栏的设置项；压在卡片里会被当成「自动备份位置」那一行的注脚。
             // 这一行小字二选一：要么是"一个目的地都没勾"的警告，要么是上次自动备份的结果。
             // 两条都画的话，警告冒出来会把下面整体推下去——而它恰恰是勾选触发的。
             val writesNothing = state.autoBackupWritesNothing

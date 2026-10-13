@@ -680,11 +680,11 @@
     <string name="backup_entry_summary">Modules, the stock boot image and repo sources can be backed up on this device or in the cloud.</string>
     <string name="backup_kind_module">Modules</string>
     <string name="backup_kind_boot">Stock boot image</string>
-    <string name="backup_kind_repo">Repo sources</string>
+    <string name="backup_kind_repo">Module repo config</string>
     <string name="backup_list_separator">, </string>
-    <string name="backup_repo_explain">The module repo sources you added (addresses, names and switches), restored as a whole.</string>
+    <string name="backup_repo_explain">The module repo sources you added (addresses, names and switches).</string>
     <string name="backup_boot_row_title">Stock image</string>
-    <string name="backup_boot_explain">Stock images from before patching; restoring one returns the device to an unrooted state until it is patched again.</string>
+    <string name="backup_boot_explain">Stock images from before patching.</string>
     <string name="backup_boot_restore_confirm_title">Flash the stock image back?</string>
     <string name="backup_boot_restore_confirm_body">The patched boot image is replaced, so the device becomes unrooted until it is patched again.</string>
     <string name="backup_repo_restore_confirm_title">Restore repo sources?</string>
@@ -728,6 +728,7 @@
     <string name="backup_pick_a_target">Pick at least one location and one kind of content.</string>
     <string name="backup_empty_mixed">No backups in the selected locations yet. Back up now creates one.</string>
     <string name="backup_origin_plan">Backing up to %1$s</string>
+    <string name="backup_origin_hint">Choose where backups go</string>
     <string name="backup_origin_none">Pick at least one destination</string>
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
@@ -784,7 +785,14 @@
 
     <string name="backup_auto_title">Automatic backup</string>
     <string name="backup_auto_summary">Back up modules once after an install, and repo sources whenever they change.</string>
+    <string name="backup_auto_origin_group">Auto-backup location</string>
+    <string name="backup_auto_origin_hint">Where auto-backups go</string>
     <string name="backup_auto_last">Last automatic backup: %1$s</string>
+    <string name="backup_auto_time_today">today at %1$s</string>
+    <string name="backup_auto_time_yesterday">yesterday at %1$s</string>
+    <string name="backup_auto_time_days">%1$d days ago</string>
+    <string name="backup_auto_time_last_week">a week ago</string>
+    <string name="backup_auto_time_weeks">%1$d weeks ago</string>
     <string name="backup_auto_never">not run yet</string>
     <string name="backup_auto_off">off</string>
     <string name="backup_auto_dest_none">Neither destination is checked, so automatic backup will not run.</string>
@@ -805,14 +813,14 @@
     </plurals>
     <string name="backup_detail_restore">Restore selected</string>
     <string name="backup_detail_share">Export / share</string>
-    <string name="backup_detail_delete">Delete this backup</string>
+    <string name="backup_detail_delete">Delete selected</string>
     <string name="backup_detail_select_all">Select all</string>
     <string name="backup_restore_done">%1$d restored</string>
     <string name="backup_restore_partial">%1$d restored · %2$d failed</string>
     <string name="backup_restore_all_failed">none of the %1$d items could be restored</string>
     <string name="backup_restore_deduped">items kept on both sides are restored from the local copy</string>
     <string name="backup_deleted">deleted %1$d items</string>
-    <string name="backup_delete_confirm_title">Delete this backup?</string>
+    <string name="backup_delete_confirm_title">Delete selected items?</string>
     <string name="backup_delete_confirm_body">Removes these %2$d items from %1$s. It cannot be undone.</string>
     <string name="backup_selection_title">%1$d selected</string>
     <string name="backup_selection_delete">Delete</string>

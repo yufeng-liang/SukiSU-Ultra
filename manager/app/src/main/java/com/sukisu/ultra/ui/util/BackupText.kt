@@ -187,7 +187,7 @@ object BackupText {
         val body = when {
             record == null -> context.getString(R.string.backup_auto_never)
             else -> {
-                val when_ = formatTime(context, record.atEpochMs)
+                val when_ = formatWhen(context, record.atEpochMs)
                 val result = when (record.outcome) {
                     // 写入 0 项、跳过若干项 = 内容全没变：说"成功 · 写入 0 项"看着像没干活。
                     AutoBackupOutcome.OK -> if (record.writtenCount == 0 && record.skippedCount > 0) {
@@ -217,6 +217,34 @@ object BackupText {
 
     private fun formatTime(context: Context, epochMs: Long): String =
         android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(epochMs))
+
+    /**
+     * 「上次自动备份」的时间说法：今天/昨天带钟点，再往前数天、数周，一个月开外才回到日期。
+     *
+     * 只给钟点（21:12）的话，读的人得自己回忆那是今天还是上个月——自动备份是后台自己跑的，
+     * 恰恰是用户最记不住"哪一天"的那类事。但也不能一路"35 天前"数下去：越远越没人按天算，
+     * 到那时写日期反而更好认。
+     */
+    private fun formatWhen(context: Context, epochMs: Long): String {
+        val days = daysAgo(epochMs)
+        return when {
+            // 未来时间（设备时钟被改过）也算"今天"，不写"−1 天前"这种话。
+            days <= 0L -> context.getString(R.string.backup_auto_time_today, formatTime(context, epochMs))
+            days == 1L -> context.getString(R.string.backup_auto_time_yesterday, formatTime(context, epochMs))
+            days < 7L -> context.getString(R.string.backup_auto_time_days, days)
+            days < 14L -> context.getString(R.string.backup_auto_time_last_week)
+            days < 28L -> context.getString(R.string.backup_auto_time_weeks, days / 7L)
+            else -> android.text.format.DateFormat.getMediumDateFormat(context).format(java.util.Date(epochMs))
+        }
+    }
+
+    /** 两个时刻差几个"自然日"。按日历天算，不按 24 小时算：23:59 到次日 00:01 该是"昨天"。 */
+    private fun daysAgo(epochMs: Long, nowMs: Long = System.currentTimeMillis()): Long {
+        val zone = java.time.ZoneId.systemDefault()
+        val then = java.time.Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+        val today = java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        return java.time.temporal.ChronoUnit.DAYS.between(then, today)
+    }
 
     private fun shortHash(value: String): String =
         if (value.length <= HASH_PREFIX) value else value.take(HASH_PREFIX) + "…"

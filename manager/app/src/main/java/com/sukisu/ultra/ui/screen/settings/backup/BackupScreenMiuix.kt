@@ -59,7 +59,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,7 +97,9 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -281,12 +282,13 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                // 这一栏是整页最上面的一块，标题要比下面那些分组标题（14sp 灰字）明显：
-                // 字号大两号再加一档字重，扫一眼就知道这一栏说的是云端。
+                // 字号跟这一页绝大多数行取同一个来源：那些行是 Miuix 的
+                // CheckboxPreference / SwitchPreference / OverlayDropdownPreference，
+                // 标题用的就是 headline1。这里手写的几行原来写死 16sp，比旁边那几行小
+                // 一档，一页里就出现了两个尺度；自己放大到 18sp 更糟，索性交给主题。
                 Text(
                     text = stringResource(R.string.backup_cloud_title),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = MiuixTheme.textStyles.headline1.fontSize,
                 )
                 // 地址整条给出来，最多两行：用户是照着它核对服务器的，截成域名就核对不了。
                 // 这里说的是**已经生效**的那份（不是表单里正在编辑的草稿）：用户切到别家填了
@@ -295,7 +297,7 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
                     text = state.cloudSavedUrl.ifBlank {
                         stringResource(R.string.backup_cloud_summary_unset)
                     },
-                    fontSize = 13.sp,
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
                     color = colorScheme.onSurfaceVariantSummary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -431,10 +433,10 @@ private fun CloudCardMiuix(state: BackupUiState, actions: BackupActions) {
  * 展开/收起用的箭头：朝下，展开后翻过来。
  *
  * 用 Material 的图标而不是 Miuix 的 `ExpandMore`——后者在这套图标里画的是一对直角括号加一个点，
- * 看不出"展开"的意思。
+ * 看不出"展开"的意思。详情页那几段也用同一个箭头，所以是 internal 而不是 private。
  */
 @Composable
-private fun ExpandChevron(expanded: Boolean) {
+internal fun ExpandChevron(expanded: Boolean) {
     val rotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         label = "chevron",
@@ -501,36 +503,121 @@ private fun GroupTitle(text: String) {
 }
 
 /**
- * 「模块」那一行下面的勾选列表。
+ * 「模块」那一行。
  *
- * 默认全选、整块收起：多数人是要全部，把十几个模块铺出来只会把下面的按钮和列表顶走。
- * 调用方只在有模块可挑时才调用它。
+ * 它同时承担两件事，和 Material 那一版一致：勾选框管"全选 / 全不选"，行本身展开细目。
+ * 所以不能直接用 CheckboxPreference——那个整行点下去都会翻转勾选框，展开就没地方点了。
+ * 只选了其中几个（而不是全部）时勾选框要画成半选，不然"部分选中"和"一个都没选"长得一样。
  */
 @Composable
-private fun ModulePickerMiuix(state: BackupUiState, actions: BackupActions) {
-    // 和云端那一行一样自己画箭头：ArrowPreference 自带的是朝右的箭头，而这两行都是展开/收起。
+private fun ModuleRowMiuix(state: BackupUiState, actions: BackupActions) {
+    val selectedCount = state.modules.count { it.id in state.selectedModuleIds }
+    val allSelected = state.modules.isEmpty() || selectedCount == state.modules.size
+    val partial = selectedCount in 1 until state.modules.size
+    val expandable = state.modules.isNotEmpty()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = actions.onToggleModules)
+            .clickable(enabled = expandable, onClick = actions.onToggleModules)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(text = stringResource(R.string.backup_module_select), fontSize = 16.sp)
+        Checkbox(
+            state = when {
+                allSelected -> ToggleableState.On
+                partial -> ToggleableState.Indeterminate
+                else -> ToggleableState.Off
+            },
+            // 半选时点一下就是"补全到全选"，和 Material 那边一致。
+            onClick = { actions.onSetAllModules(!allSelected) },
+        )
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(
-                text = stringResource(
-                    R.string.backup_module_selected,
-                    state.selectedModuleIds.size,
-                    state.modules.size,
-                ),
-                fontSize = 13.sp,
+                text = stringResource(R.string.backup_kind_module),
+                fontSize = MiuixTheme.textStyles.headline1.fontSize,
+            )
+            Text(
+                text = moduleSummaryMiuix(state),
+                fontSize = MiuixTheme.textStyles.body2.fontSize,
                 color = colorScheme.onSurfaceVariantSummary,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
-        ExpandChevron(expanded = state.modulesExpanded)
+        if (expandable) {
+            ExpandChevron(expanded = state.modulesExpanded)
+        }
     }
+}
+
+/** 「模块」那一行的副标题：读不到列表 / 一个都没装 / 正常，三种情况各说各的。 */
+@Composable
+private fun moduleSummaryMiuix(state: BackupUiState): String = when {
+    state.modulesUnavailable -> stringResource(R.string.backup_module_unavailable)
+    state.modules.isEmpty() -> stringResource(R.string.backup_module_none)
+    else -> stringResource(
+        R.string.backup_module_selected,
+        state.selectedModuleIds.size,
+        state.modules.size,
+    )
+}
+
+/**
+ * 模块清单 / 备份详情页里的一行细目（模块名 + 版本号，或备份条目名 + 大小）。
+ *
+ * 比这一页的主行小一号、矮一档：这是"挂在主行下面"的一层。以前用 [CheckboxPreference] 铺，
+ * 它按 headline1 加默认内边距算高度，一行 200px——一屏只放得下五个模块，字号又和"模块"这一栏
+ * 本身一样大，主次分不出来。这里自己搭一行：标题降一档到 body1，上下各留 6dp，行高落到
+ * 140px 上下，字号和间距一起收。
+ *
+ * 勾选框只报状态、点整行都算，所以用 `Checkbox` 的 state + onClick 那一版。
+ */
+@Composable
+internal fun SubEntryRowMiuix(
+    title: String,
+    summary: String?,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            state = if (checked) ToggleableState.On else ToggleableState.Off,
+            onClick = { onCheckedChange(!checked) },
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp),
+        ) {
+            Text(
+                text = title,
+                fontSize = MiuixTheme.textStyles.body1.fontSize,
+            )
+            summary?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    fontSize = MiuixTheme.textStyles.footnote1.fontSize,
+                    color = colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 「模块」那一行下面的勾选列表。
+ *
+ * 默认全选、整块收起：多数人是要全部，把十几个模块铺出来只会把下面的按钮和列表顶走。
+ * 调用方只在有模块可挑时才调用它。这里的"全选"那一行已经并到上面的行里去了，不再重复摆一个。
+ */
+@Composable
+private fun ModulePickerMiuix(state: BackupUiState, actions: BackupActions) {
     // 和云端那块一样给个展开过程：箭头转着、列表却"跳"出来，两件事对不上。
     AnimatedVisibility(
         visible = state.modulesExpanded,
@@ -539,13 +626,8 @@ private fun ModulePickerMiuix(state: BackupUiState, actions: BackupActions) {
     ) {
         Column {
             val disabledLabel = stringResource(R.string.backup_row_disabled)
-            CheckboxPreference(
-                title = stringResource(R.string.backup_module_select_all),
-                checked = state.selectedModuleIds.size == state.modules.size,
-                onCheckedChange = actions.onSetAllModules,
-            )
             state.modules.forEach { module ->
-                CheckboxPreference(
+                SubEntryRowMiuix(
                     title = ModuleOptionText.title(module),
                     summary = ModuleOptionText.summary(module, disabledLabel),
                     checked = module.id in state.selectedModuleIds,
@@ -576,10 +658,13 @@ private fun RetentionCardMiuix(state: BackupUiState, actions: BackupActions) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(text = stringResource(R.string.backup_retention_title), fontSize = 16.sp)
+                Text(
+                    text = stringResource(R.string.backup_retention_title),
+                    fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                )
                 Text(
                     text = retentionSummary(state),
-                    fontSize = 13.sp,
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
                     color = colorScheme.onSurfaceVariantSummary,
                     modifier = Modifier.padding(top = 4.dp),
                 )
@@ -672,51 +757,52 @@ private fun LazyListScope.backupTabItems(
         Column {
             GroupTitle(stringResource(R.string.backup_origin_group))
             Card(modifier = Modifier.fillMaxWidth()) {
-                CheckboxPreference(
-                    title = stringResource(R.string.backup_origin_local),
-                    checked = BackupOrigin.LOCAL in state.origins,
-                    onCheckedChange = { actions.onToggleOrigin(BackupOrigin.LOCAL) },
-                )
-                // 灰掉的那一项不解释为什么点不动，等于让人对着一个死按钮猜；把原因
-                // 挂在它自己的副标题上，就不用再单独占一行小字。
-                CheckboxPreference(
-                    title = stringResource(R.string.backup_origin_cloud),
+                // 和 Material 那一版同一套选项、同一套默认值：能挑的就是"本地 / 云端 /
+                // 两处都写"这三档，不再用两个勾选框去拼——拼出来的组合里"两个都不勾"是一个
+                // 没法执行的状态，下拉框里根本不会有它。
+                val localLabel = stringResource(R.string.backup_origin_local)
+                val cloudLabel = stringResource(R.string.backup_origin_cloud)
+                OverlayDropdownPreference(
+                    title = stringResource(R.string.backup_origin_group),
+                    // 右边那列已经写着当前这一档了，副标题再写一遍"写到哪"是重复的；
+                    // 这里说的是"这个框是干嘛的"，位置本身就由右边的值回答。
                     summary = if (state.cloudConfigured) {
-                        null
+                        stringResource(R.string.backup_origin_hint)
                     } else {
+                        // 没配地址时"云端"那一档不存在，得说清楚为什么少了它。
                         stringResource(R.string.backup_cloud_chip_locked)
                     },
-                    checked = BackupOrigin.CLOUD in state.origins,
-                    enabled = state.cloudConfigured,
-                    onCheckedChange = { actions.onToggleOrigin(BackupOrigin.CLOUD) },
+                    // 第三档写成"本地+云端"，不用列表分隔符拼成"本地、云端"：这一档是一个**组合**
+                    // （两处都要），顿号读起来像是在重复列前两项。
+                    items = if (state.cloudConfigured) {
+                        listOf(localLabel, cloudLabel, localLabel + "+" + cloudLabel)
+                    } else {
+                        listOf(localLabel)
+                    },
+                    selectedIndex = originOptionIndex(state.origins, state.cloudConfigured),
+                    onSelectedIndexChange = { index ->
+                        actions.onSelectOrigins(originsForOption(state.cloudConfigured, index))
+                    },
                 )
             }
-            // 常显（内容跟着勾选走）：原来那句提示只在两个都勾上时出现，出现的那一下会把
-            // 下面的「备份内容」整块推下去，而用户正要点的是那下面的东西。
-            Text(
-                text = originPlan(state),
-                fontSize = 12.sp,
-                color = colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp),
-            )
         }
     }
     item {
         Column {
             GroupTitle(stringResource(R.string.backup_kind_group))
             Card(modifier = Modifier.fillMaxWidth()) {
-                // 模块这一行直接写数量：不写的话，"选模块"那一步看不出到底有几个模块。
-                // 读不到列表、或一个模块都没装时，这里就是唯一能说明白的地方。
-                CheckboxPreference(
-                    title = stringResource(R.string.backup_kind_module),
-                    summary = when {
-                        state.modulesUnavailable -> stringResource(R.string.backup_module_unavailable)
-                        state.modules.isEmpty() -> stringResource(R.string.backup_module_none)
-                        else -> pluralStringResource(R.plurals.backup_module_count, state.modules.size, state.modules.size)
-                    },
-                    checked = BackupKind.MODULE in state.kinds,
-                    onCheckedChange = { actions.onToggleKind(BackupKind.MODULE) },
-                )
+                // 模块这一行既是"备不备模块"也是"备哪些"：勾选框管全选/全不选，行本身展开
+                // 细目。所以它不用 CheckboxPreference（那个整行点击都会翻转勾选框），
+                // 而是和 Material 一样自己拼一行。
+                ModuleRowMiuix(state = state, actions = actions)
+                // 展开的细目必须紧跟在"模块"这一行下面：摆到 boot / 仓库源后面，看着就像
+                // 那两栏的子项，勾的到底是谁全靠猜。
+                // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
+                // 列表不再跟着模块那个勾选框走：勾选框现在管全选/全不选，取消全选之后
+                // 还得能一个个勾回来，列表要是跟着消失就没有回头路了。
+                if (state.modules.isNotEmpty()) {
+                    ModulePickerMiuix(state = state, actions = actions)
+                }
                 // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
                 // 状态。这句话常显而不是选中才出现：选中时冒出来会把下面的东西整体推下去。
                 CheckboxPreference(
@@ -733,10 +819,6 @@ private fun LazyListScope.backupTabItems(
                     checked = BackupKind.REPO_CONFIG in state.kinds,
                     onCheckedChange = { actions.onToggleKind(BackupKind.REPO_CONFIG) },
                 )
-                // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
-                if (BackupKind.MODULE in state.kinds && state.modules.isNotEmpty()) {
-                    ModulePickerMiuix(state = state, actions = actions)
-                }
             }
         }
     }
@@ -746,7 +828,8 @@ private fun LazyListScope.backupTabItems(
         TextButton(
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             text = stringResource(R.string.backup_now),
-            enabled = !state.loading && state.canBackUp,
+            // 不禁用：这个按钮原来是"在加载中"或"没勾够"就变灰，进出页面都能看它闪一下；
+            // 真正该拦的情况由 backupNow() 里那句提示兜住，按钮本身始终是可点的样子。
             colors = ButtonDefaults.textButtonColorsPrimary(),
             onClick = actions.onBackup,
         )
@@ -765,38 +848,52 @@ private fun LazyListScope.backupTabItems(
                 checked = state.autoBackupEnabled,
                 onCheckedChange = actions.onSetAutoBackup,
             )
-            // 目的地是自动备份的子选项：总开关关着时它们没有意义，灰掉而不是藏起来——
-            // 藏起来用户就不知道"自动备份还能挑地方"，灰着至少看得见，也知道要先开总开关。
-            CheckboxPreference(
-                title = stringResource(R.string.backup_origin_local),
-                checked = state.autoBackupLocal,
-                enabled = state.autoBackupEnabled,
-                onCheckedChange = actions.onSetAutoBackupLocal,
-            )
-            CheckboxPreference(
-                title = stringResource(R.string.backup_origin_cloud),
-                // 和「备份位置」同一个规矩：没配好地址就锁住，并说明为什么。勾了也写不出去，
-                // 让它停在"看着生效其实不生效"的样子只会让人以为云端备份在跑。
-                summary = if (state.cloudConfigured) null else stringResource(R.string.backup_cloud_chip_locked),
-                checked = state.autoBackupTargets.cloud,
-                enabled = state.autoBackupEnabled && state.cloudConfigured,
-                onCheckedChange = actions.onSetAutoBackupCloud,
-            )
-            // 这一行小字二选一：要么是"一个目的地都没勾"的警告，要么是上次自动备份的结果。
-            // 两条都画的话，警告冒出来会把下面整体推下去——而它恰恰是勾选触发的。
-            val writesNothing = state.autoBackupWritesNothing
-            val lastFailed = state.autoBackupRecord?.outcome?.let { it != AutoBackupOutcome.OK } == true
-            Text(
-                text = if (writesNothing) {
-                    stringResource(R.string.backup_auto_dest_none)
+            // 目的地是自动备份的子选项：总开关关着时它没有意义，所以**灰着不响应**，但要看得见。
+            // 藏起来的话，"自动备份还能挑地方"这件事就只有在打开开关的那一刻才会被发现；
+            // 灰着至少把这一栏摆在那儿，也顺带说明它和上面那个开关是一组。
+            // 目的地和上面「备份位置」用同一个下拉框：这两处选的都是"写到哪几处"，同一件
+            // 事在两个地方长出两种控件（一边下拉、一边开关）只会让人以为是两套规则。
+            // 原来那两个开关还各占半行，现在一行下拉就说完了。
+            val localLabel = stringResource(R.string.backup_origin_local)
+            val cloudLabel = stringResource(R.string.backup_origin_cloud)
+            OverlayDropdownPreference(
+                title = stringResource(R.string.backup_auto_origin_group),
+                // 副标题只说这一栏是干什么的；没配地址时换成锁住的理由（和上面那行同一个说法）。
+                summary = if (state.cloudConfigured) {
+                    stringResource(R.string.backup_auto_origin_hint)
                 } else {
-                    BackupText.autoBackupLine(context, state.autoBackupRecord, state.autoBackupEnabled)
+                    stringResource(R.string.backup_cloud_chip_locked)
                 },
-                fontSize = 12.sp,
-                color = if (writesNothing || lastFailed) colorScheme.error else colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                items = if (state.cloudConfigured) {
+                    listOf(localLabel, cloudLabel, localLabel + "+" + cloudLabel)
+                } else {
+                    listOf(localLabel)
+                },
+                enabled = state.autoBackupEnabled,
+                selectedIndex = originOptionIndex(state.autoBackupOrigins, state.cloudConfigured),
+                onSelectedIndexChange = { index ->
+                    actions.onSelectAutoBackupOrigins(
+                        originsForOption(state.cloudConfigured, index)
+                    )
+                },
             )
         }
+        // 上次自动备份的结果留在卡片**外面**：它是"这个功能最近干了什么"的流水账，不是这一栏
+        // 的设置项；压在卡片里会被当成「自动备份位置」那一行的注脚。
+        // 这一行小字二选一：要么是"一个目的地都没勾"的警告，要么是上次自动备份的结果。
+        // 两条都画的话，警告冒出来会把下面整体推下去——而它恰恰是勾选触发的。
+        val writesNothing = state.autoBackupWritesNothing
+        val lastFailed = state.autoBackupRecord?.outcome?.let { it != AutoBackupOutcome.OK } == true
+        Text(
+            text = if (writesNothing) {
+                stringResource(R.string.backup_auto_dest_none)
+            } else {
+                BackupText.autoBackupLine(context, state.autoBackupRecord, state.autoBackupEnabled)
+            },
+            fontSize = 12.sp,
+            color = if (writesNothing || lastFailed) colorScheme.error else colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+        )
     }
 }
 
@@ -874,12 +971,15 @@ private fun LazyListScope.restoreTabItems(state: BackupUiState, actions: BackupA
                         // 牌子紧跟在时间文字后面：它标的是"这一次写到哪几侧"，属于这一行的属性，
                         // 掉到下面那行会跟"内容 · 项数"抢位置，也让人以为它只描述内容。右对齐
                         // 会让它跑到屏幕另一头，读的时候得横跨整行去对，像是另一个字段。
-                        Text(text = group.label, fontSize = 16.sp)
+                        Text(
+                            text = group.label,
+                            fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                        )
                         group.origins.forEach { OriginTagMiuix(it) }
                     }
                     Text(
                         text = groupSummary(group),
-                        fontSize = 13.sp,
+                        fontSize = MiuixTheme.textStyles.body2.fontSize,
                         color = colorScheme.onSurfaceVariantSummary,
                         modifier = Modifier.padding(top = 4.dp),
                     )

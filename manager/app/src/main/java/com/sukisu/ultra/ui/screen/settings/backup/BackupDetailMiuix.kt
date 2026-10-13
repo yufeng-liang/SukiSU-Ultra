@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,10 +22,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
@@ -35,7 +38,7 @@ import com.sukisu.ultra.ui.util.blockTaps
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -47,7 +50,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.preference.CheckboxPreference
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -130,8 +133,9 @@ fun BackupDetailMiuix(
                             modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            // 恢复和导出都作用在勾选上，没勾任何一项时它们按不动；删除动的是
-                            // 整组，跟勾选无关。
+                            // 三个按钮都作用在勾选上：没勾任何一项时它们都按不动。删除不再是"动
+                            // 整组"——那个语义和勾选框对不上，勾了本地一份却把两侧都删掉，是这
+                            // 一页最容易出事的地方。
                             TextButton(
                                 modifier = Modifier.weight(1f),
                                 text = stringResource(R.string.backup_detail_share),
@@ -146,59 +150,91 @@ fun BackupDetailMiuix(
                                 onClick = actions.onRestoreSelected,
                             )
                         }
-                        HorizontalDivider(modifier = Modifier.padding(top = 14.dp))
                         // 删除是这一页最重的一件事，但它不是主按钮：淡红底配正红字，实心大红块
                         // 会把上面那两个真正要按的按钮压下去，看着像整页的主操作。字用 error
                         // 而不是 onErrorContainer：后者的红偏暗，整块看着像禁用。
+                        // 按钮之间不再画分隔线：线跟按钮一样宽，看着像把按钮框进了格子里。
                         TextButton(
-                            modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
+                            modifier = Modifier.padding(top = 14.dp).fillMaxWidth(),
                             text = stringResource(R.string.backup_detail_delete),
-                            enabled = !busy,
+                            enabled = !busy && selected > 0,
                             colors = ButtonDefaults.textButtonColors(
                                 color = colorScheme.errorContainer,
                                 textColor = colorScheme.error,
                             ),
-                            onClick = actions.onDeleteGroup,
+                            onClick = actions.onDeleteChecked,
                         )
                     }
                 }
             }
-            // 全选和条目放在同一张卡里（和主列表的模块勾选一样）：一条一张卡在 11 条时
-            // 就是一堵卡片墙，而它们本来就是同一份备份里的东西。
+            // 条目按来源分成几段：本机一段、云端一段。两侧原来混在一张卡里，只在每行后面缀一个
+            // 来源标签，勾了哪一份、按钮动的是哪一份全靠用户自己脑补（Material 那一版同理）。
             item {
-                Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-                    CheckboxPreference(
-                        title = stringResource(R.string.backup_detail_select_all),
-                        // 两侧都有时"已选 2/2"看着像要恢复两遍：同一句话在恢复结果里也会出现，
-                        // 用户在按下去之前和之后看到的是同一句。
-                        summary = buildList {
-                            add(
-                                stringResource(
-                                    R.string.backup_module_selected,
-                                    selected,
-                                    group.rows.size,
-                                ),
+                val singleOrigin = group.origins.size == 1
+                group.origins.forEach { origin ->
+                    // 两侧各是一张卡：本机一段、云端一段，中间留出空档。以前两段挤在同一张卡里
+                    // 上下相接，看着像一整块，"这一段到哪儿为止"只能靠标题行去猜。
+                    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
+                        val rows = group.rows.filter { it.origin == origin }
+                        // 这一段勾了几条 / 共几条由状态层算：两个主题各算一遍，迟早有一边把
+                        // 分母写成整组的行数。
+                        val picks = state.picksOf(origin)
+                        val expanded = origin !in state.openGroupCollapsed
+                        // 和「模块」那一行同一个道理：勾选框管这一段的全选/全不选，行本身收放
+                        // 这一段。整行点击要是也去翻勾选框，收放就没有地方点了。
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = picks.total > 0) { actions.onToggleGroupOrigin(origin) }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                state = when {
+                                    picks.allSelected -> ToggleableState.On
+                                    picks.partial -> ToggleableState.Indeterminate
+                                    else -> ToggleableState.Off
+                                },
+                                // 半选时点一下是"补全到全选"，和 Material 那边一致。
+                                onClick = { actions.onSetOriginEntries(origin, !picks.allSelected) },
                             )
-                            if (group.origins.size > 1) {
-                                add(stringResource(R.string.backup_restore_deduped))
+                            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                Text(
+                                    text = if (singleOrigin) {
+                                        stringResource(R.string.backup_detail_select_all)
+                                    } else {
+                                        stringResource(BackupLabels.origin(origin))
+                                    },
+                                    fontSize = MiuixTheme.textStyles.headline1.fontSize,
+                                )
+                                // 数字按**这一段**算：两侧分开之后，"已选 2/2"要读成"这一段里的两条
+                                // 都勾上了"，而不是"整组四条我勾了两条"。
+                                Text(
+                                    text = stringResource(
+                                        R.string.backup_module_selected,
+                                        picks.picked,
+                                        picks.total,
+                                    ),
+                                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                                    color = colorScheme.onSurfaceVariantSummary,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
                             }
-                        }.joinToString(BackupListFormatter.SEPARATOR),
-                        checked = state.allGroupEntriesSelected,
-                        onCheckedChange = actions.onSetAllGroupEntries,
-                    )
-                    // 两侧合起来列之后，同名条目在本机和云端各有一条：来源得跟着行走，
-                    // 否则"恢复/删除这一条"动的是哪一侧就看不出来。
-                    val showOrigin = group.origins.size > 1
-                    group.rows.forEach { row ->
-                        CheckboxPreference(
-                            title = entryTitle(row),
-                            summary = listOfNotNull(
-                                row.originLabel.takeIf { showOrigin },
-                                row.subtitle.takeIf { it.isNotBlank() },
-                            ).joinToString(BackupListFormatter.SEPARATOR).takeIf { it.isNotEmpty() },
-                            checked = row.id in state.openGroupSelected,
-                            onCheckedChange = { actions.onToggleGroupEntry(row.id) },
-                        )
+                            if (picks.total > 0) {
+                                ExpandChevron(expanded = expanded)
+                            }
+                        }
+                        if (expanded) {
+                            rows.forEach { row ->
+                                SubEntryRowMiuix(
+                                    title = entryTitle(row),
+                                    // 来源已经写在标题行上了，行里不再重复一遍。
+                                    summary = row.subtitle.takeIf { it.isNotBlank() },
+                                    checked = row.id in state.openGroupSelected,
+                                    onCheckedChange = { actions.onToggleGroupEntry(row.id) },
+                                )
+                            }
+                        }
                     }
                 }
             }

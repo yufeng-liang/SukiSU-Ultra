@@ -44,18 +44,55 @@ class BackupGroupEntriesTest {
 
     @Test
     fun `every row ticked leaves the select all box on`() {
-        assertTrue(stateOf(group("a", "b"), setOf("a", "b")).allGroupEntriesSelected)
+        assertTrue(stateOf(group("a", "b"), setOf("a", "b")).picksOf(BackupOrigin.LOCAL).allSelected)
     }
 
     @Test
     fun `a leftover id from another group does not count as all selected`() {
         // 两条行、两个 id：数量对上了，但其中一个是别组留下的，而屏幕上明明有一条没勾。
-        assertFalse(stateOf(group("a", "b"), setOf("a", "gone")).allGroupEntriesSelected)
+        assertFalse(stateOf(group("a", "b"), setOf("a", "gone")).picksOf(BackupOrigin.LOCAL).allSelected)
     }
 
     @Test
     fun `an empty group is never all selected`() {
-        assertFalse(stateOf(group(), emptySet()).allGroupEntriesSelected)
+        assertFalse(stateOf(group(), emptySet()).picksOf(BackupOrigin.LOCAL).allSelected)
+    }
+
+    @Test
+    fun `a partly ticked side shows as partial`() {
+        // 收起来之后这一行的勾选框就是"我挑过"的唯一线索：一条勾、一条没勾时要画成半选，
+        // 否则看着和"一条都没勾"一模一样，刚挑的那几个像没被记住。
+        val picks = stateOf(group("a", "b"), setOf("a")).picksOf(BackupOrigin.LOCAL)
+
+        assertEquals(1, picks.picked)
+        assertEquals(2, picks.total)
+        assertTrue(picks.partial)
+        assertFalse(picks.allSelected)
+    }
+
+    @Test
+    fun `each side counts only its own rows`() {
+        // 两侧分开成两段之后，分母是这一侧的行数：本机 1 条、云端 2 条、只勾了本机那条时，
+        // 本机那一段是"1/1 全选"，不是"整组 1/3"。
+        val dual = BackupGroup(
+            id = "20261009_093556",
+            origins = listOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD),
+            kinds = listOf(BackupKind.MODULE),
+            session = "20261009_093556",
+            label = "Oct 9",
+            rows = listOf(
+                row("a"),
+                row("b").copy(origin = BackupOrigin.CLOUD),
+                row("c").copy(origin = BackupOrigin.CLOUD),
+            ),
+        )
+        val state = stateOf(dual, setOf("a"))
+
+        assertTrue(state.picksOf(BackupOrigin.LOCAL).allSelected)
+        assertEquals(1, state.picksOf(BackupOrigin.LOCAL).total)
+        assertFalse(state.picksOf(BackupOrigin.CLOUD).allSelected)
+        assertEquals(2, state.picksOf(BackupOrigin.CLOUD).total)
+        assertEquals(0, state.picksOf(BackupOrigin.CLOUD).picked)
     }
 
     @Test

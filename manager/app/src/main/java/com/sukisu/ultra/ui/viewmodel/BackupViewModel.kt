@@ -84,6 +84,13 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             // 就落到手填槽位——这正是他上次配的那家。
             val slot = profiles.last ?: profiles.active ?: CloudSlots.CUSTOM
             val shown = profiles.profileFor(slot, live)
+            val cloudReady = repository.cloudConfigured()
+            // 自动备份位置改成了下拉框，而框里没有"哪都不写"这一档：老版本（两个独立开关）
+            // 留下的"两个都关"要落到"只写本机"。而且必须**写回偏好**——只改界面状态的话，
+            // 数据层照旧一处都不写（BackupRepository 直接读偏好），下拉框就成了谎话。
+            if (!settings.backupAutoLocal && !settings.backupAutoCloud) {
+                settings.backupAutoLocal = true
+            }
             BackupUiState(
                 cloudUrl = shown.url,
                 cloudSavedUrl = live.url,
@@ -91,7 +98,15 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 cloudPass = shown.password,
                 cloudSlot = slot,
                 cloudRememberedSlots = profiles.remembered(live),
-                cloudConfigured = repository.cloudConfigured(),
+                cloudConfigured = cloudReady,
+                // 备份位置开局就跟"云端配没配好"对齐：配好了就默认本地+云端（两处都写是
+                // 备份的常态），没配就只留本地——否则下拉框会显示一个按下去什么也写不出的
+                // 「云端」。
+                origins = if (cloudReady) {
+                    setOf(BackupOrigin.LOCAL, BackupOrigin.CLOUD)
+                } else {
+                    setOf(BackupOrigin.LOCAL)
+                },
                 // 提示跟着**槽位**走，不跟地址走：Nextcloud 的模板带 `USERNAME` 占位符，
                 // 用户改完地址那一刻恰恰是最需要"去哪生成应用密码"这句话的时候。
                 cloudPresetHintRes = CloudSlots.presetOf(slot)?.hintRes,
@@ -232,22 +247,47 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
+    /**
+     * 勾选/取消一个模块。
+     *
+     * 顺手把「模块」那一栏的开关对齐：勾到一个不剩时把它关掉，重新勾上一个时再打开。不留这
+     * 一步的话，最后那一个被取消之后 [BackupUiState.canBackUp] 会一直为假——「立即备份」变
+     * 灰，而用户想说的其实是"这次不备模块"，不是"什么都别备"。
+     */
     fun toggleModule(id: String) = _uiState.update { state ->
+        val selected = if (id in state.selectedModuleIds) {
+            state.selectedModuleIds - id
+        } else {
+            state.selectedModuleIds + id
+        }
         state.copy(
-            selectedModuleIds = if (id in state.selectedModuleIds) {
-                state.selectedModuleIds - id
+            selectedModuleIds = selected,
+            kinds = if (selected.isEmpty()) {
+                state.kinds - BackupKind.MODULE
             } else {
-                state.selectedModuleIds + id
+                state.kinds + BackupKind.MODULE
             },
         )
     }
 
+    /**
+     * 「模块」那一行的勾选框：既是"这次备不备模块"，也是"全不全选"。
+     *
+     * 两件事在界面上是同一格（见 `ModuleRowMaterial`），所以在这里也必须一起翻：只改勾选不
+     * 改开关，会出现"全不选但这一栏还开着"的死局；只改开关不改勾选，重新打开时又会剩下一份
+     * 上一次的子集，看着像全选其实不是。
+     */
     fun setAllModules(selected: Boolean) = _uiState.update { state ->
         state.copy(
             selectedModuleIds = if (selected) {
                 state.modules.mapTo(mutableSetOf()) { it.id }
             } else {
                 emptySet()
+            },
+            kinds = if (selected) {
+                state.kinds + BackupKind.MODULE
+            } else {
+                state.kinds - BackupKind.MODULE
             },
         )
     }
@@ -262,21 +302,26 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(autoBackupEnabled = enabled) }
     }
 
-    /** 自动备份写到本机。与手动备份的「备份位置」互不影响。 */
-    fun setAutoBackupLocal(enabled: Boolean) {
-        settings.backupAutoLocal = enabled
-        _uiState.update { it.copy(autoBackupLocal = enabled) }
-    }
-
     /**
-     * 自动备份写到云端。
+     * 自动备份写到哪几处（下拉框那一档：本地 / 云端 / 本地+云端）。
      *
-     * 云端没配好时界面把这一项锁住（见 [BackupUiState.autoBackupTargets]），所以这里基本不会
-     * 被调到；真调到了也只改偏好，写不写由 `AutoBackupPolicy.targets` 再与配置做一次与运算。
+     * 与手动备份的「备份位置」是两套互不影响的选择；这里只是把"哪几档"翻译成底下原来那两个
+     * 布尔偏好，落盘方式不变（数据层读的还是偏好，所以下拉框显示的和真正会写的一直是同一套）。
      */
-    fun setAutoBackupCloud(enabled: Boolean) {
-        settings.backupAutoCloud = enabled
-        _uiState.update { it.copy(autoBackupCloud = enabled) }
+    fun setAutoBackupOrigins(origins: Set<BackupOrigin>) {
+        val state = _uiState.value
+        val local = BackupOrigin.LOCAL in origins
+        // 云端没配好时下拉框里根本没有"云端"这一档，此时选"本地"不该把存着的云端偏好抹掉：
+        // 地址一配好，用户上次的选择要照原样回来（见 [BackupUiState.autoBackupCloud]）。
+        val cloud = if (state.cloudConfigured) {
+            BackupOrigin.CLOUD in origins
+        } else {
+            state.autoBackupCloud
+        }
+        if (state.autoBackupLocal == local && state.autoBackupCloud == cloud) return
+        settings.backupAutoLocal = local
+        settings.backupAutoCloud = cloud
+        _uiState.update { it.copy(autoBackupLocal = local, autoBackupCloud = cloud) }
     }
 
     /**
@@ -316,6 +361,20 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 message = null,
             )
         }
+        refresh()
+    }
+
+    /**
+     * 整批指定备份位置（下拉框那三项：本地 / 云端 / 本地+云端）。
+     *
+     * 下拉框里没有"一个都不选"这一项，所以这里也不收空集合——那会让界面显示「本地」而实际
+     * 哪儿都不写；真收到空的就按「本地」处理。重选当前那一项直接返回：换位置要重新列一遍
+     * 云端清单（一次网络往返），没换位置就不该付这个钱。
+     */
+    fun setOrigins(origins: Set<BackupOrigin>) {
+        val next = origins.ifEmpty { setOf(BackupOrigin.LOCAL) }
+        if (_uiState.value.origins == next) return
+        _uiState.update { it.copy(origins = next, message = null) }
         refresh()
     }
 
@@ -474,10 +533,47 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun openGroup(group: BackupGroup) = _uiState.update {
         // 默认全勾：进来多半就是"整份恢复"或"整份导出"，让人从零开始勾一次是多余的一步。
-        it.copy(openGroupId = group.id, openGroupSelected = group.rows.mapTo(mutableSetOf()) { row -> row.id })
+        // 条目列表每次进都从展开起：上一组收起过，不代表这一组也不想看。
+        it.copy(
+            openGroupId = group.id,
+            openGroupSelected = group.rows.mapTo(mutableSetOf()) { row -> row.id },
+            openGroupCollapsed = emptySet(),
+        )
     }
 
-    fun closeGroup() = _uiState.update { it.copy(openGroupId = null, openGroupSelected = emptySet()) }
+    fun closeGroup() = _uiState.update {
+        it.copy(openGroupId = null, openGroupSelected = emptySet(), openGroupCollapsed = emptySet())
+    }
+
+    /** 详情页里点某一段的标题行：展开/收起那一侧的条目。 */
+    fun toggleGroupOrigin(origin: BackupOrigin) = _uiState.update { state ->
+        state.copy(
+            openGroupCollapsed = if (origin in state.openGroupCollapsed) {
+                state.openGroupCollapsed - origin
+            } else {
+                state.openGroupCollapsed + origin
+            },
+        )
+    }
+
+    /**
+     * 把某一侧的条目一次全勾上 / 全取消。
+     *
+     * 两侧分开之后，"全选"是**按侧**算的：本机那一行管本机那几条，云端那一行管云端那几条。
+     * 想只恢复云端那份，就是取消本机那一侧——而不是先全选、再一条条把本机的取消掉。
+     */
+    fun setOriginEntries(origin: BackupOrigin, selected: Boolean) = _uiState.update { state ->
+        val ids = state.openGroup?.rows.orEmpty()
+            .filter { it.origin == origin }
+            .mapTo(mutableSetOf()) { it.id }
+        state.copy(
+            openGroupSelected = if (selected) {
+                state.openGroupSelected + ids
+            } else {
+                state.openGroupSelected - ids
+            },
+        )
+    }
 
     /** 长按一行进多选：进来的那一行就是第一个勾中的，手指已经落在它上面了。 */
     fun startSelection(group: BackupGroup) = _uiState.update {
@@ -535,16 +631,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 state.openGroupSelected - rowId
             } else {
                 state.openGroupSelected + rowId
-            },
-        )
-    }
-
-    fun setAllGroupEntries(selected: Boolean) = _uiState.update { state ->
-        state.copy(
-            openGroupSelected = if (selected) {
-                state.openGroup?.rows.orEmpty().mapTo(mutableSetOf()) { it.id }
-            } else {
-                emptySet()
             },
         )
     }
@@ -648,23 +734,34 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         return failure?.let { Result.failure(it) } ?: Result.success(Unit)
     }
 
-    /** 删掉这一整组备份。删完退回列表：留在详情页看一个已经不存在的东西没有意义。 */
-    fun deleteGroup() = viewModelScope.launch {
-        val group = _uiState.value.openGroup ?: return@launch
+    /**
+     * 删掉详情页里勾中的那些条目。
+     *
+     * 跟着勾选走，不是"删整组"：这一组本机与云端各有一份时，只勾了本地的人要删的就是本地那份，
+     * 顺手把云端那份一起删掉是替他做主。一处都不剩时这一组自然消失，那就退回列表——留在详情页
+     * 看一个已经不存在的东西没有意义；还剩一侧时留在原地，继续看剩下的那几条。
+     */
+    fun deleteChecked() = viewModelScope.launch {
+        val selected = _uiState.value.openGroupSelection
+        if (selected.isEmpty()) return@launch
         _uiState.update { it.copy(loading = true, message = null) }
-        val result = deleteRows(group.rows)
+        val result = deleteRows(selected)
         _uiState.update {
             it.copy(
                 loading = false,
-                openGroupId = if (result.isSuccess) null else it.openGroupId,
                 openGroupSelected = if (result.isSuccess) emptySet() else it.openGroupSelected,
                 message = result.fold(
-                    onSuccess = { string(R.string.backup_deleted, entries.size) },
+                    // 报的是**这次删掉的行数**。以前这里写的是 entries.size，那是整库的条目数，
+                    // 删一条也会说"已删除 37 项备份"。
+                    onSuccess = { string(R.string.backup_deleted, selected.size) },
                     onFailure = { error -> describe(error) },
                 ),
             )
         }
         refresh()
+        _uiState.update { state ->
+            state.copy(openGroupId = if (state.openGroup == null) null else state.openGroupId)
+        }
     }
 
     /** 行 → 索引里的条目。用行自己的来源：两侧合起来列之后，只看文件名会恢复错那一侧。 */
@@ -680,10 +777,16 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 备份两个位置的意义所在，所以结果仍按来源分开记（见 [BackupTargetResult]）。
      */
     fun backupNow() = viewModelScope.launch {
+        val state = _uiState.value
+        // 按钮是常亮的（见 `backupTabItems`）：勾得不够时按下去，得在这里把原因说出来。少了
+        // 这一步，按钮亮着却什么都不发生——那比灰着更像坏了。
+        if (!state.canBackUp) {
+            _uiState.update { it.copy(message = string(R.string.backup_pick_a_target)) }
+            return@launch
+        }
         // 留住这一次备份的句柄，好让用户能取消它。从协程自己身上取，比在外面赋值少一层
         // "谁先谁后"——Main.immediate 下协程体是先跑起来、再轮到外面那行的。
         backupJob = coroutineContext[Job]
-        val state = _uiState.value
         _uiState.update { it.copy(loading = true, message = null) }
         // 只有模块能挑；boot 那一栏传 null（源里有什么就备什么）。
         // 列表读不出来时也传 null：那是一次读失败，不该变成"什么都没备"。
@@ -881,8 +984,13 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 cloudRememberedSlots = profiles.remembered(liveProfile()),
                 // 存好地址就把云端勾上并立刻去列一次：用户配云端就是为了看它上面已经有什么，
                 // 再让他自己勾一次、再等一次刷新是多余的两步。地址被清空时反过来摘掉勾选，
-                // 否则列表会一直报"请先配置"。
-                origins = if (configured) it.origins + BackupOrigin.CLOUD else it.origins - BackupOrigin.CLOUD,
+                // 否则列表会一直报"请先配置"；摘完一个不剩就落回本地——「备份位置」那个下拉框
+                // 没有"一个都不选"这一项，留下空集合会让它显示「本地」而实际哪儿都不写。
+                origins = if (configured) {
+                    it.origins + BackupOrigin.CLOUD
+                } else {
+                    (it.origins - BackupOrigin.CLOUD).ifEmpty { setOf(BackupOrigin.LOCAL) }
+                },
                 // 表单收起来：填完就没有再看那三个输入框的理由，而铺开的表单会把下面刚列出来的
                 // 云端清单顶到屏幕外——用户按保存正是为了看那份清单。
                 cloudExpanded = false,

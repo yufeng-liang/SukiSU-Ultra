@@ -676,11 +676,11 @@
     <string name="backup_entry_summary">模块、原厂boot镜像、仓库源配置可备份到本机/云端</string>
     <string name="backup_kind_module">模块</string>
     <string name="backup_kind_boot">原厂 boot 镜像</string>
-    <string name="backup_kind_repo">仓库源配置</string>
+    <string name="backup_kind_repo">模块仓库源配置</string>
     <string name="backup_list_separator">、</string>
-    <string name="backup_repo_explain">备份已添加的模块仓库源（地址、名称与开关），恢复时整批还原，只保留最新一份。</string>
+    <string name="backup_repo_explain">备份已添加的模块仓库源（地址、名称与开关）。</string>
     <string name="backup_boot_row_title">原厂镜像</string>
-    <string name="backup_boot_explain">备份的是打补丁前的原厂镜像；恢复它设备会回到未 root 状态，需重新打补丁。</string>
+    <string name="backup_boot_explain">备份的是打补丁前的原厂镜像。</string>
     <string name="backup_boot_restore_confirm_title">刷回原厂镜像？</string>
     <string name="backup_boot_restore_confirm_body">当前已打补丁的 boot 会被替换掉，设备回到未 root 状态，需要重新打补丁才有 root。</string>
     <string name="backup_repo_restore_confirm_title">恢复仓库源配置？</string>
@@ -723,6 +723,7 @@
     <string name="backup_pick_a_target">请至少勾选一个位置和一种内容。</string>
     <string name="backup_empty_mixed">勾选的位置还没有备份。点「立即备份」即可创建一份。</string>
     <string name="backup_origin_plan">备份写到 %1$s</string>
+    <string name="backup_origin_hint">选择备份到哪里</string>
     <string name="backup_origin_none">还没选位置，先勾一个</string>
     <string name="backup_origin_local">本地</string>
     <string name="backup_origin_cloud">云端</string>
@@ -778,7 +779,14 @@
 
     <string name="backup_auto_title">自动备份</string>
     <string name="backup_auto_summary">安装模块成功后自动备份一次；仓库源有增删改时也会自动备份仓库源配置。</string>
+    <string name="backup_auto_origin_group">自动备份位置</string>
+    <string name="backup_auto_origin_hint">自动备份到哪里</string>
     <string name="backup_auto_last">上次自动备份：%1$s</string>
+    <string name="backup_auto_time_today">今天 %1$s</string>
+    <string name="backup_auto_time_yesterday">昨天 %1$s</string>
+    <string name="backup_auto_time_days">%1$d 天前</string>
+    <string name="backup_auto_time_last_week">一周前</string>
+    <string name="backup_auto_time_weeks">%1$d 周前</string>
     <string name="backup_auto_never">尚未执行</string>
     <string name="backup_auto_off">已关闭</string>
     <string name="backup_auto_dest_none">本机和云端都没勾，自动备份不会执行。</string>
@@ -798,14 +806,14 @@
     </plurals>
     <string name="backup_detail_restore">恢复勾选</string>
     <string name="backup_detail_share">导出/分享</string>
-    <string name="backup_detail_delete">删除这次备份</string>
+    <string name="backup_detail_delete">删除勾选</string>
     <string name="backup_detail_select_all">全选</string>
     <string name="backup_restore_done">已恢复 %1$d 项</string>
     <string name="backup_restore_partial">已恢复 %1$d 项 · %2$d 项失败</string>
     <string name="backup_restore_all_failed">%1$d 项都没恢复成功</string>
     <string name="backup_restore_deduped">本机与云端各有一份的，只恢复本机那份</string>
     <string name="backup_deleted">已删除 %1$d 项备份</string>
-    <string name="backup_delete_confirm_title">删除这次备份？</string>
+    <string name="backup_delete_confirm_title">删除勾选的条目？</string>
     <string name="backup_delete_confirm_body">将从%1$s删除这 %2$d 项，删除后无法恢复。</string>
     <string name="backup_selection_title">已选 %1$d 次备份</string>
     <string name="backup_selection_delete">删除</string>
