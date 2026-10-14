@@ -22,8 +22,6 @@ internal data class InstallUiState(
     val enableAdb: Boolean,
     val forceBackup: Boolean,
     val canForceBackup: Boolean,
-    val spoofRelease: String,
-    val spoofVersion: String,
     // AnyKernel3 相关状态
     val anyKernel3State: AnyKernel3State?,
     val kpmPatchOption: KpmPatchOption,
@@ -32,6 +30,9 @@ internal data class InstallUiState(
     val blockModulesEnabled: Boolean,
     val blockModules: String,
     val blockModulesValid: Boolean,
+    val spoofEnabled: Boolean = false,
+    val spoofRelease: String,
+    val spoofVersion: String,
 )
 
 @Immutable
@@ -48,11 +49,12 @@ internal data class InstallScreenActions(
     val onSelectAllowShell: (Boolean) -> Unit,
     val onSelectEnableAdb: (Boolean) -> Unit,
     val onSelectForceBackup: (Boolean) -> Unit,
-    val onSpoofReleaseChange: (String) -> Unit,
-    val onSpoofVersionChange: (String) -> Unit,
     val onHorizonKernelSelected: (InstallMethod.HorizonKernel) -> Unit = {},
     val onReopenSlotDialog: (InstallMethod.HorizonKernel) -> Unit = {},
     val onReopenKpmDialog: (InstallMethod.HorizonKernel) -> Unit = {},
     val onSelectBlockModules: (Boolean) -> Unit,
     val onBlockModulesChange: (String) -> Unit,
+    val onSpoofEnabledChange: (Boolean) -> Unit,
+    val onSpoofReleaseChange: (String) -> Unit,
+    val onSpoofVersionChange: (String) -> Unit,
 )

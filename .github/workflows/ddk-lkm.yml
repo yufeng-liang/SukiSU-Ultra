@@ -12,13 +12,28 @@ on:
         required: false
         default: '20260828'
         type: string
+      package_name:
+        description: 'package name of manager'
+        required: false
+        default: ''
+        type: string
+      expected_size:
+        description: 'expected signature size'
+        required: false
+        default: ''
+        type: string
+      expected_hash:
+        description: 'expected signature hash'
+        required: false
+        default: ''
+        type: string
       expected_size2:
-        description: 'Second expected signature size (for PR builds)'
+        description: 'expected signature size of the second manager (optional)'
         required: false
         default: ''
         type: string
       expected_hash2:
-        description: 'Second expected signature hash (for PR builds)'
+        description: 'expected signature hash of the second manager (optional)'
         required: false
         default: ''
         type: string
@@ -37,6 +52,9 @@ jobs:
 
     - name: Build kernelsu.ko
       env:
+        PACKAGE_NAME: ${{ inputs.package_name }}
+        EXPECTED_SIZE: ${{ inputs.expected_size }}
+        EXPECTED_HASH: ${{ inputs.expected_hash }}
         EXPECTED_SIZE2: ${{ inputs.expected_size2 }}
         EXPECTED_HASH2: ${{ inputs.expected_hash2 }}
       run: |
@@ -46,16 +64,23 @@ jobs:
         echo "=== Building kernelsu.ko for KMI: ${{ inputs.kmi }} ==="
 
         EXTRA_ARGS=""
-        if [ -n "$EXPECTED_SIZE2" ] && [ -z "$EXPECTED_HASH2" ]; then
-          echo "ERROR: expected_hash2 must be provided when expected_size2 is set."
-          exit 1
+        if [ -n "$PACKAGE_NAME" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_PACKAGE_NAME=$PACKAGE_NAME"
         fi
-        if [ -z "$EXPECTED_SIZE2" ] && [ -n "$EXPECTED_HASH2" ]; then
-          echo "ERROR: expected_size2 must be provided when expected_hash2 is set."
-          exit 1
+        if [ -n "$EXPECTED_SIZE" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_SIZE=$EXPECTED_SIZE"
+        fi
+        if [ -n "$EXPECTED_HASH" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_HASH=$EXPECTED_HASH"
         fi
         if [ -n "$EXPECTED_SIZE2" ]; then
-          EXTRA_ARGS="KSU_EXPECTED_SIZE2=$EXPECTED_SIZE2 KSU_EXPECTED_HASH2=$EXPECTED_HASH2"
+          EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_SIZE2=$EXPECTED_SIZE2"
+        fi
+        if [ -n "$EXPECTED_HASH2" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_HASH2=$EXPECTED_HASH2"
+        fi
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_IS_PR_BUILD=1"
         fi
         CONFIG_KSU=m CC=clang make $EXTRA_ARGS
         
@@ -83,6 +108,9 @@ jobs:
 
     - name: Build kernelsu.ko for x64
       env:
+        PACKAGE_NAME: ${{ inputs.package_name }}
+        EXPECTED_SIZE: ${{ inputs.expected_size }}
+        EXPECTED_HASH: ${{ inputs.expected_hash }}
         EXPECTED_SIZE2: ${{ inputs.expected_size2 }}
         EXPECTED_HASH2: ${{ inputs.expected_hash2 }}
       run: |
@@ -121,16 +149,23 @@ jobs:
         echo "=== Building x64 kernelsu.ko for KMI: ${{ inputs.kmi }} ==="
 
         EXTRA_ARGS=""
-        if [ -n "$EXPECTED_SIZE2" ] && [ -z "$EXPECTED_HASH2" ]; then
-          echo "ERROR: expected_hash2 must be provided when expected_size2 is set."
-          exit 1
+        if [ -n "$PACKAGE_NAME" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_PACKAGE_NAME=$PACKAGE_NAME"
         fi
-        if [ -z "$EXPECTED_SIZE2" ] && [ -n "$EXPECTED_HASH2" ]; then
-          echo "ERROR: expected_size2 must be provided when expected_hash2 is set."
-          exit 1
+        if [ -n "$EXPECTED_SIZE" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_SIZE=$EXPECTED_SIZE"
+        fi
+        if [ -n "$EXPECTED_HASH" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_HASH=$EXPECTED_HASH"
         fi
         if [ -n "$EXPECTED_SIZE2" ]; then
-          EXTRA_ARGS="KSU_EXPECTED_SIZE2=$EXPECTED_SIZE2 KSU_EXPECTED_HASH2=$EXPECTED_HASH2"
+          EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_SIZE2=$EXPECTED_SIZE2"
+        fi
+        if [ -n "$EXPECTED_HASH2" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_EXPECTED_HASH2=$EXPECTED_HASH2"
+        fi
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_IS_PR_BUILD=1"
         fi
         
         MDIR=$(realpath .)

@@ -379,6 +379,8 @@
     <string name="settings_language">Language</string>
     <string name="settings_language_summary">Choose the app display language</string>
     <string name="settings_language_system">Follow system</string>
+    <string name="kernel_spoof">Kernel Version Spoof</string>
+    <string name="kernel_spoof_summary">Spoof the kernel\'s release and version strings</string>
     <string name="kernel_spoof_release">Kernel Release</string>
     <string name="kernel_spoof_version">Kernel Version</string>
     <!-- Log Viewer -->

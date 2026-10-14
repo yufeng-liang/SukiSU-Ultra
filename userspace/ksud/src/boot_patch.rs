@@ -614,6 +614,48 @@ fn set_config_flag(config: &mut Vec<String>, name: &str, value: &str, add: bool)
     }
 }
 
+/// Split a ksu_config blob into entries, honoring the quoting/escaping rules
+/// used when entries are written: `"` toggles quoting, `\` escapes the next
+/// character inside quotes, and whitespace only separates entries outside
+/// quotes. Entries are returned in their stored form (quotes and escapes kept
+/// intact) so they can be written back verbatim.
+fn split_config_tokens(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut escaped = false;
+
+    for c in input.chars() {
+        if escaped {
+            current.push('\\');
+            current.push(c);
+            escaped = false;
+        } else if in_quotes && c == '\\' {
+            escaped = true;
+        } else {
+            match c {
+                '"' => {
+                    in_quotes = !in_quotes;
+                    current.push(c);
+                }
+                ' ' | '\t' | '\n' | '\r' if !in_quotes => {
+                    if !current.is_empty() {
+                        tokens.push(std::mem::take(&mut current));
+                    }
+                }
+                _ => current.push(c),
+            }
+        }
+    }
+    if escaped {
+        current.push('\\');
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
 fn parse_force_feature(s: &str) -> Result<(FeatureId, u64)> {
     let (name, value) = s
         .split_once('=')
@@ -843,13 +885,7 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
             .entry_by_name("ksu_config")
             .and_then(CpioEntry::data)
             .and_then(|v| str::from_utf8(v).ok())
-            .map(|v| {
-                v.split(' ')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_owned)
-                    .collect()
-            })
+            .map(split_config_tokens)
             .unwrap_or_default();
 
         config.validate()?;
@@ -859,22 +895,23 @@ pub fn patch(args: BootPatchArgs) -> Result<()> {
         }
 
         let mut apply_spoof_config = |key: &str, value: Option<&str>| {
+            // Option is None means the user did not specify this option; leave any
+            // existing config entry untouched instead of clearing it.
+            let Some(v) = value else {
+                return;
+            };
             ksu_config.retain(|x| !x.starts_with(&format!("{key}=")));
-            if let Some(v) = value {
-                let v = v.trim();
-                if v.is_empty() {
-                    println!("- Removing {key} config");
-                } else {
-                    println!("- Adding {key} config");
-                    let config_str = format!(
-                        "{}=\"{}\"",
-                        key,
-                        v.replace('\\', "\\\\").replace('"', "\\\"")
-                    );
-                    ksu_config.push(config_str);
-                }
-            } else {
+            let v = v.trim();
+            if v.is_empty() {
                 println!("- Removing {key} config");
+            } else {
+                println!("- Adding {key} config");
+                let config_str = format!(
+                    "{}=\"{}\"",
+                    key,
+                    v.replace('\\', "\\\\").replace('"', "\\\"")
+                );
+                ksu_config.push(config_str);
             }
         };
 
@@ -1187,13 +1224,7 @@ pub fn read_ksu_config() -> Result<Vec<String>> {
             .entry_by_name("ksu_config")
             .and_then(CpioEntry::data)
             .and_then(|v| str::from_utf8(v).ok())
-            .map(|v| {
-                v.split(' ')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(std::string::ToString::to_string)
-                    .collect()
-            })
+            .map(split_config_tokens)
             .unwrap_or_default();
 
         Ok(config)
@@ -1296,5 +1327,63 @@ mod block_modules_tests {
         };
         assert!(ok.validate().is_ok());
         assert!(KsuConfigArgs::default().validate().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod config_tokenizer_tests {
+    use super::split_config_tokens;
+
+    #[test]
+    fn splits_plain_entries_on_whitespace() {
+        assert_eq!(
+            split_config_tokens("bundled=1 allow_shell=1"),
+            ["bundled=1", "allow_shell=1"]
+        );
+        // Extra whitespace and newlines are tolerated.
+        assert_eq!(
+            split_config_tokens("  bundled=1\nallow_shell=1\t"),
+            ["bundled=1", "allow_shell=1"]
+        );
+    }
+
+    #[test]
+    fn keeps_quoted_value_with_spaces_intact() {
+        assert_eq!(
+            split_config_tokens("spoof_version=\"#1 SMP PREEMPT\""),
+            ["spoof_version=\"#1 SMP PREEMPT\""]
+        );
+    }
+
+    #[test]
+    fn honors_escaped_quote_and_backslash() {
+        // Stored form keeps the escapes verbatim; unescaping is the reader's job.
+        assert_eq!(
+            split_config_tokens("spoof_release=\"a\\\"b\\\\c\""),
+            ["spoof_release=\"a\\\"b\\\\c\""]
+        );
+    }
+
+    #[test]
+    fn handles_mixed_entries() {
+        assert_eq!(
+            split_config_tokens(
+                "bundled=1 spoof_release=\"5.10.115-android12-9\" spoof_version=\"#1 SMP PREEMPT Thu Jan 1 00:00:00 UTC 2026\""
+            ),
+            [
+                "bundled=1",
+                "spoof_release=\"5.10.115-android12-9\"",
+                "spoof_version=\"#1 SMP PREEMPT Thu Jan 1 00:00:00 UTC 2026\"",
+            ]
+        );
+    }
+
+    #[test]
+    fn tolerates_unterminated_quote_and_trailing_backslash() {
+        assert_eq!(
+            split_config_tokens("spoof_version=\"#1 SMP"),
+            ["spoof_version=\"#1 SMP"]
+        );
+        assert_eq!(split_config_tokens("key=\"abc\\"), ["key=\"abc\\"]);
     }
 }

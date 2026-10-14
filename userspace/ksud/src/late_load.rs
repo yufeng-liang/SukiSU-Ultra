@@ -72,10 +72,14 @@ pub fn run(
         };
 
         if let Some(r) = spoof_release {
-            let _ = write!(params, "spoof_release=\"{r}\" ");
+            // Match the escaping used by boot_patch when writing ksu_config so
+            // values containing '"' or '\' survive kernel param parsing.
+            let escaped = r.replace('\\', "\\\\").replace('"', "\\\"");
+            let _ = write!(params, "spoof_release=\"{escaped}\" ");
         }
         if let Some(v) = spoof_version {
-            let _ = write!(params, "spoof_version=\"{v}\" ");
+            let escaped = v.replace('\\', "\\\\").replace('"', "\\\"");
+            let _ = write!(params, "spoof_version=\"{escaped}\" ");
         }
 
         let params_cstr = std::ffi::CString::new(params.trim())?;

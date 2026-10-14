@@ -96,10 +96,18 @@ fun InstallScreen(
 
     // Read the configuration from the boot image ksu_config
     val bootConfig by produceState(initialValue = BootConfig()) { value = getBootConfig() }
+    var spoofEnabled by rememberSaveable { mutableStateOf(false) }
     var spoofRelease by rememberSaveable { mutableStateOf(SuSFSManager.getKernelSpoofRelease()) }
     var spoofVersion by rememberSaveable { mutableStateOf(SuSFSManager.getKernelSpoofVersion()) }
 
+    val effectiveSpoofRelease = if (spoofEnabled) spoofRelease else ""
+    val effectiveSpoofVersion = if (spoofEnabled) spoofVersion else ""
+
     LaunchedEffect(bootConfig) {
+        // boot 镜像里已有伪装配置时，默认打开开关，避免静默覆盖
+        if (bootConfig.spoofRelease.isNotEmpty() || bootConfig.spoofVersion.isNotEmpty()) {
+            spoofEnabled = true
+        }
         spoofRelease = bootConfig.spoofRelease.ifEmpty { spoofRelease }
         spoofVersion = bootConfig.spoofVersion.ifEmpty { spoofVersion }
     }
@@ -233,9 +241,9 @@ fun InstallScreen(
                                     allowShell = allowShell,
                                     enableAdb = enableAdb,
                                     backup = forceBackup,
-                                    spoofRelease = spoofRelease.trim(),
-                                    spoofVersion = spoofVersion.trim(),
                                     blockModules = effectiveBlockModules,
+                                    spoofRelease = effectiveSpoofRelease.trim(),
+                                    spoofVersion = effectiveSpoofVersion.trim(),
                                 )
                                 else -> FlashIt.FlashBoot(
                                     boot = if (method is InstallMethod.SelectFile) method.uri else null,
@@ -245,9 +253,9 @@ fun InstallScreen(
                                     allowShell = allowShell,
                                     enableAdb = enableAdb,
                                     backup = method is InstallMethod.SelectFile && forceBackup,
-                                    spoofRelease = spoofRelease.trim(),
-                                    spoofVersion = spoofVersion.trim(),
                                     blockModules = effectiveBlockModules,
+                                    spoofRelease = effectiveSpoofRelease.trim(),
+                                    spoofVersion = effectiveSpoofVersion.trim(),
                                 )
                             }
                         )
@@ -356,8 +364,6 @@ fun InstallScreen(
         enableAdb = enableAdb,
         forceBackup = forceBackup,
         canForceBackup = installMethod is InstallMethod.SelectFile,
-        spoofRelease = spoofRelease,
-        spoofVersion = spoofVersion,
         anyKernel3State = anyKernel3State,
         kpmPatchOption = kpmPatchOption,
         showSlotSelectionDialog = showSlotSelectionDialog,
@@ -365,6 +371,9 @@ fun InstallScreen(
         blockModulesEnabled = blockModulesEnabled,
         blockModules = blockModules,
         blockModulesValid = isBlockModulesValid(effectiveBlockModules),
+        spoofEnabled = spoofEnabled,
+        spoofRelease = spoofRelease,
+        spoofVersion = spoofVersion,
     )
     val actions = InstallScreenActions(
         onBack = dropUnlessResumed { navigator.pop() },
@@ -425,6 +434,18 @@ fun InstallScreen(
         },
         onSelectForceBackup = {
             forceBackup = it
+        },
+        onSpoofEnabledChange = {
+            spoofEnabled = it
+            if (!it) {
+                // 关闭开关时清空已填写的值
+                spoofRelease = ""
+                spoofVersion = ""
+                scope.launch {
+                    SuSFSManager.saveUnameValue("default")
+                    SuSFSManager.saveBuildTimeValue("default")
+                }
+            }
         },
         onSpoofReleaseChange = {
             spoofRelease = it

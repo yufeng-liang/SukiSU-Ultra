@@ -252,22 +252,6 @@ internal fun InstallScreenMaterial(
                     )
                 }
                 item(visible = uiState.advancedOptionsShown) {
-                    SegmentedTextField(
-                        value = uiState.spoofRelease,
-                        onValueChange = actions.onSpoofReleaseChange,
-                        label = stringResource(R.string.kernel_spoof_release),
-                        singleLine = true
-                    )
-                }
-                item(visible = uiState.advancedOptionsShown) {
-                    SegmentedTextField(
-                        value = uiState.spoofVersion,
-                        onValueChange = actions.onSpoofVersionChange,
-                        label = stringResource(R.string.kernel_spoof_version),
-                        singleLine = true
-                    )
-                }
-                item(visible = uiState.advancedOptionsShown) {
                     SegmentedCheckboxItem(
                         title = stringResource(id = R.string.install_block_modules),
                         summary = stringResource(id = R.string.install_block_modules_warning),
@@ -296,6 +280,30 @@ internal fun InstallScreenMaterial(
                         },
                         isError = !uiState.blockModulesValid,
                         singleLine = true,
+                    )
+                }
+                item(visible = uiState.advancedOptionsShown) {
+                    SegmentedCheckboxItem(
+                        title = stringResource(id = R.string.kernel_spoof),
+                        summary = stringResource(id = R.string.kernel_spoof_summary),
+                        checked = uiState.spoofEnabled,
+                        onCheckedChange = actions.onSpoofEnabledChange,
+                    )
+                }
+                item(visible = uiState.advancedOptionsShown && uiState.spoofEnabled) {
+                    SegmentedTextField(
+                        value = uiState.spoofRelease,
+                        onValueChange = actions.onSpoofReleaseChange,
+                        label = stringResource(R.string.kernel_spoof_release),
+                        singleLine = true
+                    )
+                }
+                item(visible = uiState.advancedOptionsShown && uiState.spoofEnabled) {
+                    SegmentedTextField(
+                        value = uiState.spoofVersion,
+                        onValueChange = actions.onSpoofVersionChange,
+                        label = stringResource(R.string.kernel_spoof_version),
+                        singleLine = true
                     )
                 }
             }

@@ -6,6 +6,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -14,6 +15,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.dropUnlessResumed
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,7 +32,7 @@ import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
-fun FlashScreen(flashIt: FlashIt) {
+fun FlashScreen(flashIt: FlashIt, onBackEnabledChange: (Boolean) -> Unit) {
     val navigator = LocalNavigator.current
     val context = LocalContext.current
     val activity = LocalActivity.current
@@ -43,6 +47,14 @@ fun FlashScreen(flashIt: FlashIt) {
     var flashingEnabled by rememberSaveable { mutableStateOf(!needJailbreakWarning) }
     val uiMode = LocalUiMode.current
     val snackbarHost = remember { SnackbarHostState() }
+    val backEnabled = flashingStatus != FlashingStatus.FLASHING
+
+    SideEffect { onBackEnabledChange(backEnabled) }
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = !backEnabled,
+        onBackCompleted = {},
+    )
 
     fun showMessage(message: String) {
         scope.launch {
@@ -88,7 +100,7 @@ fun FlashScreen(flashIt: FlashIt) {
         rebootLabelRes = if (softReboot) R.string.reboot_soft else R.string.reboot,
     )
     val actions = FlashScreenActions(
-        onBack = dropUnlessResumed { navigator.pop() },
+        onBack = dropUnlessResumed { if (backEnabled) navigator.pop() },
         onSaveLog = saveLog(logContent, scope) { showMessage(it) },
         onReboot = {
             scope.launch {

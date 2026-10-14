@@ -377,6 +377,8 @@
     <string name="settings_language">语言</string>
     <string name="settings_language_summary">选择应用显示语言</string>
     <string name="settings_language_system">跟随系统</string>
+    <string name="kernel_spoof">内核版本伪装</string>
+    <string name="kernel_spoof_summary">伪装内核的 release 与 version 字符串</string>
     <string name="kernel_spoof_release">内核版本号</string>
     <string name="kernel_spoof_version">内核编译信息</string>
     <!-- Log Viewer -->

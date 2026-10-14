@@ -126,15 +126,17 @@ jobs:
 
   build-lkm:
     needs: generate-key
-
     uses: ./.github/workflows/build-lkm.yml
-
     with:
+      # Slot 1 is left empty on purpose: Kbuild then falls back to the default
+      # official manager certificate, so the official APK keeps working.
+      expected_size: ''
+      expected_hash: ''
+      # Slot 2 carries our own certificate (from secrets.KEYSTORE when present),
+      # so the forked APK is accepted as a manager too.
       expected_size2: ${{ needs.generate-key.outputs.expected_size || '' }}
       expected_hash2: ${{ needs.generate-key.outputs.expected_hash || '' }}
-
     secrets: inherit
-
 
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml

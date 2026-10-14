@@ -70,7 +70,6 @@ import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
 import top.yukonga.miuix.kmp.blur.layerBackdrop
@@ -330,26 +329,6 @@ internal fun InstallScreenMiuix(
                                     summary = stringResource(id = R.string.enable_adb_summary),
                                     onCheckedChange = actions.onSelectEnableAdb
                                 )
-                                TextField(
-                                    value = uiState.spoofRelease,
-                                    onValueChange = actions.onSpoofReleaseChange,
-                                    label = stringResource(R.string.kernel_spoof_release),
-                                    useLabelAsPlaceholder = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    singleLine = true
-                                )
-                                TextField(
-                                    value = uiState.spoofVersion,
-                                    onValueChange = actions.onSpoofVersionChange,
-                                    label = stringResource(R.string.kernel_spoof_version),
-                                    useLabelAsPlaceholder = true,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    singleLine = true
-                                )
                                 CheckboxPreference(
                                     title = stringResource(id = R.string.install_block_modules),
                                     checked = uiState.blockModulesEnabled,
@@ -383,6 +362,40 @@ internal fun InstallScreenMiuix(
                                         },
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                                     )
+                                }
+                                CheckboxPreference(
+                                    title = stringResource(id = R.string.kernel_spoof),
+                                    checked = uiState.spoofEnabled,
+                                    summary = stringResource(id = R.string.kernel_spoof_summary),
+                                    onCheckedChange = actions.onSpoofEnabledChange
+                                )
+                                AnimatedVisibility(
+                                    visible = uiState.spoofEnabled,
+                                    enter = expandVertically() + fadeIn(),
+                                    exit = shrinkVertically() + fadeOut()
+                                ) {
+                                    Column {
+                                        TextField(
+                                            value = uiState.spoofRelease,
+                                            onValueChange = actions.onSpoofReleaseChange,
+                                            label = stringResource(R.string.kernel_spoof_release),
+                                            useLabelAsPlaceholder = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                            singleLine = true
+                                        )
+                                        TextField(
+                                            value = uiState.spoofVersion,
+                                            onValueChange = actions.onSpoofVersionChange,
+                                            label = stringResource(R.string.kernel_spoof_version),
+                                            useLabelAsPlaceholder = true,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                            singleLine = true
+                                        )
+                                    }
                                 }
                             }
                         }
