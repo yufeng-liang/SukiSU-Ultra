@@ -3,11 +3,13 @@ package com.sukisu.ultra.ui.util
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.BackupFailure
 import com.sukisu.ultra.data.backup.BackupKind
+import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.BackupReason
 import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.HttpOperation
 import com.sukisu.ultra.data.backup.LocalBackupStorage
 import com.sukisu.ultra.data.backup.WebDavBackupStorage
+import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -106,6 +108,27 @@ class BackupTextTest {
 
         assertEquals(true, BackupText.anyUnchanged(listOf(written, unchanged)))
         assertEquals(false, BackupText.anyUnchanged(listOf(written)))
+    }
+
+    @Test
+    fun `the stock-image note is only needed when a boot cell says it`() {
+        // 结果框里写着"没有可备份的原厂镜像"，用户分不清"本来就该没有"和"这次漏备了"：
+        // 只有 boot 那一格真的这么写了，才需要在表下面说一句 ksud 什么时候留下原厂镜像。
+        fun target(kind: BackupKind, result: BackupRunResult) =
+            BackupTargetResult(BackupOrigin.LOCAL, kind, result)
+
+        val bootNothing = BackupRunResult(kind = BackupKind.BOOT)
+        val bootWritten = BackupRunResult(kind = BackupKind.BOOT, written = listOf("boot.img"))
+
+        assertEquals(true, BackupText.anyNothingBoot(listOf(target(BackupKind.BOOT, bootNothing))))
+        assertEquals(false, BackupText.anyNothingBoot(listOf(target(BackupKind.BOOT, bootWritten))))
+        // 模块一个没勾也会给出"没有可备的东西"，但那是另一件事，不套这句话。
+        assertEquals(false, BackupText.anyNothingBoot(listOf(target(BackupKind.MODULE, BackupRunResult(kind = BackupKind.MODULE)))))
+        // 云端 boot 也走同一格：本机没有原厂镜像时，云端同样没东西可传。
+        assertEquals(
+            true,
+            BackupText.anyNothingBoot(listOf(BackupTargetResult(BackupOrigin.CLOUD, BackupKind.BOOT, bootNothing))),
+        )
     }
 
     @Test

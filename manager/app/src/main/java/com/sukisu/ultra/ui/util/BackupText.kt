@@ -14,6 +14,7 @@ import com.sukisu.ultra.data.backup.LocalBackupStorage
 import com.sukisu.ultra.data.backup.Redaction
 import com.sukisu.ultra.data.backup.WebDavBackupStorage
 import com.sukisu.ultra.ui.screen.settings.backup.BackupListFormatter
+import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 
 /**
  * 一条原因对应的文案：资源 id + 参数。
@@ -143,7 +144,7 @@ object BackupText {
     fun outcomeCell(kind: BackupKind, result: BackupRunResult): ReasonText = when {
         // 一项没写、没跳过、也没失败：源里根本没有可备的东西（boot 就是这种情况：ksud 只在
         // 打补丁时留下原厂镜像）。
-        result.written.isEmpty() && result.skipped.isEmpty() && result.failures.isEmpty() ->
+        nothingToBackUp(result) ->
             ReasonText(if (kind == BackupKind.BOOT) R.string.backup_nothing_boot else R.string.backup_nothing_module)
         // 写了也跳了：两句都说，否则"已备份 8 项"会让人以为另外 2 项丢了。
         result.written.isNotEmpty() && result.skipped.isNotEmpty() ->
@@ -154,9 +155,35 @@ object BackupText {
         else -> ReasonText(R.string.backup_result_failed)
     }
 
+    /** 这一格是"源里没有可备的东西"：写了 0、跳过 0、失败 0。 */
+    private fun nothingToBackUp(result: BackupRunResult): Boolean =
+        result.written.isEmpty() && result.skipped.isEmpty() && result.failures.isEmpty()
+
     /** 结果里有没有"已是最新"那一格。有才需要在表下面解释这个词，没有就是多余的说明。 */
     fun anyUnchanged(results: List<BackupRunResult>): Boolean =
         results.any { it.written.isEmpty() && it.skipped.isNotEmpty() }
+
+    /**
+     * 结果里有没有"没有可备份的原厂镜像"那一格。
+     *
+     * 有才需要在表下面说清"为什么没有"：ksud 只在打补丁时把原厂镜像留下来，没打过补丁的机器
+     * 本来就没有。这句话不说，用户分不清"本来就该没有"和"这次漏备了"。
+     */
+    fun anyNothingBoot(targets: List<BackupTargetResult>): Boolean =
+        targets.any { it.kind == BackupKind.BOOT && nothingToBackUp(it.result) }
+
+    /**
+     * 结果框表下面那块说明区。
+     *
+     * 两句都要说时用换行分成两段——表下面只有这一处位置，各占一段比各起一个标题省地方。
+     */
+    fun resultNote(context: Context, targets: List<BackupTargetResult>): String? {
+        val lines = buildList {
+            if (anyUnchanged(targets.map { it.result })) add(context.getString(R.string.backup_result_note))
+            if (anyNothingBoot(targets)) add(context.getString(R.string.backup_result_note_boot))
+        }
+        return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
+    }
 
     /**
      * 表下面的失败清单：整行宽度，跨目标去重。

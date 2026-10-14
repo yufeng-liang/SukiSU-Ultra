@@ -873,12 +873,14 @@
     <string name="backup_stage_transferring">正在传输</string>
     <string name="backup_stage_done">已完成</string>
     <string name="backup_stage_waiting">等待中</string>
-    <string name="backup_result_title">备份完成</string>
+    <string name="backup_result_title">备份结果</string>
     <!-- 结果表：一行一个目标，右列是这一格的结果。 -->
     <string name="backup_result_unchanged">已是最新（%1$d 项）</string>
     <string name="backup_result_partial">已备份 %1$d 项，%2$d 项已是最新</string>
     <string name="backup_result_failed">失败</string>
     <string name="backup_result_note">「已是最新」＝与已有备份内容相同，没有重复备份</string>
+    <!-- 只在结果表里出现"没有可备份的原厂镜像"那一格时显示在表下面。 -->
+    <string name="backup_result_note_boot">原厂 boot 镜像由 ksud 在打补丁时留下——本机还没有，所以这次没备到</string>
     <string name="backup_result_average_speed">平均 %1$s/s</string>
     <string name="backup_done">完成</string>
     <string name="module_contribution_submit">分享此模块</string>

@@ -881,12 +881,14 @@
     <string name="backup_stage_transferring">Transferring</string>
     <string name="backup_stage_done">Done</string>
     <string name="backup_stage_waiting">Waiting</string>
-    <string name="backup_result_title">Backup finished</string>
+    <string name="backup_result_title">Backup result</string>
     <!-- Result table: one row per target, the right column being that target's outcome. -->
     <string name="backup_result_unchanged">Up to date (%1$d)</string>
     <string name="backup_result_partial">%1$d backed up, %2$d up to date</string>
     <string name="backup_result_failed">Failed</string>
     <string name="backup_result_note">"Up to date" means the content matches a backup you already have, so nothing was written again</string>
+    <!-- Shown under the result table only when a "stock boot image" row says there was nothing to back up. -->
+    <string name="backup_result_note_boot">ksud only leaves the stock boot image behind when it patches - this device has none yet, so nothing was backed up</string>
     <string name="backup_result_average_speed">Average %1$s/s</string>
     <string name="backup_done">Done</string>
     <string name="module_contribution_submit">Share this module</string>

@@ -1199,12 +1199,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 )
             },
             failures = BackupText.allFailureLines(app, results.map { it.result }),
-            // 表里出现"已是最新"才解释这个词：没出现时这句话是噪音。
-            note = if (BackupText.anyUnchanged(results.map { it.result })) {
-                app.getString(R.string.backup_result_note)
-            } else {
-                null
-            },
+            // 表下面那块说明：只在表里真的出现了需要解释的格子时才写（"已是最新"、
+            // "没有可备份的原厂镜像"），没出现就是噪音。
+            note = BackupText.resultNote(app, results),
         )
     }
 
