@@ -85,17 +85,16 @@ fun checkNewVersion(): LatestVersionInfo {
                 val json = org.json.JSONObject(body)
                 val changelog = json.optString("body")
 
+                val releaseApkRegex =
+                    Regex("""^SukiSU_v(.+?)_(\d+)-release\.apk$""")
+
                 val assets = json.getJSONArray("assets")
                 for (i in 0 until assets.length()) {
                     val asset = assets.getJSONObject(i)
                     val name = asset.getString("name")
-                    if (!name.endsWith(".apk")) {
-                        continue
-                    }
 
-                    val regex = Regex("v(.+?)_(\\d+)-")
-                    val matchResult = regex.find(name) ?: continue
-                    matchResult.groupValues[1]
+                    val matchResult = releaseApkRegex.find(name) ?: continue
+                    val versionName = matchResult.groupValues[1]
                     val versionCode = matchResult.groupValues[2].toLong()
                     val downloadUrl = asset.getString("browser_download_url")
 

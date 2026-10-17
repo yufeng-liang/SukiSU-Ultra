@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.script.ScriptRepository
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.ModuleContributionHost
@@ -33,6 +34,7 @@ import com.sukisu.ultra.ui.navigation3.LocalNavigator
 import com.sukisu.ultra.ui.navigation3.Route
 import com.sukisu.ultra.ui.screen.flash.FlashIt
 import com.sukisu.ultra.ui.screen.modulerepo.downloadFailureMessage
+import com.sukisu.ultra.ui.screen.scriptrun.ScriptRunArg
 import com.sukisu.ultra.ui.util.download
 import com.sukisu.ultra.ui.util.module.Shortcut
 import com.sukisu.ultra.ui.viewmodel.ModuleViewModel
@@ -219,9 +221,26 @@ fun ModulePager(
             if (uris.isNotEmpty()) {
                 // 记下"现在装了哪些、各是什么版本"，装完回到列表时用它认出新装上的那一个。
                 // 用列表里的 id 而不是文件名猜：文件名与 module.prop 里的 id 没有必然关系。
+                // 单个 ZIP 也要先记：它可能被判成一次性脚本进运行页，而运行页还提供
+                // 「仍作为模块安装」——那条路同样会装上包，漏记就认不出新来的那一个。
                 if (pendingLocalZipIds == null) {
                     pendingLocalZipIds = rawUiState.modules.associate { it.id to it.versionCode }
                 }
+            }
+            if (uris.size == 1) {
+                // A one-shot script ZIP is offered to be run instead (or installed anyway).
+                scope.launch {
+                    val script = ScriptRepository.peekOneshot(uris.first())
+                    if (script != null) {
+                        navigator.push(
+                            Route.ScriptRun(ScriptRunArg(uris.first(), offerInstall = true, displayName = script.name))
+                        )
+                    } else {
+                        navigator.push(Route.Flash(FlashIt.FlashModules(uris)))
+                    }
+                    viewModel.markNeedRefresh()
+                }
+            } else if (uris.isNotEmpty()) {
                 navigator.push(Route.Flash(FlashIt.FlashModules(uris)))
                 viewModel.markNeedRefresh()
             }

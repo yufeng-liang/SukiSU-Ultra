@@ -20,6 +20,8 @@
 #endif
 
 #include "manager/apk_sign.h"
+#include "manager/dynamic_manager.h"
+#include "manager/manager_identity.h"
 #include "uapi/app_profile.h"
 #include "klog.h" // IWYU pragma: keep
 
@@ -333,4 +335,9 @@ bool is_manager_apk(char *path)
 #else
     return false;
 #endif
+}
+
+bool ksu_check_apk_signature(char *path, unsigned int size, const char *hash)
+{
+    return check_v2_signature(path, size, hash);
 }

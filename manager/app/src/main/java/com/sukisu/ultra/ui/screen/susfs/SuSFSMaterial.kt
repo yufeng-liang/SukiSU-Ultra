@@ -1,7 +1,10 @@
 package com.sukisu.ultra.ui.screen.susfs
 
+import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
+import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
@@ -282,7 +285,7 @@ fun SuSFSMaterial() {
         isLoading = uiState.isLoading
     )
 
-    Scaffold(
+    ExpressiveScaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.susfs_config_title)) },
@@ -300,9 +303,7 @@ fun SuSFSMaterial() {
                     }
                 },
                 scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                colors = expressiveTopAppBarColors()
             )
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal)
@@ -311,7 +312,7 @@ fun SuSFSMaterial() {
             modifier = Modifier
                 .fillMaxHeight()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 16.dp),
             contentPadding = innerPadding
         ) {
             item {
@@ -327,9 +328,10 @@ fun SuSFSMaterial() {
                             selected = isSelected,
                             onClick = { viewModel.setSelectedTab(tab) },
                             label = { Text(stringResource(tab.displayNameRes)) },
+                            shape = CircleShape,
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                selectedContainerColor = MaterialTheme.colorScheme.inverseSurface,
+                                selectedLabelColor = MaterialTheme.colorScheme.inverseOnSurface
                             )
                         )
                     }

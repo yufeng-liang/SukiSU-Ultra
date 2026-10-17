@@ -74,6 +74,7 @@ fun SettingPager(
         onOpenKpm = { navigator.push(Route.Kpm) },
         onOpenSusfsConfig = { navigator.push(Route.SuSFS) },
         onOpenBackup = { navigator.push(Route.Backup) },
+        onOpenDynamicManagers = { navigator.push(Route.DynamicManagers) },
     )
 
     when (LocalUiMode.current) {

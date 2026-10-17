@@ -6,8 +6,10 @@ import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
 import com.sukisu.ultra.ui.screen.flash.FlashIt
 import com.sukisu.ultra.ui.screen.modulerepo.RepoModuleArg
+import com.sukisu.ultra.ui.screen.scriptrun.ScriptRunArg
 import com.sukisu.ultra.ui.util.FlashItSerializer
 import com.sukisu.ultra.ui.util.RepoModuleArgSerializer
+import com.sukisu.ultra.ui.util.ScriptRunArgSerializer
 import com.sukisu.ultra.ui.util.TemplateInfoSerializer
 import com.sukisu.ultra.ui.util.UriSerializer
 import com.sukisu.ultra.ui.viewmodel.TemplateViewModel
@@ -88,6 +90,10 @@ sealed interface Route : NavKey, Parcelable {
 
     @Parcelize
     @Serializable
+    data class ScriptRun(@Serializable(with = ScriptRunArgSerializer::class) val arg: ScriptRunArg) : Route
+
+    @Parcelize
+    @Serializable
     data class KernelFlash(@Serializable(with = UriSerializer::class) val kernelUri: Uri, val selectedSlot: String?, val kpmPatchEnabled: Boolean, val kpmUndoPatch: Boolean) : Route
 
     @Parcelize
@@ -109,4 +115,8 @@ sealed interface Route : NavKey, Parcelable {
     @Parcelize
     @Serializable
     data object UmountManager: Route
+
+    @Parcelize
+    @Serializable
+    data object DynamicManagers : Route
 }

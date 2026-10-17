@@ -95,7 +95,8 @@ jobs:
         with:
           token: ${{ secrets.GH_TOKEN }}
           files: |
-            manager/*.apk
+            Manager/*.apk
+            Manager-spoofed/*.apk
             lkm/lkm-*_kernelsu.ko
             ksud/ksud-*
             ksuinit/*

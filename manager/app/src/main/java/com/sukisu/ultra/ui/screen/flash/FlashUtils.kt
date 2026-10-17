@@ -113,10 +113,12 @@ fun flashModulesSequentially(
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit
 ): FlashResult {
+    var needsReboot = false
     for (uri in uris) {
         flashModule(uri, onStdout, onStderr).apply {
+            needsReboot = needsReboot || showReboot
             if (code != 0) {
-                return FlashResult(code, err, showReboot)
+                return FlashResult(code, err, needsReboot)
             }
         }
     }
@@ -128,7 +130,7 @@ fun flashModulesSequentially(
         // 最糟的失败模式。成功不打扰。结果本身已经落盘，备份页那条「上次自动备份」才是底账。
         BackupNotifier().notifyIfNeeded(record)
     }
-    return FlashResult(0, "", true)
+    return FlashResult(0, "", needsReboot)
 }
 
 fun flashIt(

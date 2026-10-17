@@ -1,5 +1,11 @@
 package com.sukisu.ultra.ui.screen.umountmanager
 
+import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
+import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
+import androidx.compose.ui.text.font.FontFamily
+import com.sukisu.ultra.ui.component.statustag.StatusTag
+import com.sukisu.ultra.ui.component.material.IconTile
+import com.sukisu.ultra.ui.component.material.TonalCard
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +37,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,7 +62,7 @@ fun UmountManagerMaterial(
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
 
-    Scaffold(
+    ExpressiveScaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.umount_path_manager)) },
@@ -77,9 +82,7 @@ fun UmountManagerMaterial(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
+                colors = expressiveTopAppBarColors(),
                 scrollBehavior = scrollBehavior
             )
         },
@@ -189,36 +192,32 @@ fun UmountPathCardMaterial(
 ) {
     val context = LocalContext.current
 
-    Card(
+    TonalCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(SPACING_LARGE),
+                .padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Folder,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
-            )
+            IconTile(Icons.Outlined.Folder, null)
 
-            Spacer(modifier = Modifier.width(SPACING_LARGE))
+            Spacer(modifier = Modifier.width(14.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Text(
-                    text = entry.path
+                    text = entry.path,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
                 )
-                Spacer(modifier = Modifier.height(SPACING_SMALL))
-                Text(
-                    text = buildString {
-                        append(stringResource(R.string.flags))
-                        append(": ")
-                        append(entry.flags.toUmountFlagName(context))
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                StatusTag(
+                    label = "${stringResource(R.string.flags)}: ${entry.flags.toUmountFlagName(context)}",
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    backgroundColor = MaterialTheme.colorScheme.secondaryContainer,
                 )
             }
 
@@ -226,7 +225,7 @@ fun UmountPathCardMaterial(
                 Icon(
                     imageVector = Icons.Filled.Delete,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
