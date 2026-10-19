@@ -630,11 +630,11 @@ private fun RetentionCardMaterial(state: BackupUiState, actions: BackupActions) 
                         onCommit = actions.onSetModuleRetention,
                     )
                     RetentionSliderMaterial(
-                        title = stringResource(R.string.backup_retention_boot),
-                        summary = stringResource(R.string.backup_retention_boot_summary),
-                        value = state.bootRetention,
-                        max = RetentionLimit.MAX_BOOT,
-                        onCommit = actions.onSetBootRetention,
+                        title = stringResource(R.string.backup_retention_partition),
+                        summary = stringResource(R.string.backup_retention_partition_summary),
+                        value = state.partitionRetention,
+                        max = RetentionLimit.MAX_PARTITION,
+                        onCommit = actions.onSetPartitionRetention,
                     )
                 }
             }
@@ -753,7 +753,7 @@ private fun LazyListScope.backupTabItems(
             GroupTitle(stringResource(R.string.backup_kind_group))
             SegmentedColumn {
                 // 模块这一行自己就是入口：勾选框管全选，点行展开具体模块。展开的那几行紧跟在
-                // 它下面——中间隔着 boot 和仓库源的话，"点开这一行"就不成立了。
+                // 它下面——中间隔着分区快照和仓库源的话，"点开这一行"就不成立了。
                 item { ModuleRowMaterial(state = state, actions = actions) }
                 // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
                 if (state.modules.isNotEmpty()) {
@@ -764,13 +764,24 @@ private fun LazyListScope.backupTabItems(
                     )
                 }
                 item {
-                    // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
-                    // 状态。这句话常显而不是选中才出现：选中时冒出来会把下面的东西整体推下去。
+                    // 分区快照抓的是当前设备上 boot + init_boot 两个分区的原始内容，恢复是往块
+                    // 设备写镜像（不可撤销）。这句话常显而不是选中才出现：选中时冒出来会把它下面
+                    // 的东西整体推下去。
                     SegmentedCheckboxItem(
-                        title = stringResource(R.string.backup_kind_boot),
-                        summary = stringResource(R.string.backup_boot_explain),
-                        checked = BackupKind.BOOT in state.kinds,
-                        onCheckedChange = { actions.onToggleKind(BackupKind.BOOT) },
+                        title = stringResource(R.string.backup_kind_partition),
+                        summary = stringResource(R.string.backup_partition_explain),
+                        checked = BackupKind.PARTITION in state.kinds,
+                        onCheckedChange = { actions.onToggleKind(BackupKind.PARTITION) },
+                    )
+                }
+                item {
+                    // 压缩开关只影响分区快照这一栏，所以放在它下面而不是保留额度那张卡里。
+                    // 默认开：boot 96MB 压完约 20MB，云端那一步能省好几倍时间。
+                    SegmentedSwitchItem(
+                        title = stringResource(R.string.backup_partition_compress_title),
+                        summary = stringResource(R.string.backup_partition_compress_summary),
+                        checked = state.partitionCompressed,
+                        onCheckedChange = actions.onSetPartitionCompressed,
                     )
                 }
                 item {

@@ -24,6 +24,24 @@ data class ModuleBackupMeta(
     val createdAt: String,
 )
 
+/**
+ * 分区快照的边车元数据。
+ *
+ * [partition] 是恢复时的唯一依据（含槽位后缀，如 `init_boot_a`），所以它必须在 meta 里，
+ * 不能只靠文件名推断——文件名给人看，meta 给程序用。
+ *
+ * [partitionSizeBytes] 是**拍快照那一刻**分区的大小，恢复前拿它和解压后的字节数比对：
+ * 分区表变了（换过系统、改过 super 布局）而镜像长度不符时，写进去就是灾难。
+ */
+data class PartitionSnapshotMeta(
+    val entryId: String,
+    val partition: String,
+    val sourceDevice: String,
+    val partitionSizeBytes: Long,
+    val compressed: Boolean,
+    val createdAt: String,
+)
+
 /** [openContent] 每次调用都要返回一个新的流；调用方负责关闭。 */
 data class BackupArtifact(
     val kind: BackupKind,

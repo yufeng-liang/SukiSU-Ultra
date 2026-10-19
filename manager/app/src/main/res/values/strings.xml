@@ -757,16 +757,11 @@
     <string name="backup_tab_backup">Back up</string>
     <string name="backup_tab_restore">Restore</string>
     <string name="backup_tab_restore_count">Restore (%1$d)</string>
-    <string name="backup_entry_summary">Modules, the stock boot image and repo sources can be backed up on this device or in the cloud.</string>
+    <string name="backup_entry_summary">Modules, partition snapshots and repo sources can be backed up on this device or in the cloud.</string>
     <string name="backup_kind_module">Modules</string>
-    <string name="backup_kind_boot">Stock boot image</string>
     <string name="backup_kind_repo">Module repo config</string>
     <string name="backup_list_separator">, </string>
     <string name="backup_repo_explain">The module repo sources you added (addresses, names and switches).</string>
-    <string name="backup_boot_row_title">Stock image</string>
-    <string name="backup_boot_explain">Stock images from before patching.</string>
-    <string name="backup_boot_restore_confirm_title">Flash the stock image back?</string>
-    <string name="backup_boot_restore_confirm_body">The patched boot image is replaced, so the device becomes unrooted until it is patched again.</string>
     <string name="backup_repo_restore_confirm_title">Restore repo sources?</string>
     <string name="backup_repo_restore_confirm_body">The sources you have now are replaced as a whole by the ones in this backup. Restoring cannot be undone.</string>
     <string name="backup_restore_many_confirm_title">Restore %1$d items?</string>
@@ -822,8 +817,6 @@
     <string name="backup_restore_failed">Restore failed</string>
     <string name="backup_empty_module_local">No backups yet. Back up now packages the modules onto this device.</string>
     <string name="backup_empty_module_cloud">Nothing on the server yet. Back up now uploads the modules here.</string>
-    <string name="backup_empty_boot_local">No stock image to back up - ksud only leaves one behind when it patches.</string>
-    <string name="backup_empty_boot_cloud">No stock image on the server yet. Back up now uploads the one on this device.</string>
     <string name="backup_empty_repo_config">No repo source backups yet. Tick "Repo sources" on the Back up tab and back up once - the backup will show up here.</string>
 
     <!-- Backup summaries and diagnostics. Every string here is shown to the user, so no
@@ -852,12 +845,6 @@
     <string name="backup_reason_module_id_unusable">The module id in this backup is not usable (%1$s), so nothing was installed. The backup may have been edited by something else.</string>
     <string name="backup_reason_repo_config_invalid">The repo sources file is unreadable or malformed, so your current sources were left untouched.</string>
     <string name="backup_reason_no_source">There is no backup source for this kind of item.</string>
-    <string name="backup_reason_boot_no_meta">This boot backup has no description file, so it cannot be restored safely.</string>
-    <string name="backup_reason_boot_foreign">This boot backup belongs to a different stock image (sha1 %1$s vs %2$s), so it cannot be used on this device.</string>
-    <string name="backup_reason_boot_no_checksum">This boot backup has no checksum, so it cannot be restored safely.</string>
-    <string name="backup_reason_boot_missing">This device has no stock image with sha1 %1$s, so this backup cannot be restored here. It probably came from another device.</string>
-    <string name="backup_reason_boot_identity">The content of this boot backup does not match the identity it claims (sha1 %1$s), so it was not flashed.</string>
-    <string name="backup_reason_boot_flash_failed">Restoring the stock image failed.</string>
     <string name="backup_reason_file_unreadable">The selected file could not be opened or its reported size changed.</string>
     <string name="backup_reason_import_too_large">The selected file (%1$s) exceeds the %2$d MiB import limit.</string>
     <string name="backup_reason_import_index_write_failed">The archive could not be added to the backup list. Any temporary copy was removed.</string>
@@ -889,7 +876,6 @@
     <string name="backup_channel_name">Backup</string>
     <string name="backup_auto_notify_title">Automatic backup did not finish</string>
     <string name="backup_auto_notify_partial">Local backup done, cloud failed: %1$s</string>
-    <string name="backup_nothing_boot">no stock image to back up</string>
     <string name="backup_nothing_module">no modules to back up</string>
     <string name="backup_group_summary">%1$s · %2$d items</string>
     <string name="backup_detail_title">Backup details</string>
@@ -934,8 +920,6 @@
     <string name="backup_result_partial">%1$d backed up, %2$d up to date</string>
     <string name="backup_result_failed">Failed</string>
     <string name="backup_result_note">"Up to date" means the content matches a backup you already have, so nothing was written again</string>
-    <!-- Shown under the result table only when a "stock boot image" row says there was nothing to back up. -->
-    <string name="backup_result_note_boot">ksud only leaves the stock boot image behind when it patches - this device has none yet, so nothing was backed up</string>
     <string name="backup_result_average_speed">Average %1$s/s</string>
     <string name="backup_done">Done</string>
     <string name="module_contribution_submit">Share this module</string>
@@ -978,8 +962,6 @@
     <string name="backup_retention_title">How many backups to keep</string>
     <string name="backup_retention_summary">Older backups beyond this are removed automatically on the next backup.</string>
     <string name="backup_retention_module">Modules</string>
-    <string name="backup_retention_boot">Stock boot image</string>
-    <string name="backup_retention_boot_summary">One image is 32–96 MB, so a high number takes a lot of space.</string>
     <string name="backup_retention_count">%1$d</string>
     <string name="superuser_filter_all">All</string>
     <string name="superuser_filter_system">System</string>
@@ -1028,4 +1010,24 @@
          and the screen is not in the middle of a refresh. -->
     <string name="extension_empty_title">No extension data</string>
     <string name="extension_empty_subtitle">Pull to refresh, or check that the running kernel includes the extension hub.</string>
+    <string name="backup_kind_partition">Partition snapshot</string>
+    <string name="backup_partition_row_title">Partition snapshot</string>
+    <string name="backup_partition_explain">boot and init_boot, captured as they are right now.</string>
+    <string name="backup_partition_compress_title">Compress snapshots</string>
+    <string name="backup_partition_compress_summary">boot is 96 MB and shrinks to about 20 MB with gzip. Turn it off only if you want plain .img files.</string>
+    <string name="backup_partition_compressed_tag">compressed</string>
+    <string name="backup_partition_restore_confirm_title">Flash these partitions back?</string>
+    <string name="backup_partition_restore_confirm_body">The images are written straight to the block device. If the partition or the image is wrong the device may not boot, and there is no undo.</string>
+    <string name="backup_empty_partition_local">No snapshot yet - this captures boot and init_boot as they are now.</string>
+    <string name="backup_empty_partition_cloud">No snapshot on the server yet. Back up now uploads one from this device.</string>
+    <string name="backup_nothing_partition">no partition to snapshot</string>
+    <string name="backup_result_note_partition">This device has no boot or init_boot partition to snapshot, so nothing was backed up</string>
+    <string name="backup_retention_partition">Partition snapshots</string>
+    <string name="backup_retention_partition_summary">One snapshot is 104 MB before compression, so a high number takes a lot of space.</string>
+    <string name="backup_reason_partition_dump_failed">Reading partition %1$s failed.</string>
+    <string name="backup_reason_partition_flash_failed">Writing partition %1$s failed.</string>
+    <string name="backup_reason_partition_missing">This device has no partition named %1$s, so this snapshot cannot be restored here. It probably came from another device.</string>
+    <string name="backup_reason_partition_size_mismatch">The image for %1$s is %2$s but the partition is %3$s, so it was not flashed.</string>
+    <string name="backup_reason_partition_name">The partition name in this backup is not usable (%1$s), so it was not flashed.</string>
+    <string name="backup_reason_partition_no_meta">This snapshot has no description file, so it cannot be restored safely.</string>
 </resources>

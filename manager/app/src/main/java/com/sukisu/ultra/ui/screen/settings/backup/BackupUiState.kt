@@ -39,7 +39,7 @@ data class BackupUiState(
      */
     val origins: Set<BackupOrigin> = setOf(BackupOrigin.LOCAL),
     /**
-     * 勾选的内容（模块 / 原厂 boot 镜像 / 仓库源配置）。同样可以同时勾上。
+     * 勾选的内容（模块 / 分区快照 / 仓库源配置）。同样可以同时勾上。
      *
      * 仓库源配置默认勾上：它就几 KB，去重规则保证源没变时重复备份不产生新条目——而"卸载
      * 重装管理器后仓库源全没了"恰恰是用户最常吃的一次亏，默认兜住比让人记得勾划算。
@@ -95,7 +95,7 @@ data class BackupUiState(
     /**
      * 正在跑（或刚跑完）的那次备份。
      *
-     * 云端上传 boot 要几十秒到几分钟，只有一个不动的按钮用户没法判断是不是卡住了；跑完之后
+     * 云端上传分区快照要几十秒到几分钟，只有一个不动的按钮用户没法判断是不是卡住了；跑完之后
      * 结果也留在这个弹窗里，而不是几秒就消失的 snackbar——一次备份的结果值得看清。
      */
     val backupRun: BackupRunState? = null,
@@ -182,13 +182,21 @@ data class BackupUiState(
     val autoBackupRecord: AutoBackupRecord? = null,
 
     /**
-     * 保留额度：模块留最近几次备份、boot 留几次。
+     * 保留额度：模块留最近几次备份、分区快照留几次。
      *
      * 以前这两个是代码里的常量，界面上看不见也改不了——用户只能从"我的第六份备份不见了"反推出
      * 有这么个限制。默认值在 [BackupDefaults]，取值范围在 [RetentionLimit]。
      */
     val moduleRetention: Int = BackupDefaults.RETENTION,
-    val bootRetention: Int = BackupDefaults.BOOT_RETENTION,
+    val partitionRetention: Int = BackupDefaults.PARTITION_RETENTION,
+
+    /**
+     * 分区快照是否 gzip 压缩。
+     *
+     * 默认开：boot 分区 96MB 压完约 20MB，云端备份的上传时间差好几倍。关掉只在一种场景有意义
+     * ——想直接拿 `.img` 去别的刷机工具里用（那类工具多半不认 .gz）。
+     */
+    val partitionCompressed: Boolean = true,
     /** 保留额度那一块是否展开。它是"设一次就不管"的设置，摊开会把备份选项挤下去。 */
     val retentionExpanded: Boolean = false,
 ) {
@@ -197,7 +205,7 @@ data class BackupUiState(
      *
      * 模块一个都没勾时按下去只会得到"写入 0 项"——那不是结果，是用户还没勾完。位置和内容都
      * 空着同理。列表读不出来时不能拦（那是一次读失败，不是用户的选择）；一个模块都没装时
-     * 同理——没有可勾的对象，不能因此把 boot / 仓库源那两项也一起锁死。
+     * 同理——没有可勾的对象，不能因此把分区快照 / 仓库源那两项也一起锁死。
      */
     val canBackUp: Boolean
         get() = origins.isNotEmpty() &&
@@ -447,7 +455,7 @@ data class BackupActions(
     val onToggleGroupEntry: (String) -> Unit,
     /** 详情页：把某一侧的条目一次全勾上 / 全取消。 */
     val onSetOriginEntries: (BackupOrigin, Boolean) -> Unit,
-    /** 恢复勾中的那些条目。boot 的那次二次确认由界面在调它之前问。 */
+    /** 恢复勾中的那些条目。分区快照的那次二次确认由界面在调它之前问。 */
     val onRestoreSelected: () -> Unit,
     /** 导出/分享勾中的那些条目（一条给原样归档，多条打成一个 zip）。 */
     val onShareSelected: () -> Unit,
@@ -478,9 +486,12 @@ data class BackupActions(
     val onSetAutoBackup: (Boolean) -> Unit,
     /** 自动备份写到哪几处：和手动备份的「备份位置」同一套三档（本地 / 云端 / 本地+云端）。 */
     val onSelectAutoBackupOrigins: (Set<BackupOrigin>) -> Unit,
-    /** 保留额度：模块 / boot 各几次。值由数据层钳过，界面传原值即可。 */
+    /** 保留额度：模块 / 分区快照各几次。值由数据层钳过，界面传原值即可。 */
     val onSetModuleRetention: (Int) -> Unit,
-    val onSetBootRetention: (Int) -> Unit,
+    val onSetPartitionRetention: (Int) -> Unit,
+
+    /** 分区快照是否压缩。 */
+    val onSetPartitionCompressed: (Boolean) -> Unit,
     /** 保留额度那一块的展开/收起。 */
     val onToggleRetention: () -> Unit,
     val onToggleCloud: () -> Unit,

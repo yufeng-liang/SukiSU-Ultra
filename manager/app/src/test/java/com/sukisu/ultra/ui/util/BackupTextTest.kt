@@ -58,13 +58,13 @@ class BackupTextTest {
 
     @Test
     fun `a target with nothing to back up names the kind it looked at`() {
-        // boot 和模块的"没有可备的东西"是两件事：前者是 ksud 还没留下原厂镜像，后者是用户
-        // 一个模块都没勾。同一句话套给两边，用户会去查错方向。
-        val nothing = BackupRunResult(kind = BackupKind.BOOT)
+        // 分区快照和模块的"没有可备的东西"是两件事：前者是这台设备上找不到可拍照的分区，
+        // 后者是用户一个模块都没勾。同一句话套给两边，用户会去查错方向。
+        val nothing = BackupRunResult(kind = BackupKind.PARTITION)
 
         assertEquals(
-            ReasonText(R.string.backup_nothing_boot),
-            BackupText.outcomeCell(BackupKind.BOOT, nothing),
+            ReasonText(R.string.backup_nothing_partition),
+            BackupText.outcomeCell(BackupKind.PARTITION, nothing),
         )
         assertEquals(
             ReasonText(R.string.backup_nothing_module),
@@ -112,22 +112,30 @@ class BackupTextTest {
 
     @Test
     fun `the stock-image note is only needed when a boot cell says it`() {
-        // 结果框里写着"没有可备份的原厂镜像"，用户分不清"本来就该没有"和"这次漏备了"：
-        // 只有 boot 那一格真的这么写了，才需要在表下面说一句 ksud 什么时候留下原厂镜像。
+        // 结果框里写着"没有可拍照的分区"，用户分不清"本来就该没有"和"这次漏备了"：
+        // 只有分区快照那一格真的这么写了，才需要在表下面补一句。
         fun target(kind: BackupKind, result: BackupRunResult) =
             BackupTargetResult(BackupOrigin.LOCAL, kind, result)
 
-        val bootNothing = BackupRunResult(kind = BackupKind.BOOT)
-        val bootWritten = BackupRunResult(kind = BackupKind.BOOT, written = listOf("boot.img"))
+        val partitionNothing = BackupRunResult(kind = BackupKind.PARTITION)
+        val partitionWritten =
+            BackupRunResult(kind = BackupKind.PARTITION, written = listOf("partition_boot_a.img"))
 
-        assertEquals(true, BackupText.anyNothingBoot(listOf(target(BackupKind.BOOT, bootNothing))))
-        assertEquals(false, BackupText.anyNothingBoot(listOf(target(BackupKind.BOOT, bootWritten))))
+        assertEquals(true, BackupText.anyNothingPartition(listOf(target(BackupKind.PARTITION, partitionNothing))))
+        assertEquals(false, BackupText.anyNothingPartition(listOf(target(BackupKind.PARTITION, partitionWritten))))
         // 模块一个没勾也会给出"没有可备的东西"，但那是另一件事，不套这句话。
-        assertEquals(false, BackupText.anyNothingBoot(listOf(target(BackupKind.MODULE, BackupRunResult(kind = BackupKind.MODULE)))))
-        // 云端 boot 也走同一格：本机没有原厂镜像时，云端同样没东西可传。
+        assertEquals(
+            false,
+            BackupText.anyNothingPartition(
+                listOf(target(BackupKind.MODULE, BackupRunResult(kind = BackupKind.MODULE))),
+            ),
+        )
+        // 云端分区快照也走同一格：本机没有可拍照的分区时，云端同样没东西可传。
         assertEquals(
             true,
-            BackupText.anyNothingBoot(listOf(BackupTargetResult(BackupOrigin.CLOUD, BackupKind.BOOT, bootNothing))),
+            BackupText.anyNothingPartition(
+                listOf(BackupTargetResult(BackupOrigin.CLOUD, BackupKind.PARTITION, partitionNothing)),
+            ),
         )
     }
 
@@ -174,24 +182,25 @@ class BackupTextTest {
         val expected = "9f2c8a1b4e6d…"
 
         assertEquals(
-            ReasonText(R.string.backup_reason_boot_missing, listOf(expected)),
-            BackupText.reasonText(BackupReason.BootStockImageMissing(long)),
-        )
-        assertEquals(
-            ReasonText(R.string.backup_reason_boot_foreign, listOf(expected, expected)),
-            BackupText.reasonText(BackupReason.BootForeignStockImage(long, long)),
-        )
-        assertEquals(
             ReasonText(R.string.backup_reason_corrupted, listOf("boot.img", expected, expected)),
             BackupText.reasonText(BackupReason.Corrupted("boot.img", long, long)),
+        )
+        assertEquals(
+            ReasonText(R.string.backup_reason_corrupted, listOf("init_boot_a", expected, expected)),
+            BackupText.reasonText(BackupReason.Corrupted("init_boot_a", long, long)),
         )
     }
 
     @Test
-    fun `a short hash is left alone`() {
+    fun `a partition name is shown as it is`() {
+        // 分区名本来就很短，不存在截断；被截断的只有 sha1 那一类长哈希。
         assertEquals(
-            ReasonText(R.string.backup_reason_boot_identity, listOf("abc")),
-            BackupText.reasonText(BackupReason.BootIdentityMismatch("abc")),
+            ReasonText(R.string.backup_reason_partition_dump_failed, listOf("boot_a")),
+            BackupText.reasonText(BackupReason.PartitionDumpFailed("boot_a", null)),
+        )
+        assertEquals(
+            ReasonText(R.string.backup_reason_partition_flash_failed, listOf("init_boot_b")),
+            BackupText.reasonText(BackupReason.PartitionFlashFailed("init_boot_b", "dd failed")),
         )
     }
 
@@ -212,7 +221,7 @@ class BackupTextTest {
         assertEquals("not json", BackupText.detailOf(BackupReason.IndexUnreadable("not json")))
         assertEquals("ksud said no", BackupText.detailOf(BackupReason.ModuleInstallFailed("a", "ksud said no")))
         assertNull(BackupText.detailOf(BackupReason.ReadFailed("x", null)))
-        assertNull(BackupText.detailOf(BackupReason.BootNoChecksum))
+        assertNull(BackupText.detailOf(BackupReason.PartitionNoSidecarMeta))
         assertNull(BackupText.detailOf(BackupReason.CloudNotConfigured))
     }
 

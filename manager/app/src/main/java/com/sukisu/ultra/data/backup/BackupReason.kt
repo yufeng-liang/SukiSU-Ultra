@@ -73,28 +73,52 @@ sealed interface BackupReason {
     /** 引擎没有这个 kind 的源。 */
     data class NoSource(val kind: BackupKind) : BackupReason
 
-    /** 归档没有边车 meta，无从知道它是什么，拒绝恢复。 */
-    data object BootNoSidecarMeta : BackupReason
+    /**
+     * 读分区失败：`dd` 起不来、分区路径不存在、或写出来的文件是空的。
+     *
+     * [partition] 是带槽位的分区名（`boot_a`），[external] 是 dd 的 stderr。
+     */
+    data class PartitionDumpFailed(val partition: String, val external: String?) : BackupReason
 
-    /** 归档自称的身份与索引记录的不符。 */
-    data class BootForeignStockImage(val recorded: String, val expected: String) : BackupReason
-
-    /** 边车里没有校验和。 */
-    data object BootNoChecksum : BackupReason
+    /** 写分区失败：解只读、dd 写入或 fsync 任一步失败。[external] 是 shell 的 stderr。 */
+    data class PartitionFlashFailed(val partition: String, val external: String?) : BackupReason
 
     /**
-     * 本机没有这张原厂镜像。
+     * 本机没有这个分区。
      *
-     * 必须由我们拒绝：ksud 找不到匹配文件时只打印一行 Warning，转而 `rebuild_without_ksu`
-     * 并退出 0，也就是"报成功但什么都没恢复"。
+     * 恢复时必须由我们拒绝：归档里记的是 `init_boot_a`，而当前设备可能压根没有 init_boot
+     * （android12 之前的内核把 root 放在 boot 里）。这时候"照着路径刷"就是往一个不存在的
+     * 设备节点写，dd 会自己建出一个普通文件，看着成功、重启后毫无变化。
      */
-    data class BootStockImageMissing(val sha1: String) : BackupReason
+    data class PartitionMissing(val partition: String) : BackupReason
 
-    /** 内容算出的 sha1 与它自称的身份不符——伪造 meta + index 让任意镜像过关的形状。 */
-    data class BootIdentityMismatch(val sha1: String) : BackupReason
+    /**
+     * 归档解压后的字节数与分区大小不符。
+     *
+     * 这是刷分区前最后一道闸：boot 分区 96MB，写进去 8MB 的 init_boot 镜像会把分区头部
+     * 覆盖成另一个镜像的内容，设备直接起不来。宁可拒绝，也不"试试看"。
+     */
+    data class PartitionSizeMismatch(
+        val partition: String,
+        val expected: Long,
+        val actual: Long,
+    ) : BackupReason
 
-    /** ksud boot-restore 失败。[external] 是它的 stderr。 */
-    data class BootFlashFailed(val external: String?) : BackupReason
+    /**
+     * 索引里的分区名形状不可用，拒绝拿它去拼 dd 命令。
+     *
+     * 名字来自边车 meta（共享存储或远端 WebDAV，外部可写）并被拼进以 root 执行的 shell；
+     * 同 [ModuleIdUnusable] 的道理，形状不对就拒绝执行，而不是转义一下再试。
+     */
+    data class PartitionNameUnusable(val partition: String) : BackupReason
+
+    /**
+     * 归档没有边车 meta，无从知道它该刷回哪个分区。
+     *
+     * 分区快照的 meta 是**唯一**的身份来源：文件名只用来给用户看，恢复时的分区名、大小、
+     * 是否压缩全在 meta 里。没有它就只能拒绝——猜一个分区名去 dd，等于蒙着眼睛刷机。
+     */
+    data object PartitionNoSidecarMeta : BackupReason
 
     /** 打不开用户选的文件。 */
     data object FileUnreadable : BackupReason

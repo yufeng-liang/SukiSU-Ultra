@@ -22,12 +22,10 @@ class BackupListFormatterTest {
         "zygisk-assistant", "Zygisk Assistant", "2.1.3", 12L, "snake-4", false, false, "dev", "2026-10-08T12:00:00Z"
     )
 
-    /** boot 的 sha1（40 位）——行标题只该显示前 12 位，与归档文件名里的前缀一致。 */
-    private val bootSha1 = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
-
-    private val bootEntry = BackupEntry(
-        BackupKind.BOOT, bootSha1, "boot_a1b2c3d4e5f6_20261008_120000.img",
-        "boot_a1b2c3d4e5f6_20261008_120000.img.meta.json", 86_400_000L, "sha",
+    /** 分区快照：entryId 就是分区名，恢复时按它决定刷哪儿。 */
+    private val partitionEntry = BackupEntry(
+        BackupKind.PARTITION, "boot_a", "partition_boot_a_20261008_120000.img.gz",
+        "partition_boot_a_20261008_120000.img.gz.meta.json", 86_400_000L, "sha",
         "2026-10-08T12:00:00Z"
     )
 
@@ -36,7 +34,8 @@ class BackupListFormatterTest {
      * 这里要盯的是"哪段文案被用在哪"，不是翻译本身。
      */
     private val labels = BackupRowLabels(
-        bootTitle = "Stock image",
+        partitionTitle = "Partition snapshot",
+        compressed = "compressed",
         repoConfigTitle = "Repo sources",
         disabled = "Disabled",
         originLabel = { origin -> if (origin == BackupOrigin.CLOUD) "Cloud" else "This device" },
@@ -83,12 +82,19 @@ class BackupListFormatterTest {
     }
 
     @Test
-    fun `boot rows are named as stock images rather than showing a raw sha1`() {
-        val row = rowsOf(bootEntry).single()
-        // 40 位 sha1 摆在标题上没人看得懂；12 位前缀与归档文件名一致，用户能对上。
-        assertEquals("Stock image a1b2c3d4e5f6", row.title)
-        assertFalse(row.title.contains(bootSha1))
+    fun `partition rows are named after the partition and say whether they are compressed`() {
+        val row = rowsOf(partitionEntry).single()
+        // 分区名就是这一行的身份：刷回哪一块全靠它，不能藏进详情页。
+        assertEquals("Partition snapshot boot_a", row.title)
         assertTrue(row.subtitle, row.subtitle.contains("82.4 MB"))
+        assertTrue(row.subtitle, row.subtitle.contains("compressed"))
+    }
+
+    @Test
+    fun `an uncompressed partition row does not claim to be compressed`() {
+        val plain = partitionEntry.copy(fileName = "partition_boot_a_20261008_120000.img")
+        val row = rowsOf(plain).single()
+        assertFalse(row.subtitle, row.subtitle.contains("compressed"))
     }
 
     @Test
@@ -98,12 +104,12 @@ class BackupListFormatterTest {
         assertEquals("1.7 MB", BackupListFormatter.humanSize(1834021))
     }
 
-    /** 恢复 boot 会清掉 root，界面靠行自己的类型决定要不要弹确认框。 */
+    /** 恢复分区快照会往块设备写镜像，界面靠行自己的类型决定要不要弹确认框。 */
     @Test
     fun `each row carries the kind it was built from`() {
         assertEquals(
-            listOf(BackupKind.MODULE, BackupKind.BOOT),
-            rowsOf(entry, bootEntry).map { it.kind },
+            listOf(BackupKind.MODULE, BackupKind.PARTITION),
+            rowsOf(entry, partitionEntry).map { it.kind },
         )
     }
 

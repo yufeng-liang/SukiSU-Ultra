@@ -818,7 +818,7 @@ class BackupEngineTest {
             storage.files[ArchiveNaming.INDEX_FILE] = BackupManifest.renderEntries(
                 listOf(
                     BackupEntry(BackupKind.MODULE, "m", "module_m_1_x.zip", null, 1, "s", "2026-10-08T00:00:00Z"),
-                    BackupEntry(BackupKind.BOOT, "b", "boot_abcdef123456_x.img", null, 1, "s", "2026-10-08T00:00:00Z"),
+                    BackupEntry(BackupKind.PARTITION, "b", "partition_boot_a_x.img", null, 1, "s", "2026-10-08T00:00:00Z"),
                 )
             ).toByteArray()
 

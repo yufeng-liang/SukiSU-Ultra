@@ -19,7 +19,7 @@ class AutoBackupPolicyTest {
 
     @Test
     fun `never runs for boot images`() {
-        assertFalse(AutoBackupPolicy.shouldRun(enabled = true, kind = BackupKind.BOOT))
+        assertFalse(AutoBackupPolicy.shouldRun(enabled = true, kind = BackupKind.PARTITION))
     }
 
     @Test

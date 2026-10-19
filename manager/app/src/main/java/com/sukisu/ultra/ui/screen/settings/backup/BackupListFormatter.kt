@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
+import com.sukisu.ultra.data.backup.ArchiveNaming
 import com.sukisu.ultra.data.backup.BackupEntry
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
@@ -50,12 +51,19 @@ data class BackupRow(
  * 所以从外面传进来，不在这里写死英文。
  */
 data class BackupRowLabels(
-    /** boot 行的标题前缀：那一行的 id 是一串 sha1，光看它没人知道这是原厂镜像。 */
-    val bootTitle: String,
+    /**
+     * 分区快照行的标题前缀。
+     *
+     * 标题本身由分区名（`boot_a` / `init_boot_a`）加这个前缀拼成——分区名就是那一行的身份，
+     * 也是恢复时唯一要看的东西，不能藏进详情页。
+     */
+    val partitionTitle: String,
     /** 仓库源配置行的标题（这一行没有 meta，标题就是全部说明）。 */
     val repoConfigTitle: String,
     /** 模块处于禁用状态时缀在副标题里的词。 */
     val disabled: String,
+    /** 分区快照是 gzip 压缩过的（从文件名后缀认出来，不需要读 meta）。 */
+    val compressed: String,
     /** 来源标签：本机 / 云端。 */
     val originLabel: (BackupOrigin) -> String,
 )
@@ -91,8 +99,12 @@ internal enum class RestoreConfirm {
     /** 不用问，直接恢复。 */
     NONE,
 
-    /** 勾了原厂镜像：恢复它等于把设备带回未 root 状态，不可逆。 */
-    BOOT,
+    /**
+     * 勾了分区快照：恢复它就是往块设备写镜像，写错分区变砖、且没有撤销。
+     *
+     * 这一档比 [MANY] 优先，因为它的后果不是"备份可能旧了"而是"可能开不了机"。
+     */
+    PARTITION,
 
     /** 一次恢复好几条：备份可能比现在旧，而且恢复没有撤销。 */
     MANY,
@@ -108,12 +120,12 @@ internal enum class RestoreConfirm {
  * 拿行数去判会两头出错——标题说"恢复这 2 项"而实际只动一个，同时"两条同名、一份内容"的
  * 仓库源恢复会从确认框下面溜过去。
  *
- * 原厂镜像不看条数：勾上一个就该问，它和别的条混在一起时也一样。
+ * 分区快照不看条数：勾上一个就该问，它和别的条混在一起时也一样。
  */
 internal fun restoreConfirmFor(selection: List<BackupRow>): RestoreConfirm {
     val contents = oneCopyPerContent(selection)
     return when {
-        selection.any { it.kind == BackupKind.BOOT } -> RestoreConfirm.BOOT
+        selection.any { it.kind == BackupKind.PARTITION } -> RestoreConfirm.PARTITION
         contents.size > 1 -> RestoreConfirm.MANY
         contents.singleOrNull()?.kind == BackupKind.REPO_CONFIG -> RestoreConfirm.REPO_CONFIG
         else -> RestoreConfirm.NONE
@@ -130,16 +142,13 @@ object BackupListFormatter {
      */
     const val SEPARATOR = " · "
 
-    /** 与归档文件名里的 sha1 前缀等长：用户在文件名里看到的那 12 位，就是这里显示的那 12 位。 */
-    private const val SHA1_PREFIX_LENGTH = 12
-
     fun rows(
         entries: List<OriginEntry>,
         metas: Map<String, ModuleBackupMeta>,
         labels: BackupRowLabels,
     ): List<BackupRow> = entries.map { (origin, entry) ->
         when (entry.kind) {
-            BackupKind.BOOT -> bootRow(origin, entry, labels)
+            BackupKind.PARTITION -> partitionRow(origin, entry, labels)
             BackupKind.REPO_CONFIG -> repoConfigRow(origin, entry, labels)
             else -> moduleRow(origin, entry, metas, labels)
         }
@@ -163,19 +172,29 @@ object BackupListFormatter {
     )
 
     /**
-     * boot 行的标题不能用 [BackupEntry.entryId]——那是一条 40 位 sha1。
+     * 分区快照行。
      *
-     * boot 的边车 meta 不是模块 meta（没有名称/版本），所以这里也不去查 [metas]：能讲的只有
-     * "这是哪一张原厂镜像"，用标题 + sha1 前缀（与归档文件名里的前缀一致，用户能对上）。
+     * 标题是"前缀 + 分区名"：`boot_a` / `init_boot_a` 就是这一行的全部身份，恢复时也是按它
+     * 决定刷哪儿。副标题给大小和是否压缩——用户要判断"这一份占了多少地方"。
+     *
+     * 这里刻意**不查** [metas]：那份 map 是模块 meta（名称/版本），分区快照的边车是另一套
+     * 结构（见 [PartitionSnapshotMeta]）。压缩与否从文件名后缀就能看出来，不必读 meta。
      */
-    private fun bootRow(origin: BackupOrigin, entry: BackupEntry, labels: BackupRowLabels) = BackupRow(
+    private fun partitionRow(
+        origin: BackupOrigin,
+        entry: BackupEntry,
+        labels: BackupRowLabels,
+    ): BackupRow = BackupRow(
         id = rowId(origin, entry),
-        title = "${labels.bootTitle} ${entry.entryId.take(SHA1_PREFIX_LENGTH)}",
-        subtitle = humanSize(entry.sizeBytes),
+        title = "${labels.partitionTitle} ${entry.entryId}",
+        subtitle = listOfNotNull(
+            humanSize(entry.sizeBytes),
+            labels.compressed.takeIf { ArchiveNaming.isCompressed(entry.fileName) },
+        ).joinToString(SEPARATOR),
         fileName = entry.fileName,
         origin = origin,
         originLabel = labels.originLabel(origin),
-        kind = BackupKind.BOOT,
+        kind = BackupKind.PARTITION,
         createdAt = entry.createdAt,
     )
 

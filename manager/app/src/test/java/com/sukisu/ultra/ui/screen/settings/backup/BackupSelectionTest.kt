@@ -250,28 +250,28 @@ class BackupSelectionTest {
         assertEquals(RestoreConfirm.MANY, confirm)
     }
 
-    /** 原厂镜像单独一条也要问：恢复它等于把设备带回未 root 状态。 */
+    /** 分区快照单独一条也要问：它是往块设备写镜像，写错就开不了机。 */
     @Test
-    fun `a boot image asks on its own`() {
+    fun `a partition snapshot asks on its own`() {
         val confirm = restoreConfirmFor(
-            listOf(rowOf("boot_20261009_093107.zip", BackupOrigin.LOCAL, BackupKind.BOOT)),
+            listOf(rowOf("partition_boot_a_20261009_093107.img", BackupOrigin.LOCAL, BackupKind.PARTITION)),
         )
 
-        assertEquals(RestoreConfirm.BOOT, confirm)
+        assertEquals(RestoreConfirm.PARTITION, confirm)
     }
 
-    /** 原厂镜像和别的条混在一起时问的仍然是镜像那一句：不可逆的那件事优先。 */
+    /** 分区快照和别的条混在一起时问的仍然是它那一句：不可逆的那件事优先。 */
     @Test
-    fun `a boot image among other rows still asks about the boot image`() {
+    fun `a partition snapshot among other rows still asks about the partition`() {
         val confirm = restoreConfirmFor(
             listOf(
                 rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL),
                 rowOf("module_b_1_20261009_093107.zip", BackupOrigin.LOCAL),
-                rowOf("boot_20261009_093107.zip", BackupOrigin.LOCAL, BackupKind.BOOT),
+                rowOf("partition_init_boot_a_20261009_093107.img", BackupOrigin.LOCAL, BackupKind.PARTITION),
             ),
         )
 
-        assertEquals(RestoreConfirm.BOOT, confirm)
+        assertEquals(RestoreConfirm.PARTITION, confirm)
     }
 
     /** 一条都没勾：什么都不弹，别拿空列表去取 singleOrNull 的 kind。 */

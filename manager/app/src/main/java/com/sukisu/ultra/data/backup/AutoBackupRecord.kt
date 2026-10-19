@@ -110,13 +110,18 @@ object AutoBackupRecordJson {
             is BackupReason.ModuleIdUnusable -> put("type", "module_id_unusable").put("entryId", reason.entryId)
             is BackupReason.RepoConfigInvalid -> put("type", "repo_config_invalid").putExternal(reason.external)
             is BackupReason.NoSource -> put("type", "no_source").put("kind", reason.kind.wireName)
-            BackupReason.BootNoSidecarMeta -> put("type", "boot_no_sidecar_meta")
-            is BackupReason.BootForeignStockImage -> put("type", "boot_foreign_stock_image")
-                .put("recorded", reason.recorded).put("expected", reason.expected)
-            BackupReason.BootNoChecksum -> put("type", "boot_no_checksum")
-            is BackupReason.BootStockImageMissing -> put("type", "boot_stock_image_missing").put("sha1", reason.sha1)
-            is BackupReason.BootIdentityMismatch -> put("type", "boot_identity_mismatch").put("sha1", reason.sha1)
-            is BackupReason.BootFlashFailed -> put("type", "boot_flash_failed").putExternal(reason.external)
+            is BackupReason.PartitionDumpFailed -> put("type", "partition_dump_failed")
+                .put("partition", reason.partition).putExternal(reason.external)
+            is BackupReason.PartitionFlashFailed -> put("type", "partition_flash_failed")
+                .put("partition", reason.partition).putExternal(reason.external)
+            is BackupReason.PartitionMissing -> put("type", "partition_missing")
+                .put("partition", reason.partition)
+            is BackupReason.PartitionSizeMismatch -> put("type", "partition_size_mismatch")
+                .put("partition", reason.partition)
+                .put("expected", reason.expected).put("actual", reason.actual)
+            is BackupReason.PartitionNameUnusable -> put("type", "partition_name_unusable")
+                .put("partition", reason.partition)
+            BackupReason.PartitionNoSidecarMeta -> put("type", "partition_no_sidecar_meta")
             BackupReason.FileUnreadable -> put("type", "file_unreadable")
             is BackupReason.ImportTooLarge -> put("type", "import_too_large")
                 .put("path", reason.path).put("limitBytes", reason.limitBytes)
@@ -157,15 +162,22 @@ object AutoBackupRecordJson {
             "no_source" -> BackupReason.NoSource(
                 BackupKind.entries.firstOrNull { it.wireName == json.optString("kind") } ?: BackupKind.MODULE,
             )
-            "boot_no_sidecar_meta" -> BackupReason.BootNoSidecarMeta
-            "boot_foreign_stock_image" -> BackupReason.BootForeignStockImage(
-                recorded = json.optString("recorded"),
-                expected = json.optString("expected"),
+            "partition_dump_failed" -> BackupReason.PartitionDumpFailed(
+                partition = json.optString("partition"),
+                external = json.externalOrNull(),
             )
-            "boot_no_checksum" -> BackupReason.BootNoChecksum
-            "boot_stock_image_missing" -> BackupReason.BootStockImageMissing(json.optString("sha1"))
-            "boot_identity_mismatch" -> BackupReason.BootIdentityMismatch(json.optString("sha1"))
-            "boot_flash_failed" -> BackupReason.BootFlashFailed(json.externalOrNull())
+            "partition_flash_failed" -> BackupReason.PartitionFlashFailed(
+                partition = json.optString("partition"),
+                external = json.externalOrNull(),
+            )
+            "partition_missing" -> BackupReason.PartitionMissing(json.optString("partition"))
+            "partition_size_mismatch" -> BackupReason.PartitionSizeMismatch(
+                partition = json.optString("partition"),
+                expected = json.optLong("expected"),
+                actual = json.optLong("actual"),
+            )
+            "partition_name_unusable" -> BackupReason.PartitionNameUnusable(json.optString("partition"))
+            "partition_no_sidecar_meta" -> BackupReason.PartitionNoSidecarMeta
             "file_unreadable" -> BackupReason.FileUnreadable
             "import_too_large" -> BackupReason.ImportTooLarge(
                 path = json.optString("path"),

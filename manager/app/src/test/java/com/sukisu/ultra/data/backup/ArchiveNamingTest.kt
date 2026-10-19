@@ -31,10 +31,14 @@ class ArchiveNamingTest {
     }
 
     @Test
-    fun `boot archive name keeps the first twelve sha1 characters`() {
+    fun `partition archive name carries the partition and a compression suffix`() {
         assertEquals(
-            "boot_9f2c8a1b4e6d_20261008_120000.img",
-            ArchiveNaming.bootArchiveName("9f2c8a1b4e6d00112233445566778899aabbccdd", "20261008_120000")
+            "partition_boot_a_20261008_120000.img",
+            ArchiveNaming.partitionArchiveName("boot_a", "20261008_120000", compressed = false)
+        )
+        assertEquals(
+            "partition_init_boot_a_20261008_120000.img.gz",
+            ArchiveNaming.partitionArchiveName("init_boot_a", "20261008_120000", compressed = true)
         )
     }
 
@@ -46,6 +50,10 @@ class ArchiveNamingTest {
     @Test
     fun `kind is read back from the archive name`() {
         assertEquals(BackupKind.MODULE, ArchiveNaming.kindOf("module_x_1_20261008_120000.zip"))
+        assertEquals(BackupKind.PARTITION, ArchiveNaming.kindOf("partition_boot_a_20261008_120000.img"))
+        assertEquals(BackupKind.PARTITION, ArchiveNaming.kindOf("partition_boot_a_20261008_120000.img.gz"))
+        assertEquals(BackupKind.REPO_CONFIG, ArchiveNaming.kindOf("repo_config_20261008_120000.json"))
+        // 旧版原厂镜像归档仍然认得出来（好告诉用户这个功能换了），但不再产出。
         assertEquals(BackupKind.BOOT, ArchiveNaming.kindOf("boot_9f2c8a1b4e6d_20261008_120000.img"))
         assertNull(ArchiveNaming.kindOf("index.json"))
     }

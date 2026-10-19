@@ -64,15 +64,20 @@ object BackupText {
             ReasonText(R.string.backup_reason_module_id_unusable, listOf(Redaction.redactMessage(reason.entryId)))
         is BackupReason.RepoConfigInvalid -> ReasonText(R.string.backup_reason_repo_config_invalid)
         is BackupReason.NoSource -> ReasonText(R.string.backup_reason_no_source)
-        BackupReason.BootNoSidecarMeta -> ReasonText(R.string.backup_reason_boot_no_meta)
-        is BackupReason.BootForeignStockImage -> ReasonText(
-            R.string.backup_reason_boot_foreign,
-            listOf(shortHash(reason.recorded), shortHash(reason.expected)),
+        is BackupReason.PartitionDumpFailed ->
+            ReasonText(R.string.backup_reason_partition_dump_failed, listOf(reason.partition))
+        is BackupReason.PartitionFlashFailed ->
+            ReasonText(R.string.backup_reason_partition_flash_failed, listOf(reason.partition))
+        is BackupReason.PartitionMissing ->
+            ReasonText(R.string.backup_reason_partition_missing, listOf(reason.partition))
+        is BackupReason.PartitionSizeMismatch -> ReasonText(
+            R.string.backup_reason_partition_size_mismatch,
+            // 大小给用户看的是 MB，而不是一长串字节数。
+            listOf(reason.partition, megabytes(reason.expected), megabytes(reason.actual)),
         )
-        BackupReason.BootNoChecksum -> ReasonText(R.string.backup_reason_boot_no_checksum)
-        is BackupReason.BootStockImageMissing -> ReasonText(R.string.backup_reason_boot_missing, listOf(shortHash(reason.sha1)))
-        is BackupReason.BootIdentityMismatch -> ReasonText(R.string.backup_reason_boot_identity, listOf(shortHash(reason.sha1)))
-        is BackupReason.BootFlashFailed -> ReasonText(R.string.backup_reason_boot_flash_failed)
+        is BackupReason.PartitionNameUnusable ->
+            ReasonText(R.string.backup_reason_partition_name, listOf(Redaction.redactMessage(reason.partition)))
+        BackupReason.PartitionNoSidecarMeta -> ReasonText(R.string.backup_reason_partition_no_meta)
         BackupReason.FileUnreadable -> ReasonText(R.string.backup_reason_file_unreadable)
         is BackupReason.ImportTooLarge -> ReasonText(
             R.string.backup_reason_import_too_large,
@@ -94,7 +99,8 @@ object BackupText {
         is BackupReason.ArchiveFailed -> reason.external
         is BackupReason.ModuleInstallFailed -> reason.external
         is BackupReason.ModuleDisableFailed -> reason.external
-        is BackupReason.BootFlashFailed -> reason.external
+        is BackupReason.PartitionDumpFailed -> reason.external
+        is BackupReason.PartitionFlashFailed -> reason.external
         // 解析器抛的具体原因（不认识的 schema/version、缺哪个字段），正文只有一句
         // "读不出来或格式不对"，细节走这里。
         is BackupReason.RepoConfigInvalid -> reason.external
@@ -142,10 +148,16 @@ object BackupText {
      * "哪种组合该出哪一句"。
      */
     fun outcomeCell(kind: BackupKind, result: BackupRunResult): ReasonText = when {
-        // 一项没写、没跳过、也没失败：源里根本没有可备的东西（boot 就是这种情况：ksud 只在
-        // 打补丁时留下原厂镜像）。
+        // 一项没写、没跳过、也没失败：源里根本没有可备的东西（分区快照就是这样：设备上
+        // 既没有 boot 也没有 init_boot 时，一次快照什么也抓不到）。
         nothingToBackUp(result) ->
-            ReasonText(if (kind == BackupKind.BOOT) R.string.backup_nothing_boot else R.string.backup_nothing_module)
+            ReasonText(
+                if (kind == BackupKind.PARTITION) {
+                    R.string.backup_nothing_partition
+                } else {
+                    R.string.backup_nothing_module
+                },
+            )
         // 写了也跳了：两句都说，否则"已备份 8 项"会让人以为另外 2 项丢了。
         result.written.isNotEmpty() && result.skipped.isNotEmpty() ->
             ReasonText(R.string.backup_result_partial, listOf(result.written.size, result.skipped.size))
@@ -164,13 +176,13 @@ object BackupText {
         results.any { it.written.isEmpty() && it.skipped.isNotEmpty() }
 
     /**
-     * 结果里有没有"没有可备份的原厂镜像"那一格。
+     * 结果里有没有"没有可拍照的分区"那一格。
      *
-     * 有才需要在表下面说清"为什么没有"：ksud 只在打补丁时把原厂镜像留下来，没打过补丁的机器
-     * 本来就没有。这句话不说，用户分不清"本来就该没有"和"这次漏备了"。
+     * 有才需要在表下面说清"为什么没有"：分区快照只抓当前槽位真实存在的 boot / init_boot，
+     * 两样都不在的机器本来就没得抓。这句话不说，用户分不清"本来就该没有"和"这次漏备了"。
      */
-    fun anyNothingBoot(targets: List<BackupTargetResult>): Boolean =
-        targets.any { it.kind == BackupKind.BOOT && nothingToBackUp(it.result) }
+    fun anyNothingPartition(targets: List<BackupTargetResult>): Boolean =
+        targets.any { it.kind == BackupKind.PARTITION && nothingToBackUp(it.result) }
 
     /**
      * 结果框表下面那块说明区。
@@ -180,7 +192,7 @@ object BackupText {
     fun resultNote(context: Context, targets: List<BackupTargetResult>): String? {
         val lines = buildList {
             if (anyUnchanged(targets.map { it.result })) add(context.getString(R.string.backup_result_note))
-            if (anyNothingBoot(targets)) add(context.getString(R.string.backup_result_note_boot))
+            if (anyNothingPartition(targets)) add(context.getString(R.string.backup_result_note_partition))
         }
         return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
@@ -277,6 +289,10 @@ object BackupText {
         val today = java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
         return java.time.temporal.ChronoUnit.DAYS.between(then, today)
     }
+
+    /** 字节数换成 MB，保留一位小数：用户看的是"96.0 MB 对 8.0 MB"，不是 100663296。 */
+    private fun megabytes(bytes: Long): String =
+        java.util.Locale.US.let { locale -> String.format(locale, "%.1f MB", bytes / (1024.0 * 1024.0)) }
 
     private fun shortHash(value: String): String =
         if (value.length <= HASH_PREFIX) value else value.take(HASH_PREFIX) + "…"

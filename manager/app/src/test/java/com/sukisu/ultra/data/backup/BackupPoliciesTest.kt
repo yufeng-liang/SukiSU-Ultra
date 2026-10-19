@@ -19,7 +19,7 @@ class BackupPoliciesTest {
 
     @Test
     fun `same sha in another kind is not a duplicate`() {
-        val existing = listOf(entry("b", "aaa", "2026-10-08T10:00:00Z", BackupKind.BOOT))
+        val existing = listOf(entry("b", "aaa", "2026-10-08T10:00:00Z", BackupKind.PARTITION))
         assertNull(DuplicatePolicy.findDuplicate(existing, BackupKind.MODULE, "aaa"))
     }
 
@@ -102,7 +102,7 @@ class BackupPoliciesTest {
         val existing = listOf(
             entry("m1", "1", "2026-10-01T00:00:00Z"),
             entry("m2", "2", "2026-10-02T00:00:00Z"),
-            entry("b1", "3", "2026-10-01T00:00:00Z", BackupKind.BOOT),
+            entry("b1", "3", "2026-10-01T00:00:00Z", BackupKind.PARTITION),
         )
         assertEquals(
             emptyList<String>(),
@@ -112,27 +112,27 @@ class BackupPoliciesTest {
 
     @Test
     fun `keep quota differs per kind`() {
-        assertEquals(5, RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 5, bootKeep = 2))
-        assertEquals(2, RetentionPolicy.keepFor(BackupKind.BOOT, moduleKeep = 5, bootKeep = 2))
+        assertEquals(5, RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 5, partitionKeep = 2))
+        assertEquals(2, RetentionPolicy.keepFor(BackupKind.PARTITION, moduleKeep = 5, partitionKeep = 2))
         // 仓库源配置写死 1 份：整批替换的小 JSON，历史没有回退价值，也不进设置页的额度滑块。
-        assertEquals(1, RetentionPolicy.keepFor(BackupKind.REPO_CONFIG, moduleKeep = 5, bootKeep = 2))
-        assertEquals(1, RetentionPolicy.keepFor(BackupKind.REPO_CONFIG, moduleKeep = 0, bootKeep = 0))
+        assertEquals(1, RetentionPolicy.keepFor(BackupKind.REPO_CONFIG, moduleKeep = 5, partitionKeep = 2))
+        assertEquals(1, RetentionPolicy.keepFor(BackupKind.REPO_CONFIG, moduleKeep = 0, partitionKeep = 0))
     }
 
     @Test
     fun `keep quota is clamped to the retention limits`() {
         // 偏好项是从磁盘读出来的：手改过、从旧版本升上来都可能越界。额度 0 会让下一次备份
         // 把刚写进去的那一份当场删掉，上限则是给磁盘一个说得清的边界。
-        assertEquals(1, RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 0, bootKeep = 2))
-        assertEquals(1, RetentionPolicy.keepFor(BackupKind.BOOT, moduleKeep = 5, bootKeep = -3))
+        assertEquals(1, RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 0, partitionKeep = 2))
+        assertEquals(1, RetentionPolicy.keepFor(BackupKind.PARTITION, moduleKeep = 5, partitionKeep = -3))
         assertEquals(
             RetentionLimit.MAX,
-            RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 999, bootKeep = 2),
+            RetentionPolicy.keepFor(BackupKind.MODULE, moduleKeep = 999, partitionKeep = 2),
         )
-        // boot 上限更紧：单张镜像 32–96MB，20 份就是近 2GB。
+        // 分区快照上限更紧：一次 104MB，20 次就是 2GB。
         assertEquals(
-            RetentionLimit.MAX_BOOT,
-            RetentionPolicy.keepFor(BackupKind.BOOT, moduleKeep = 5, bootKeep = 999),
+            RetentionLimit.MAX_PARTITION,
+            RetentionPolicy.keepFor(BackupKind.PARTITION, moduleKeep = 5, partitionKeep = 999),
         )
     }
 
@@ -141,7 +141,7 @@ class BackupPoliciesTest {
         assertEquals(1, RetentionLimit.clampModule(0))
         assertEquals(1, RetentionLimit.clampModule(-7))
         assertEquals(RetentionLimit.MAX, RetentionLimit.clampModule(1000))
-        assertEquals(RetentionLimit.MAX_BOOT, RetentionLimit.clampBoot(1000))
+        assertEquals(RetentionLimit.MAX_PARTITION, RetentionLimit.clampPartition(1000))
         assertEquals(5, RetentionLimit.clampModule(5))
     }
 

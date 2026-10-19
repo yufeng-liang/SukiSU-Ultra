@@ -67,13 +67,21 @@ interface SettingsRepository {
     var backupAutoCloud: Boolean
 
     /**
-     * 保留额度：模块留最近几次备份、boot 留几次。
+     * 保留额度：模块留最近几次备份、分区快照留几次。
      *
      * 两个都在 `RetentionLimit` 的范围里，读出来就钳过——这些数字躺在 SharedPreferences 里，
      * 手改过、从老版本升上来都可能越界，而越界的额度是"备份完立刻把成果删光"这种事故。
      */
     var backupRetention: Int
-    var backupBootRetention: Int
+    var backupPartitionRetention: Int
+
+    /**
+     * 分区快照是否 gzip 压缩，默认开。
+     *
+     * boot 分区 96MB，压缩后约 20MB；云端备份按上传体积算时间，这个开关直接影响一等就是多久。
+     * 默认开是因为它几乎没有代价：多花几秒 CPU，换上传体积少四分之三。
+     */
+    var backupPartitionCompressed: Boolean
 
     /**
      * 上一次自动备份的结果（JSON，见 `AutoBackupRecordJson`）。

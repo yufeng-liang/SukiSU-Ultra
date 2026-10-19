@@ -86,14 +86,14 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importFrom(it) } }
 
-    // 恢复原厂镜像会把当前已打补丁的 boot 换掉，设备直接回到未 root 状态——不可逆、且用户
-    // 未必知道，所以这一项必须问一次。单个模块恢复只是重装那一个模块，不必拦；但单条仓库源
-    // 恢复是整批替换（点一下就把现在配的全部源换成归档里的），也要问；详情页一进来就是全选，
-    // "恢复"一下可能把整组模块按备份里的版本重装一遍，同样要问（见下）。
+    // 恢复分区快照是往块设备写镜像：写错分区、或者镜像和现在的分区长度不符，都可能开不了机，
+    // 而且没有撤销——所以这一项必须问一次。单个模块恢复只是重装那一个模块，不必拦；但单条
+    // 仓库源恢复是整批替换（点一下就把现在配的全部源换成归档里的），也要问；详情页一进来就是
+    // 全选，"恢复"一下可能把整组模块按备份里的版本重装一遍，同样要问（见下）。
     val confirmDialog = rememberConfirmDialog()
     val confirmScope = rememberCoroutineScope()
-    val bootConfirmTitle = stringResource(R.string.backup_boot_restore_confirm_title)
-    val bootConfirmBody = stringResource(R.string.backup_boot_restore_confirm_body)
+    val partitionConfirmTitle = stringResource(R.string.backup_partition_restore_confirm_title)
+    val partitionConfirmBody = stringResource(R.string.backup_partition_restore_confirm_body)
     val deleteConfirmTitle = stringResource(R.string.backup_delete_confirm_title)
     val deleteSelectedConfirmTitle = stringResource(R.string.backup_delete_selected_confirm_title)
     // 标题里要拼条数，而拼的时候在普通 lambda 里：stringResource 只能在 @Composable 里调，
@@ -115,14 +115,14 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onSetOriginEntries = viewModel::setOriginEntries,
         onToggleGroupEntry = viewModel::toggleGroupEntry,
         onRestoreSelected = {
-            // 选中的里面有原厂镜像就必须先问一次：恢复它等于把设备带回未 root 状态，
-            // 不可逆，而且用户未必知道自己勾上了它。
+            // 选中的里面有分区快照就必须先问一次：恢复它是往块设备写镜像，不可逆，
+            // 而且用户未必知道自己勾上了它。
             val selection = state.openGroupSelection
             when (restoreConfirmFor(selection)) {
-                RestoreConfirm.BOOT -> confirmScope.launch {
+                RestoreConfirm.PARTITION -> confirmScope.launch {
                     val confirmed = confirmDialog.awaitConfirm(
-                        title = bootConfirmTitle,
-                        content = bootConfirmBody,
+                        title = partitionConfirmTitle,
+                        content = partitionConfirmBody,
                     ) == ConfirmResult.Confirmed
                     if (confirmed) viewModel.restoreSelected()
                 }
@@ -206,7 +206,8 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onSetAutoBackup = viewModel::setAutoBackup,
         onSelectAutoBackupOrigins = viewModel::setAutoBackupOrigins,
         onSetModuleRetention = viewModel::setModuleRetention,
-        onSetBootRetention = viewModel::setBootRetention,
+        onSetPartitionRetention = viewModel::setPartitionRetention,
+        onSetPartitionCompressed = viewModel::setPartitionCompressed,
         onToggleRetention = viewModel::toggleRetention,
         onToggleCloud = viewModel::toggleCloud,
         onToggleModules = viewModel::toggleModules,
@@ -365,11 +366,11 @@ fun groupHeaderText(group: BackupGroup, cloudSavedUrl: String): String {
  */
 @Composable
 fun retentionSummary(state: BackupUiState): String {
-    val counts = listOf(state.moduleRetention, state.bootRetention)
+    val counts = listOf(state.moduleRetention, state.partitionRetention)
         .map { value -> stringResource(R.string.backup_retention_count, value) }
     val labels = listOf(
         stringResource(R.string.backup_retention_module),
-        stringResource(R.string.backup_kind_boot),
+        stringResource(R.string.backup_kind_partition),
     )
     return labels.zip(counts) { label, count -> "$label $count" }
         .joinToString(BackupListFormatter.SEPARATOR)

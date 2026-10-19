@@ -2,11 +2,11 @@ package com.sukisu.ultra.data.backup
 
 import java.io.InputStream
 
-/** 导入外部归档时由源补出来的身份信息：boot 需要它才能被 ksud 认出来。 */
+/** 导入外部归档时由源补出来的身份信息：分区快照需要它才知道该刷哪儿。 */
 data class ImportMeta(val entryId: String, val metaJson: String)
 
 /**
- * 一类可备份内容（模块 / boot）。
+ * 一类可备份内容（模块 / 分区快照 / 仓库源配置）。
  *
  * 实现负责“产出归档”和“从归档恢复”，不关心归档存在哪里——存储由 [BackupStorage] 决定。
  */
@@ -17,12 +17,12 @@ interface BackupSource {
      * 打包当前状态。
      *
      * [selected] 是"只要这些 entryId"；null = 源里有什么就打包什么。模块用它支持用户勾选，
-     * boot 忽略它（那一份镜像本来就只有一张）。单个条目失败应跳过该条目、并记进
+     * 分区快照忽略它（一次就抓当前槽位的全部分区）。单个条目失败应跳过该条目、并记进
      * [ExportOutcome.failures]，而不是整体失败。
      *
      * [onPacking] 报打包到第几个条目了：这一段没有任何字节数可报（归档还在生成），而它往往是整个
      * 备份里最慢的一段，不报的话界面只能干等着（见 [PackingProgress]）。条目数一眼数得清的源
-     * （boot、仓库源配置）也报一条，界面据此知道"打包已经开始了"。
+     * （分区快照、仓库源配置）也报一条，界面据此知道"打包已经开始了"。
      */
     suspend fun export(
         selected: Set<String>? = null,
@@ -35,9 +35,15 @@ interface BackupSource {
     /**
      * 从外部导入的归档需要什么才能被恢复。
      *
-     * 默认什么都不需要（模块 zip 自带 module.prop，装上去即可）。boot 例外：
-     * ksud 只认 `/data/adb/ksu/ksu_backup_<原厂镜像 sha1>`，而 sha1 只存在于内容里，
-     * 所以必须读一遍内容把身份算出来，否则导入的 boot 归档永远恢复不了。
+     * 默认什么都不需要（模块 zip 自带 module.prop，装上去即可）。分区快照例外：归档里只
+     * 记了"刷回哪个分区"这一件事，而它必须由源在导入时补进边车 meta——没有 meta 的归档在
+     * 恢复时只能被拒绝（[BackupReason.PartitionNoSidecarMeta]）。
+     *
+     * [fileName] 是归档的文件名，导入时分区名就从这里认（`partition_init_boot_a_...img.gz`）。
      */
-    suspend fun metaForImport(open: () -> InputStream, size: Long): ImportMeta? = null
+    suspend fun metaForImport(
+        fileName: String,
+        open: () -> InputStream,
+        size: Long,
+    ): ImportMeta? = null
 }

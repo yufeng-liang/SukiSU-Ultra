@@ -692,11 +692,11 @@ private fun RetentionCardMiuix(state: BackupUiState, actions: BackupActions) {
                     onCommit = actions.onSetModuleRetention,
                 )
                 RetentionSliderMiuix(
-                    title = stringResource(R.string.backup_retention_boot),
-                    summary = stringResource(R.string.backup_retention_boot_summary),
-                    value = state.bootRetention,
-                    max = RetentionLimit.MAX_BOOT,
-                    onCommit = actions.onSetBootRetention,
+                    title = stringResource(R.string.backup_retention_partition),
+                    summary = stringResource(R.string.backup_retention_partition_summary),
+                    value = state.partitionRetention,
+                    max = RetentionLimit.MAX_PARTITION,
+                    onCommit = actions.onSetPartitionRetention,
                 )
             }
         }
@@ -797,7 +797,7 @@ private fun LazyListScope.backupTabItems(
                 // 细目。所以它不用 CheckboxPreference（那个整行点击都会翻转勾选框），
                 // 而是和 Material 一样自己拼一行。
                 ModuleRowMiuix(state = state, actions = actions)
-                // 展开的细目必须紧跟在"模块"这一行下面：摆到 boot / 仓库源后面，看着就像
+                // 展开的细目必须紧跟在"模块"这一行下面：摆到分区快照 / 仓库源后面，看着就像
                 // 那两栏的子项，勾的到底是谁全靠猜。
                 // 没得挑的时候不摆一个空列表出来：为什么没得挑写在上面那一行的副标题里。
                 // 列表不再跟着模块那个勾选框走：勾选框现在管全选/全不选，取消全选之后
@@ -805,13 +805,22 @@ private fun LazyListScope.backupTabItems(
                 if (state.modules.isNotEmpty()) {
                     ModulePickerMiuix(state = state, actions = actions)
                 }
-                // boot 那一栏备份的始终是原厂（未打补丁）镜像，恢复它等于回到未 root
-                // 状态。这句话常显而不是选中才出现：选中时冒出来会把下面的东西整体推下去。
+                // 分区快照抓的是当前设备上 boot + init_boot 两个分区的原始内容，恢复是往
+                // 块设备写镜像（不可撤销）。这句话常显而不是选中才出现：选中时冒出来会把它
+                // 下面的东西整体推下去。
                 CheckboxPreference(
-                    title = stringResource(R.string.backup_kind_boot),
-                    summary = stringResource(R.string.backup_boot_explain),
-                    checked = BackupKind.BOOT in state.kinds,
-                    onCheckedChange = { actions.onToggleKind(BackupKind.BOOT) },
+                    title = stringResource(R.string.backup_kind_partition),
+                    summary = stringResource(R.string.backup_partition_explain),
+                    checked = BackupKind.PARTITION in state.kinds,
+                    onCheckedChange = { actions.onToggleKind(BackupKind.PARTITION) },
+                )
+                // 压缩开关只影响分区快照这一栏，所以紧跟着它，而不是塞进保留额度那张卡。
+                // 默认开：boot 96MB 压完约 20MB，云端那一步能省好几倍时间。
+                SwitchPreference(
+                    title = stringResource(R.string.backup_partition_compress_title),
+                    summary = stringResource(R.string.backup_partition_compress_summary),
+                    checked = state.partitionCompressed,
+                    onCheckedChange = actions.onSetPartitionCompressed,
                 )
                 // 仓库源配置整批备份、整批恢复：卸载重装管理器最容易丢的就是它，所以
                 // 默认勾上（见 BackupUiState.kinds），summary 说明备份的是哪些东西。

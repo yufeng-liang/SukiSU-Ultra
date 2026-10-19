@@ -24,7 +24,7 @@ class BackupEngine(
     private val sources: Map<BackupKind, BackupSource>,
     private val storages: List<BackupStorage>,
     private val retention: Int = 5,
-    private val bootRetention: Int = 2,
+    private val partitionRetention: Int = 2,
     private val clock: () -> Instant = { Instant.now() },
 ) {
 
@@ -160,7 +160,7 @@ class BackupEngine(
                     val expired = RetentionPolicy.expired(
                         existing = updated,
                         kind = kind,
-                        keep = RetentionPolicy.keepFor(kind, retention, bootRetention),
+                        keep = RetentionPolicy.keepFor(kind, retention, partitionRetention),
                         // 刚写进去的这些不许被同一次调用删掉：设备时钟被调过时，"最近"会算到旧
                         // 备份头上，那样这次备份就是删掉自己。
                         keepEntries = pending.mapTo(mutableSetOf()) { it.fileName },
@@ -321,7 +321,7 @@ class BackupEngine(
         if (size > BackupLimits.MAX_IMPORT_BYTES) {
             throw BackupReasonException(BackupReason.ImportTooLarge(requested, BackupLimits.MAX_IMPORT_BYTES))
         }
-        val adopted = sources[kind]?.metaForImport(open, size)
+        val adopted = sources[kind]?.metaForImport(requested, open, size)
         val resolvedMeta = metaJson ?: adopted?.metaJson
         // 先算校验和，再进索引锁：同一个文件被导两次只该收一份，而"是不是同一份内容"只能靠它
         // 判断（文件名可以改、大小可以一样）。同时再次限制实际流长度，不信任 SAF 声明的 size。

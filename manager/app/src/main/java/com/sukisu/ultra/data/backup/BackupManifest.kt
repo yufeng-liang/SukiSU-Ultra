@@ -109,4 +109,36 @@ object BackupManifest {
             createdAt = item.optString("createdAt"),
         )
     }
+
+    fun renderPartitionMeta(meta: PartitionSnapshotMeta): String = JSONObject().apply {
+        put("schema", ArchiveNaming.PARTITION_SCHEMA)
+        put("version", ArchiveNaming.MANIFEST_VERSION)
+        put("entryId", meta.entryId)
+        // partition 是恢复时唯一的分区来源，必须写全（含槽位）。
+        put("partition", meta.partition)
+        put("sourceDevice", meta.sourceDevice)
+        put("partitionSizeBytes", meta.partitionSizeBytes)
+        put("compressed", meta.compressed)
+        put("createdAt", meta.createdAt)
+    }.toString(2)
+
+    /**
+     * 解析分区快照的边车 meta。
+     *
+     * 与模块 meta 不同，这里**不做容错**：分区名缺失或形状不对时，调用方必须拿到 null 去拒绝
+     * 恢复。给一个默认值（比如 "boot"）意味着蒙着眼睛往某个分区刷镜像。
+     */
+    fun parsePartitionMeta(json: String): PartitionSnapshotMeta? = runCatching {
+        val item = JSONObject(json)
+        val partition = item.optString("partition")
+        if (!ShellPartitionIo.isValidName(partition)) return null
+        PartitionSnapshotMeta(
+            entryId = item.optString("entryId"),
+            partition = partition,
+            sourceDevice = item.optString("sourceDevice"),
+            partitionSizeBytes = item.optLong("partitionSizeBytes"),
+            compressed = item.optBoolean("compressed"),
+            createdAt = item.optString("createdAt"),
+        )
+    }.getOrNull()
 }

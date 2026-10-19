@@ -8,7 +8,6 @@ import com.sukisu.ultra.data.repository.SettingsRepository
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.util.getFileName
-import com.sukisu.ultra.ui.util.restoreBoot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -22,9 +21,11 @@ object BackupDefaults {
     const val LOCAL_DIR = "/sdcard/Download/SukiSU-Backup"
     const val RETENTION = 5
 
-    /** boot 单张原厂镜像 32–96MB，留 5 份就是几百 MB，默认只留 2 份。 */
-    const val BOOT_RETENTION = 2
-
+    /**
+     * 分区快照每次两张（boot 约 96MB + init_boot 约 8MB，压缩后约 20MB），
+     * 留 5 次就是 100MB 起步，默认只留 2 份。
+     */
+    const val PARTITION_RETENTION = 2
 }
 
 /**
@@ -45,7 +46,7 @@ data class OriginEntry(val origin: BackupOrigin, val entry: BackupEntry)
  *
  * 所有临时文件都收进 [workStaging] 或后端各自的 staging：以前打包/恢复/导入的文件直接落在
  * cacheDir 根下，不在任何 [StagingArea] 管辖内，[StagingArea.cleanupStale] 永远碰不到它们，
- * boot 每导出一次就在那儿留一份 32–96MB 的镜像。
+ * 分区快照每导出一次就在那儿留一份上百 MB 的镜像。
  */
 class BackupRepository(private val context: Context = ksuApp) {
 
@@ -77,23 +78,14 @@ class BackupRepository(private val context: Context = ksuApp) {
             deviceName = { android.os.Build.MODEL ?: "unknown" },
             staging = workStaging,
         ),
-        BackupKind.BOOT to BootBackupSource(
-            rootFiles = ShellRootFiles(),
-            // ksud 只按当前 patched boot 里的 sha1 找文件、不校验内容，校验由 BootBackupSource 自己做
-            restorer = {
-                // 同样要 runCatchingCancellable：刷机是个长任务，取消被吞掉会继续往下刷。
-                runCatchingCancellable {
-                    val result = restoreBoot({}, {})
-                    if (result.code != 0) {
-                        // ksud 的 stderr 才是真正的原因；它可能是空的，那就让 UI 只说"恢复失败"。
-                        throw BackupReasonException(
-                            BackupReason.BootFlashFailed(result.err.takeIf { it.isNotBlank() }),
-                        )
-                    }
-                }
-            },
+        // 分区快照不走 ksud：boot-restore 只认 /data/adb/ksu/ksu_backup_<sha1>（那是卸载 root
+        // 用的原厂镜像），而这里要的是"把某个分区当前的样子存下来、以后原样刷回去"，只能自己 dd。
+        BackupKind.PARTITION to PartitionSnapshotSource(
+            io = ShellPartitionIo(),
             clock = { Instant.now() },
+            deviceName = { android.os.Build.MODEL ?: "unknown" },
             staging = workStaging,
+            compress = { settings.backupPartitionCompressed },
         ),
         BackupKind.REPO_CONFIG to RepoConfigBackupSource(
             reader = { RepoSourceRepositoryImpl().loadSources() },
@@ -137,12 +129,13 @@ class BackupRepository(private val context: Context = ksuApp) {
      * 那个要现建 OkHttp 客户端。
      */
     private fun engineFor(origins: List<BackupOrigin>): BackupEngine {
-        val (moduleKeep, bootKeep) = backupRetentionNow({ settings.backupRetention }, { settings.backupBootRetention })
+        val (moduleKeep, partitionKeep) =
+            backupRetentionNow({ settings.backupRetention }, { settings.backupPartitionRetention })
         return BackupEngine(
             sources = engineSources,
             storages = origins.map { storageFor(it) },
             retention = moduleKeep,
-            bootRetention = bootKeep,
+            partitionRetention = partitionKeep,
         )
     }
 
@@ -254,7 +247,7 @@ class BackupRepository(private val context: Context = ksuApp) {
     /** zip 名字带上这一批是什么，用户存下来之后还认得出。 */
     private fun shareZipName(entries: List<BackupEntry>): String {
         val kind = when {
-            entries.all { it.kind == BackupKind.BOOT } -> "boot"
+            entries.all { it.kind == BackupKind.PARTITION } -> "partition"
             entries.all { it.kind == BackupKind.REPO_CONFIG } -> "repo-config"
             else -> "modules"
         }
@@ -347,9 +340,9 @@ class BackupRepository(private val context: Context = ksuApp) {
     /**
      * SAF 选中的归档文件收编进本地备份列表，之后即可恢复。
      *
-     * 返回收编后**实际**记进去的类型：归档名里带着身份（`boot_` 前缀是原厂镜像），而界面上的
-     * "备份内容"勾选在另一个分页上，隔着这么远按勾选猜类型，会把 boot 归档登记成模块——
-     * 之后点"恢复"就会拿它去装模块。名字认不出来时才退回调用方给的那个。
+     * 返回收编后**实际**记进去的类型：归档名里带着身份（`partition_` 前缀是分区快照），而界面上
+     * 的"备份内容"勾选在另一个分页上，隔着这么远按勾选猜类型，会把快照归档登记成模块——之后点
+     * "恢复"就会拿它去装模块。名字认不出来时才退回调用方给的那个。
      */
     suspend fun importFromSaf(uri: Uri, kind: BackupKind): Result<BackupKind> = withContext(Dispatchers.IO) {
         // 整段都收进 Result：这里的失败（选的文件打不开、超过导入上限、索引写不进去）是要给用户

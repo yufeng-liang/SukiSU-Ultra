@@ -54,13 +54,13 @@ object RetentionPolicy {
         runCatching { Instant.parse(entry.createdAt) }.getOrDefault(Instant.EPOCH)
 
     /**
-     * 按 kind 取额度：模块、boot 各一份，取值都由 [RetentionLimit] 钳过。
+     * 按 kind 取额度：模块、分区快照各一份，取值都由 [RetentionLimit] 钳过。
      *
      * 仓库源配置固定只留 1 份：它是整批替换的小 JSON，历史版本没有回退价值——要回退
      * 仓库源，用户改回来就是了。写死在这里而不是塞进设置页，避免额度卡片多一行没人动的滑块。
      */
-    fun keepFor(kind: BackupKind, moduleKeep: Int, bootKeep: Int): Int = when (kind) {
-        BackupKind.BOOT -> RetentionLimit.clampBoot(bootKeep)
+    fun keepFor(kind: BackupKind, moduleKeep: Int, partitionKeep: Int): Int = when (kind) {
+        BackupKind.PARTITION -> RetentionLimit.clampPartition(partitionKeep)
         BackupKind.REPO_CONFIG -> 1
         else -> RetentionLimit.clampModule(moduleKeep)
     }
@@ -77,14 +77,17 @@ object RetentionLimit {
     const val MIN = 1
     const val MAX = 20
 
-    /** boot 单张镜像 32–96MB，留 20 份就是近 2GB，上限比模块更紧。 */
-    const val MAX_BOOT = 10
+    /**
+     * 分区快照每次备份产出两张（boot 约 96MB + init_boot 约 8MB，压缩后约 20MB），
+     * 留 20 次就是 400MB 起步，上限比模块更紧。
+     */
+    const val MAX_PARTITION = 10
 
     fun clamp(value: Int, max: Int = MAX): Int = value.coerceIn(MIN, max)
 
     fun clampModule(value: Int): Int = clamp(value, MAX)
 
-    fun clampBoot(value: Int): Int = clamp(value, MAX_BOOT)
+    fun clampPartition(value: Int): Int = clamp(value, MAX_PARTITION)
 }
 
 /**
@@ -94,13 +97,18 @@ object RetentionLimit {
  * 设置本次会话就不生效——看着改了、备份照旧按旧数字裁。取值函数而不是直接传 Int，是为了让
  * "每次调用都重新读"这条纪律有一个能被单测盯住的地方（见 BackupPoliciesTest）。
  *
- * @return 模块与 boot 镜像各自的保留份数。
+ * @return 模块与分区快照各自的保留份数。
  */
-internal fun backupRetentionNow(readModule: () -> Int, readBoot: () -> Int): Pair<Int, Int> =
-    readModule() to readBoot()
+internal fun backupRetentionNow(readModule: () -> Int, readPartition: () -> Int): Pair<Int, Int> =
+    readModule() to readPartition()
 
 object AutoBackupPolicy {
-    /** 自动备份只覆盖模块，且必须显式开启；boot 镜像体积大且变化少，不做自动上传。 */
+    /**
+     * 自动备份只覆盖模块，且必须显式开启。
+     *
+     * 分区快照是用户主动"现在设备是好的，先存一份"的动作，不该在装模块时被偷偷触发；
+     * 而且一次要读写上百 MB，自动跑会把一次安装变得莫名其妙地慢。
+     */
     fun shouldRun(enabled: Boolean, kind: BackupKind): Boolean = enabled && kind == BackupKind.MODULE
 
     /**

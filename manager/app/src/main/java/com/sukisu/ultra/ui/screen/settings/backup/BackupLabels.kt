@@ -9,7 +9,7 @@ import com.sukisu.ultra.data.backup.BackupOrigin
  * 备份界面里那几个"跟着语言走"的短标签。
  *
  * 单独放一处：分组卡片（两个主题各画一遍）、备份详情页和提示消息都要说"本机/云端"和
- * "模块/原厂 boot 镜像"，各写一份 `if (kind == BOOT) …` 迟早会有一处漏改。
+ * "模块/分区快照"，各写一份 `if (kind == PARTITION) …` 迟早会有一处漏改。
  */
 object BackupLabels {
 
@@ -23,7 +23,8 @@ object BackupLabels {
 
     @StringRes
     fun kind(kind: BackupKind): Int = when (kind) {
-        BackupKind.BOOT -> R.string.backup_kind_boot
+        // 旧的 BOOT（原厂 boot 镜像）不再有源，也不会出现在列表里，走到这里只是兜底。
+        BackupKind.PARTITION -> R.string.backup_kind_partition
         BackupKind.REPO_CONFIG -> R.string.backup_kind_repo
         else -> R.string.backup_kind_module
     }

@@ -117,7 +117,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 autoBackupCloud = settings.backupAutoCloud,
                 autoBackupRecord = repository.lastAutoBackup(),
                 moduleRetention = settings.backupRetention,
-                bootRetention = settings.backupBootRetention,
+                partitionRetention = settings.backupPartitionRetention,
+                partitionCompressed = settings.backupPartitionCompressed,
             )
         }
     )
@@ -342,9 +343,19 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(moduleRetention = settings.backupRetention) }
     }
 
-    fun setBootRetention(value: Int) {
-        settings.backupBootRetention = value
-        _uiState.update { it.copy(bootRetention = settings.backupBootRetention) }
+    fun setPartitionRetention(value: Int) {
+        settings.backupPartitionRetention = value
+        _uiState.update { it.copy(partitionRetention = settings.backupPartitionRetention) }
+    }
+
+    /**
+     * 分区快照是否压缩。
+     *
+     * 只写设置、不重跑备份：下一次导出才读它（源在每次 export 里现读一次），改完立刻生效。
+     */
+    fun setPartitionCompressed(compressed: Boolean) {
+        settings.backupPartitionCompressed = compressed
+        _uiState.update { it.copy(partitionCompressed = settings.backupPartitionCompressed) }
     }
 
     /** 保留额度那一块的展开/收起。 */
@@ -516,7 +527,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 rows = rows,
                 groups = groups,
                 selectedGroupIds = stillSelected,
-                // 空列表要说清"为什么空"：模块是"还没备份过"，boot 是"本机根本没有原厂镜像"。
+                // 空列表要说清"为什么空"：模块是"还没备份过"，分区快照是"这台设备上没有可拍照的分区"。
                 // 读取失败时不给空状态文案——那句"还没有备份"会把"没读到"说成"没有"。
                 emptyText = if (collected.isEmpty() && !listingFailed) {
                     emptyText(origins, kinds)
@@ -658,7 +669,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
         var restored = 0
         // 恢复了什么决定要不要提示重启：仓库源配置只是整批替换 prefs，仓库页每次打开都现读，
-        // 不需要重启；模块和 boot 才需要。只恢复了仓库源时提示"重启生效"是一句谎话。
+        // 不需要重启；模块和分区快照才需要。只恢复了仓库源时提示"重启生效"是一句谎话。
         val restoredKinds = mutableSetOf<BackupKind>()
         val failures = mutableListOf<String>()
         // 同一份内容本机与云端各有一条（列表把两侧并成了一行）。按内容只恢复一次、优先本机：
@@ -712,7 +723,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     // 两侧各有一份时把"只恢复了一次"说出来：用户看着两行、默认还全选，不说一句
                     // 就不知道到底恢复了几份、动的是哪一份。
                     if (chosen.size < selected.size) add(string(R.string.backup_restore_deduped))
-                    // 恢复"成功"只是文件到位：模块要重启才加载，刷回去的原厂 boot 也要重启才真正
+                    // 恢复"成功"只是文件到位：模块要重启才加载，刷回去的分区也要重启才真正
                     // 离开 KSU。只说"N 项已恢复"会让用户以为已经在跑了。
                     if (restored > 0 && restoredKinds.any { it != BackupKind.REPO_CONFIG }) {
                         add(string(R.string.reboot_to_apply))
@@ -837,7 +848,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         // "谁先谁后"——Main.immediate 下协程体是先跑起来、再轮到外面那行的。
         backupJob = coroutineContext[Job]
         _uiState.update { it.copy(loading = true, message = null) }
-        // 只有模块能挑；boot 那一栏传 null（源里有什么就备什么）。
+        // 只有模块能挑；分区快照那一栏传 null（源里有什么就备什么）。
         // 列表读不出来时也传 null：那是一次读失败，不该变成"什么都没备"。
         val selectedModules = when {
             BackupKind.MODULE !in state.kinds -> null
@@ -986,7 +997,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 失败也一样：操作本身是本地操作，提示该出现在它真正动过的那个列表上。
      */
     fun importFrom(uri: Uri) = viewModelScope.launch {
-        // 先按勾选猜一个类型交给仓库：它认得归档名（boot_ 前缀是原厂镜像），会以自己认出的为准，
+        // 先按勾选猜一个类型交给仓库：它认得归档名（partition_ 前缀是分区快照），会以自己认出的为准，
         // 认不出才用这个。猜错了不至于出事，但导入完得按**实际**类型去列，否则刚导进来的那份
         // 不在列表里——"已导入"却找不到东西，和没导一样。
         val guess = _uiState.value.kinds.minByOrNull { it.ordinal } ?: BackupKind.MODULE
@@ -1147,8 +1158,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * 列表为空时该说的那句话。
      *
-     * boot 与模块要分开：模块空 = 还没备份过（可操作），boot 空 = 本机没有原厂镜像
-     * （ksud 只在打补丁时留下它，用户做什么都不会有），这两件事给同一句话就是误导。
+     * 分区快照与模块要分开：模块空 = 还没备份过（可操作），分区快照空 = 这台设备上没有可拍照的
+     * 分区（比如 boot / init_boot 都读不到，用户做什么都不会有），这两件事给同一句话就是误导。
      * 勾了多个来源/内容时四种组合都可能是空的，那就只说"还没有备份"。
      */
     private fun emptyText(origins: Set<BackupOrigin>, kinds: Set<BackupKind>): String =
@@ -1159,8 +1170,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
 
     private fun emptyTextFor(origin: BackupOrigin, kind: BackupKind): String = when {
-        kind == BackupKind.BOOT && origin == BackupOrigin.CLOUD -> string(R.string.backup_empty_boot_cloud)
-        kind == BackupKind.BOOT -> string(R.string.backup_empty_boot_local)
+        kind == BackupKind.PARTITION && origin == BackupOrigin.CLOUD ->
+            string(R.string.backup_empty_partition_cloud)
+        kind == BackupKind.PARTITION -> string(R.string.backup_empty_partition_local)
         kind == BackupKind.REPO_CONFIG -> string(R.string.backup_empty_repo_config)
         origin == BackupOrigin.CLOUD -> string(R.string.backup_empty_module_cloud)
         else -> string(R.string.backup_empty_module_local)
@@ -1168,7 +1180,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     /** 列表里那几段必须跟着语言走的文案，见 [BackupListFormatter.rows]。 */
     private fun rowLabels() = BackupRowLabels(
-        bootTitle = string(R.string.backup_boot_row_title),
+        partitionTitle = string(R.string.backup_partition_row_title),
+        compressed = string(R.string.backup_partition_compressed_tag),
         repoConfigTitle = string(R.string.backup_kind_repo),
         disabled = string(R.string.backup_row_disabled),
         originLabel = { origin -> originLabel(origin) },
@@ -1234,8 +1247,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * 读边车 meta 用于列表展示。
      *
-     * 只读模块的：boot 的边车 meta 是另一套结构（sha1/sha256），硬按模块 meta 解析只会得到
-     * 一个名字为空的壳，而 boot 行的标题本来就不看 meta（见 [BackupListFormatter.rows]）。
+     * 只读模块的：分区快照的边车 meta 是另一套结构（partition/sizeBytes），硬按模块 meta 解析
+     * 只会得到一个名字为空的壳，而分区快照行的标题本来就不看 meta（见 [BackupListFormatter.rows]）。
      */
     private suspend fun loadMetas(origin: BackupOrigin, list: List<BackupEntry>): Map<String, ModuleBackupMeta> =
         list.filter { it.kind == BackupKind.MODULE }.mapNotNull { entry ->

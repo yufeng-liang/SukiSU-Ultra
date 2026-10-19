@@ -300,9 +300,17 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = RetentionLimit.clampModule(prefs.getInt("backup_retention", BackupDefaults.RETENTION))
         set(value) = prefs.edit { putInt("backup_retention", RetentionLimit.clampModule(value)) }
 
-    override var backupBootRetention: Int
-        get() = RetentionLimit.clampBoot(prefs.getInt("backup_boot_retention", BackupDefaults.BOOT_RETENTION))
-        set(value) = prefs.edit { putInt("backup_boot_retention", RetentionLimit.clampBoot(value)) }
+    override var backupPartitionRetention: Int
+        get() = RetentionLimit.clampPartition(
+            prefs.getInt("backup_partition_retention", BackupDefaults.PARTITION_RETENTION),
+        )
+        set(value) = prefs.edit {
+            putInt("backup_partition_retention", RetentionLimit.clampPartition(value))
+        }
+
+    override var backupPartitionCompressed: Boolean
+        get() = prefs.getBoolean("backup_partition_compressed", true)
+        set(value) = prefs.edit { putBoolean("backup_partition_compressed", value) }
 
     override var backupAutoLastRecord: String
         get() = prefs.getString("backup_auto_last_record", "") ?: ""
