@@ -64,6 +64,9 @@ class PartitionSnapshotSource(
                         storage = SOURCE_STORAGE,
                         reason = BackupReason.PartitionDumpFailed(info.name, externalTextOrNull(error)),
                     )
+                    // 没走到 artifact 就没有 cleanup 回调，这里自己收尾——96MB × 两个分区，
+                    // 失败几次就能把缓存撑满。
+                    staged.delete()
                     return@forEachIndexed
                 }
                 val fileName = ArchiveNaming.partitionArchiveName(info.name, timestamp, gzip)

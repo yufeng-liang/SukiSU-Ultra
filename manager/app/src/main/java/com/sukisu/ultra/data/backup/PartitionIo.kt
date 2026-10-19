@@ -75,32 +75,57 @@ class ShellPartitionIo(private val shell: () -> Shell = { getRootShell() }) : Pa
 
     override suspend fun dump(info: PartitionInfo, target: File, compress: Boolean): Result<Unit> =
         withContext(Dispatchers.IO) {
-            val out = quote(target.absolutePath)
-            val command = if (compress) {
+            // 一律先 dd 成未压缩的镜像再压：`{ dd; } | gzip` 这条管道里，dd 读失败会被 gzip 的
+            // 成功盖掉（真机实测：dd 读不存在的分区，管道退出码 0，还生成了一个 20 字节的
+            // 非空 .gz）。多写一份临时文件的代价是 96MB，换来"长度必须严格等于分区大小"这条
+            // 能真正验证的判据——快照宁可慢，也不能存下一份假的备份。
+            val raw = File(target.absolutePath + ".raw")
+            try {
+                val read = exec("dd if=${quote(info.path)} of=${quote(raw.absolutePath)} bs=1M 2>/dev/null")
+                if (!read.isSuccess || raw.length() != info.sizeBytes) {
+                    return@withContext Result.failure(
+                        BackupReasonException(
+                            BackupReason.PartitionDumpFailed(
+                                info.name,
+                                stderrOf(read).takeIf { it.isNotBlank() }
+                                    ?: "read ${raw.length()} of ${info.sizeBytes} bytes",
+                            ),
+                        ),
+                    )
+                }
+                if (!compress) {
+                    // target 是 staging.newFile 建的空文件，先删掉再改名：File.renameTo 在目标
+                    // 已存在时的行为依赖平台，不赌。
+                    target.delete()
+                    if (!raw.renameTo(target)) {
+                        return@withContext Result.failure(
+                            BackupReasonException(
+                                BackupReason.PartitionDumpFailed(info.name, "rename to ${target.name} failed"),
+                            ),
+                        )
+                    }
+                    return@withContext Result.success(Unit)
+                }
                 // gzip -1 是速度优先：96MB 的 boot 全量压一遍要几秒，-9 要多花好几倍时间换几个百分点。
-                "dd if=${quote(info.path)} bs=1M 2>/dev/null | gzip -1 -c > $out"
-            } else {
-                "dd if=${quote(info.path)} of=$out bs=1M 2>/dev/null"
-            }
-            val result = exec(command)
-            // dd 成功但写出 0 字节（比如分区路径其实不存在）也要当失败，否则会存下一份空归档。
-            if (result.isSuccess && target.length() > 0L) {
+                val gz = exec("gzip -1 -c ${quote(raw.absolutePath)} > ${quote(target.absolutePath)}")
+                if (!gz.isSuccess || target.length() <= 0L) {
+                    target.delete()
+                    return@withContext Result.failure(
+                        BackupReasonException(
+                            BackupReason.PartitionDumpFailed(info.name, stderrOf(gz).takeIf { it.isNotBlank() }),
+                        ),
+                    )
+                }
                 Result.success(Unit)
-            } else {
-                Result.failure(
-                    BackupReasonException(
-                        BackupReason.PartitionDumpFailed(info.name, stderrOf(result).takeIf { it.isNotBlank() }),
-                    ),
-                )
+            } finally {
+                raw.delete()
             }
         }
 
     override suspend fun flash(info: PartitionInfo, source: File, compressed: Boolean): Result<Unit> =
         withContext(Dispatchers.IO) {
-            val input = quote(source.absolutePath)
-            val target = quote(info.path)
             // 分区默认只读；ksud 用 BLKROSET ioctl 解，shell 这一侧用 blockdev 解，效果一样。
-            val rw = exec("blockdev --setrw $target")
+            val rw = exec("blockdev --setrw ${quote(info.path)}")
             if (!rw.isSuccess) {
                 return@withContext Result.failure(
                     BackupReasonException(
@@ -108,20 +133,54 @@ class ShellPartitionIo(private val shell: () -> Shell = { getRootShell() }) : Pa
                     ),
                 )
             }
-            val command = if (compressed) {
-                "gzip -dc $input | dd of=$target bs=1M conv=fsync 2>/dev/null && sync"
-            } else {
-                "dd if=$input of=$target bs=1M conv=fsync 2>/dev/null && sync"
+            // 压缩归档先解到 staging 再写分区，绝不 `gzip -dc | dd` 直连。
+            //
+            // 真机实测（shennong / toybox gzip）：喂垃圾数据或截断的 .gz 给 `gzip -dc`，它**照样
+            // 退出 0**，只写出 0 字节或半截数据；直连 dd 时 dd 读到 EOF 也退出 0 —— 于是整条
+            // 管道"成功"，分区只被写了一半。退出码在这里不可信，唯一能拦住的是**落盘后数长度**。
+            var payload = source
+            var unpacked: File? = null
+            if (compressed) {
+                val target = File(source.absolutePath + ".unpacked")
+                unpacked = target
+                val unzip = exec("gzip -dc ${quote(source.absolutePath)} > ${quote(target.absolutePath)}")
+                if (!unzip.isSuccess) {
+                    target.delete()
+                    return@withContext Result.failure(
+                        BackupReasonException(
+                            BackupReason.PartitionFlashFailed(
+                                info.name,
+                                stderrOf(unzip).takeIf { it.isNotBlank() } ?: "gzip failed",
+                            ),
+                        ),
+                    )
+                }
+                payload = target
             }
-            val result = exec(command)
-            if (result.isSuccess) {
-                Result.success(Unit)
-            } else {
-                Result.failure(
-                    BackupReasonException(
-                        BackupReason.PartitionFlashFailed(info.name, stderrOf(result).takeIf { it.isNotBlank() }),
-                    ),
+            try {
+                // 最后一道关：真写下去的东西必须和分区一样长。短了是刷坏，长了会越过分区边界。
+                val actual = payload.length()
+                if (actual != info.sizeBytes) {
+                    return@withContext Result.failure(
+                        BackupReasonException(
+                            BackupReason.PartitionSizeMismatch(info.name, info.sizeBytes, actual),
+                        ),
+                    )
+                }
+                val result = exec(
+                    "dd if=${quote(payload.absolutePath)} of=${quote(info.path)} bs=1M conv=fsync 2>/dev/null && sync",
                 )
+                if (result.isSuccess) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(
+                        BackupReasonException(
+                            BackupReason.PartitionFlashFailed(info.name, stderrOf(result).takeIf { it.isNotBlank() }),
+                        ),
+                    )
+                }
+            } finally {
+                unpacked?.delete()
             }
         }
 
