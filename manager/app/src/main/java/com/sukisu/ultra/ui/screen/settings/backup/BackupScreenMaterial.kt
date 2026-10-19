@@ -764,9 +764,9 @@ private fun LazyListScope.backupTabItems(
                     )
                 }
                 item {
-                    // 分区快照抓的是当前设备上 boot + init_boot 两个分区的原始内容，恢复是往块
-                    // 设备写镜像（不可撤销）。这句话常显而不是选中才出现：选中时冒出来会把它下面
-                    // 的东西整体推下去。
+                    // 分区快照抓的是当前设备上 boot / init_boot / vendor_boot 里存在的那些，
+                    // 恢复是往块设备写镜像（不可撤销）。这句话常显而不是选中才出现：选中时冒出来
+                    // 会把它下面的东西整体推下去。
                     SegmentedCheckboxItem(
                         title = stringResource(R.string.backup_kind_partition),
                         summary = stringResource(R.string.backup_partition_explain),
@@ -777,10 +777,13 @@ private fun LazyListScope.backupTabItems(
                 item {
                     // 压缩开关只影响分区快照这一栏，所以放在它下面而不是保留额度那张卡里。
                     // 默认开：boot 96MB 压完约 20MB，云端那一步能省好几倍时间。
+                    // 未勾选分区快照时禁用：它是这一栏的附属开关，勾选框没勾时改它没有着落
+                    // （值会存下来，但用户看不出为什么界面毫无变化）。
                     SegmentedSwitchItem(
                         title = stringResource(R.string.backup_partition_compress_title),
                         summary = stringResource(R.string.backup_partition_compress_summary),
                         checked = state.partitionCompressed,
+                        enabled = BackupKind.PARTITION in state.kinds,
                         onCheckedChange = actions.onSetPartitionCompressed,
                     )
                 }

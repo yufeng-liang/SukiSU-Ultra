@@ -22,6 +22,18 @@ enum class BackupKind(val wireName: String) {
     PARTITION("partition"),
 
     REPO_CONFIG("repo"),
+    ;
+
+    companion object {
+        /**
+         * 这个版本仍然产出、仍然能恢复的类型。
+         *
+         * [BOOT] 不在里面：它只为读旧索引和认出旧归档而保留（见枚举里的说明）。界面上的勾选项、
+         * 导入后并进状态里的类型都必须从这里取，否则退役的 kind 会溜进状态、以默认分支的身份
+         * 混进列表，用户既恢复不了也删不掉。
+         */
+        val LIVE_KINDS: Set<BackupKind> = setOf(MODULE, PARTITION, REPO_CONFIG)
+    }
 }
 
 object ArchiveNaming {
@@ -35,14 +47,20 @@ object ArchiveNaming {
     const val IMPORTED_FALLBACK_NAME = "imported.bin"
 
     private const val MODULE_PREFIX = "module_"
-    private const val BOOT_PREFIX = "boot_"
     private const val MODULE_SUFFIX = ".zip"
     private const val PARTITION_PREFIX = "partition_"
     private const val PARTITION_SUFFIX = ".img"
     private const val GZIP_SUFFIX = ".gz"
     private const val REPO_PREFIX = "repo_"
     private const val REPO_SUFFIX = ".json"
-    private const val BOOT_SHA1_PREFIX_LENGTH = 12
+
+    /**
+     * 退役的原厂镜像备份用过的前缀。
+     *
+     * 只在 [kindOf] 里用：让手工导入的旧归档能被认出来并以 [BackupKind.BOOT] 汇报，
+     * 从而被明确拒绝（见 `BackupEngine.importFrom`），而不是当成模块收下。
+     */
+    private const val BOOT_PREFIX = "boot_"
 
     private val TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").withZone(ZoneOffset.UTC)
 
@@ -77,9 +95,6 @@ object ArchiveNaming {
 
     fun moduleArchiveName(moduleId: String, versionCode: Long, timestamp: String): String =
         "$MODULE_PREFIX${safeId(moduleId)}_${versionCode}_$timestamp$MODULE_SUFFIX"
-
-    fun bootArchiveName(sha1: String, timestamp: String): String =
-        "$BOOT_PREFIX${sha1.take(BOOT_SHA1_PREFIX_LENGTH)}_$timestamp$PARTITION_SUFFIX"
 
     /**
      * 分区快照归档名，例如 `partition_boot_a_20261019_120000.img`。

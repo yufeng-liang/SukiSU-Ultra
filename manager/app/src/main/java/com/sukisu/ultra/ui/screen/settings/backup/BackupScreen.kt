@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sukisu.ultra.BuildConfig
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
@@ -120,9 +121,17 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
             val selection = state.openGroupSelection
             when (restoreConfirmFor(selection)) {
                 RestoreConfirm.PARTITION -> confirmScope.launch {
+                    // 勾选里可能同时有模块（同一 session 的备份在详情页默认全选）。只说
+                    // "刷分区"会漏掉模块也会被重装，所以带模块时正文多一句。
+                    val moduleCount = oneCopyPerContent(selection)
+                        .count { it.kind == BackupKind.MODULE }
                     val confirmed = confirmDialog.awaitConfirm(
                         title = partitionConfirmTitle,
-                        content = partitionConfirmBody,
+                        content = if (moduleCount > 0) {
+                            context.getString(R.string.backup_partition_restore_confirm_body_mixed, moduleCount)
+                        } else {
+                            partitionConfirmBody
+                        },
                     ) == ConfirmResult.Confirmed
                     if (confirmed) viewModel.restoreSelected()
                 }
@@ -370,7 +379,9 @@ fun retentionSummary(state: BackupUiState): String {
         .map { value -> stringResource(R.string.backup_retention_count, value) }
     val labels = listOf(
         stringResource(R.string.backup_retention_module),
-        stringResource(R.string.backup_kind_partition),
+        // 与上面那项对齐：模块用的是复数形式的类别名，分区这边也用 backup_retention_partition
+        // （"Partition snapshots"），而不是单数形式的 backup_kind_partition。
+        stringResource(R.string.backup_retention_partition),
     )
     return labels.zip(counts) { label, count -> "$label $count" }
         .joinToString(BackupListFormatter.SEPARATOR)

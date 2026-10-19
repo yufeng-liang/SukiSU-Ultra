@@ -805,9 +805,9 @@ private fun LazyListScope.backupTabItems(
                 if (state.modules.isNotEmpty()) {
                     ModulePickerMiuix(state = state, actions = actions)
                 }
-                // 分区快照抓的是当前设备上 boot + init_boot 两个分区的原始内容，恢复是往
-                // 块设备写镜像（不可撤销）。这句话常显而不是选中才出现：选中时冒出来会把它
-                // 下面的东西整体推下去。
+                // 分区快照抓的是当前设备上 boot / init_boot / vendor_boot 里存在的那些，
+                // 恢复是往块设备写镜像（不可撤销）。这句话常显而不是选中才出现：选中时冒出来会
+                // 把它下面的东西整体推下去。
                 CheckboxPreference(
                     title = stringResource(R.string.backup_kind_partition),
                     summary = stringResource(R.string.backup_partition_explain),
@@ -816,10 +816,12 @@ private fun LazyListScope.backupTabItems(
                 )
                 // 压缩开关只影响分区快照这一栏，所以紧跟着它，而不是塞进保留额度那张卡。
                 // 默认开：boot 96MB 压完约 20MB，云端那一步能省好几倍时间。
+                // 未勾选分区快照时禁用：它是这一栏的附属开关，勾选框没勾时改它没有着落。
                 SwitchPreference(
                     title = stringResource(R.string.backup_partition_compress_title),
                     summary = stringResource(R.string.backup_partition_compress_summary),
                     checked = state.partitionCompressed,
+                    enabled = BackupKind.PARTITION in state.kinds,
                     onCheckedChange = actions.onSetPartitionCompressed,
                 )
                 // 仓库源配置整批备份、整批恢复：卸载重装管理器最容易丢的就是它，所以

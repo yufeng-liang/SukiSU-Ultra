@@ -157,7 +157,7 @@ data class BackupUiState(
     /**
      * 列表为空时该说的那句话（已本地化）。
      *
-     * 空列表的原因不止一种——"还没有备份，点立即备份"和"本机根本没有原厂镜像可备份"完全是两件事——
+     * 空列表的原因不止一种——"还没有备份，点立即备份"和"这台设备没有可快照的分区"完全是两件事——
      * 界面上什么都不显示的话，用户会以为功能坏了。
      */
     val emptyText: String? = null,
@@ -196,7 +196,7 @@ data class BackupUiState(
      * 默认开：boot 分区 96MB 压完约 20MB，云端备份的上传时间差好几倍。关掉只在一种场景有意义
      * ——想直接拿 `.img` 去别的刷机工具里用（那类工具多半不认 .gz）。
      */
-    val partitionCompressed: Boolean = true,
+    val partitionCompressed: Boolean = BackupDefaults.PARTITION_COMPRESSED,
     /** 保留额度那一块是否展开。它是"设一次就不管"的设置，摊开会把备份选项挤下去。 */
     val retentionExpanded: Boolean = false,
 ) {

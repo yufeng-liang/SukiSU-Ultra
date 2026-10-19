@@ -1004,10 +1004,14 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(loading = true, message = null) }
         val result = repository.importFromSaf(uri, guess)
         _uiState.update {
+            // 只把「这个版本真的能备份/恢复」的类型并进勾选：退役的 kind（如旧的 BOOT）没有
+            // 勾选框，一旦进了 kinds 用户就关不掉，而按 kinds 列举又会让那些条目出现在列表里。
+            // 仓库那边已经对它报错拒绝，这里再兜一道，保证状态里不会出现不可操作的项。
+            val imported = result.getOrNull()?.takeIf { kind -> kind in BackupKind.LIVE_KINDS }
             it.copy(
                 loading = false,
                 origins = it.origins + BackupOrigin.LOCAL,
-                kinds = it.kinds + (result.getOrNull() ?: guess),
+                kinds = if (imported != null) it.kinds + imported else it.kinds,
                 message = result.fold(
                     onSuccess = { string(R.string.backup_imported) },
                     onFailure = { error -> describe(error) },
@@ -1182,6 +1186,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private fun rowLabels() = BackupRowLabels(
         partitionTitle = string(R.string.backup_partition_row_title),
         compressed = string(R.string.backup_partition_compressed_tag),
+        uncompressed = string(R.string.backup_partition_uncompressed_tag),
         repoConfigTitle = string(R.string.backup_kind_repo),
         disabled = string(R.string.backup_row_disabled),
         originLabel = { origin -> originLabel(origin) },

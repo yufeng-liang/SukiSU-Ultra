@@ -17,7 +17,7 @@ object BackupLimits {
      */
     const val MAX_TEXT_BYTES: Long = 8L * 1024 * 1024
 
-    /** SAF 手动导入上限：兼顾大型模块与 boot 镜像，同时限制缓存占用和 hash/拷贝时长。 */
+    /** SAF 手动导入上限：兼顾大型模块与分区镜像，同时限制缓存占用和 hash/拷贝时长。 */
     const val MAX_IMPORT_BYTES: Long = 2L * 1024 * 1024 * 1024
 }
 

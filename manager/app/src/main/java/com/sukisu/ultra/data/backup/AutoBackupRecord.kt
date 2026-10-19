@@ -110,6 +110,8 @@ object AutoBackupRecordJson {
             is BackupReason.ModuleIdUnusable -> put("type", "module_id_unusable").put("entryId", reason.entryId)
             is BackupReason.RepoConfigInvalid -> put("type", "repo_config_invalid").putExternal(reason.external)
             is BackupReason.NoSource -> put("type", "no_source").put("kind", reason.kind.wireName)
+            is BackupReason.LegacyKindUnsupported ->
+                put("type", "legacy_kind_unsupported").put("kind", reason.kind.wireName)
             is BackupReason.PartitionDumpFailed -> put("type", "partition_dump_failed")
                 .put("partition", reason.partition).putExternal(reason.external)
             is BackupReason.PartitionFlashFailed -> put("type", "partition_flash_failed")
@@ -161,6 +163,9 @@ object AutoBackupRecordJson {
             "repo_config_invalid" -> BackupReason.RepoConfigInvalid(json.externalOrNull())
             "no_source" -> BackupReason.NoSource(
                 BackupKind.entries.firstOrNull { it.wireName == json.optString("kind") } ?: BackupKind.MODULE,
+            )
+            "legacy_kind_unsupported" -> BackupReason.LegacyKindUnsupported(
+                BackupKind.entries.firstOrNull { it.wireName == json.optString("kind") } ?: BackupKind.BOOT,
             )
             "partition_dump_failed" -> BackupReason.PartitionDumpFailed(
                 partition = json.optString("partition"),

@@ -64,6 +64,8 @@ data class BackupRowLabels(
     val disabled: String,
     /** 分区快照是 gzip 压缩过的（从文件名后缀认出来，不需要读 meta）。 */
     val compressed: String,
+    /** 分区快照没压缩。与 [compressed] 对称：只说"已压缩"的话，没标的那一行像是漏看了。 */
+    val uncompressed: String,
     /** 来源标签：本机 / 云端。 */
     val originLabel: (BackupOrigin) -> String,
 )
@@ -189,7 +191,7 @@ object BackupListFormatter {
         title = "${labels.partitionTitle} ${entry.entryId}",
         subtitle = listOfNotNull(
             humanSize(entry.sizeBytes),
-            labels.compressed.takeIf { ArchiveNaming.isCompressed(entry.fileName) },
+            if (ArchiveNaming.isCompressed(entry.fileName)) labels.compressed else labels.uncompressed,
         ).joinToString(SEPARATOR),
         fileName = entry.fileName,
         origin = origin,

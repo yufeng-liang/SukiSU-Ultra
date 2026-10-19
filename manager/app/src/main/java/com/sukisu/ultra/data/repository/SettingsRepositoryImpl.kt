@@ -309,7 +309,7 @@ class SettingsRepositoryImpl : SettingsRepository {
         }
 
     override var backupPartitionCompressed: Boolean
-        get() = prefs.getBoolean("backup_partition_compressed", true)
+        get() = prefs.getBoolean("backup_partition_compressed", BackupDefaults.PARTITION_COMPRESSED)
         set(value) = prefs.edit { putBoolean("backup_partition_compressed", value) }
 
     override var backupAutoLastRecord: String

@@ -26,6 +26,14 @@ object BackupDefaults {
      * 留 5 次就是 100MB 起步，默认只留 2 份。
      */
     const val PARTITION_RETENTION = 2
+
+    /**
+     * 分区快照默认压缩。
+     *
+     * 放在这里而不是各处各写一个 `true`：UI 的初始状态与设置项的默认值必须同源，否则改了
+     * 一处、另一处还是旧默认值，用户看到开关是关的、实际行为却是压的。
+     */
+    const val PARTITION_COMPRESSED = true
 }
 
 /**

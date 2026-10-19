@@ -15,7 +15,7 @@ class BackupAuthException(val code: Int, message: String) : IOException(message)
 /**
  * 备份归档的持久化后端。路径都是相对后端根目录的路径。
  *
- * 接口按流设计：boot 镜像 32–96MB，任何把内容读成 ByteArray 的实现都会 OOM。
+ * 接口按流设计：分区镜像 8–96MB（压缩前），任何把内容读成 ByteArray 的实现都会 OOM。
  * 所有操作通过 Result 报告失败，不抛异常——单个后端故障不能拖垮整批备份。
  * 但 [get] 返回的流在读取过程中仍会抛异常（内容损坏、传输中断），调用方按普通 IO 异常处理。
  */

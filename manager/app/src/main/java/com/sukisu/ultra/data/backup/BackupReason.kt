@@ -74,6 +74,18 @@ sealed interface BackupReason {
     data class NoSource(val kind: BackupKind) : BackupReason
 
     /**
+     * 这是一份已经下线了的功能留下的归档（当前只有旧的「原厂 boot 镜像」）。
+     *
+     * 与 [NoSource] 分开是为了给出可执行的解释：`NoSource` 说的是"这个版本没有该类内容的
+     * 备份源"，用户听完不知道该怎么办；而这一条能直接告诉他"该功能已被分区快照取代"。
+     *
+     * 为什么导入时必须**拒绝**而不是收下：收下就等于在索引里登记一条永远恢复不了的记录，
+     * 它还会以"模块"的身份出现在列表里（列表按 kind 分派，退役的 kind 落到默认分支），
+     * 用户既恢复不了也删不掉。同 [BackupEngine] 里"边车 meta 写失败就不登记"的道理。
+     */
+    data class LegacyKindUnsupported(val kind: BackupKind) : BackupReason
+
+    /**
      * 读分区失败：`dd` 起不来、分区路径不存在、或写出来的文件是空的。
      *
      * [partition] 是带槽位的分区名（`boot_a`），[external] 是 dd 的 stderr。

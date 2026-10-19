@@ -124,10 +124,30 @@ class PartitionSnapshotSource(
         if (!ShellPartitionIo.isValidName(meta.partition)) {
             return@runCatchingCancellable RestoreOutcome(false, BackupReason.PartitionNameUnusable(meta.partition))
         }
+        // 交叉校验：边车 meta、归档名、索引里的 entryId 三处必须指向同一个分区。
+        // 只看 meta 是不够的——meta 和索引都在共享存储/远端，谁都能改；把 boot_a 的边车改成
+        // init_boot_a、再配一份等长的 init_boot 镜像，只校验"名字合法 + 本机存在 + 长度相等"
+        // 是拦不住的。三处同时改还要彼此自洽，门槛高得多。
+        val namedInFile = partitionFromName(entry.fileName)
+        if (namedInFile != null && namedInFile != meta.partition) {
+            return@runCatchingCancellable RestoreOutcome(false, BackupReason.PartitionNameUnusable(namedInFile))
+        }
+        if (ShellPartitionIo.isValidName(entry.entryId) && entry.entryId != meta.partition) {
+            return@runCatchingCancellable RestoreOutcome(false, BackupReason.PartitionNameUnusable(entry.entryId))
+        }
         // 分区当前是否存在、当前大小多少，都以**现在**为准（不是 meta 里的旧值）。
         val present = io.snapshots().firstOrNull { it.name == meta.partition }
         if (present == null) {
             return@runCatchingCancellable RestoreOutcome(false, BackupReason.PartitionMissing(meta.partition))
+        }
+        if (meta.partitionSizeBytes > 0L && meta.partitionSizeBytes != present.sizeBytes) {
+            // 拍快照那刻的分区大小和现在不一样：多半是这份快照来自另一台设备（或分区被重划过）。
+            // 长度校验本可以兜住大部分情况，但"来自别的设备"值得单独说清楚——用户以为是同一个
+            // 分区，其实分区表已经变了。
+            return@runCatchingCancellable RestoreOutcome(
+                false,
+                BackupReason.PartitionSizeMismatch(meta.partition, present.sizeBytes, meta.partitionSizeBytes),
+            )
         }
         staging.cleanupStale()
         val staged = staging.newFile("flash-", if (meta.compressed) ".img.gz" else ".img")

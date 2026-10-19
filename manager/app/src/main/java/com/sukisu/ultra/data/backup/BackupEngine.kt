@@ -276,10 +276,20 @@ class BackupEngine(
         }
     }
 
-    /** 索引里记了 sha256 就必须对得上：被截断的归档照常恢复等于把坏内容装回设备。 */
-    private fun verify(raw: InputStream, entry: BackupEntry): InputStream =
-        if (entry.sha256.isBlank()) raw
-        else VerifyingInputStream(raw, entry.sha256, entry.fileName)
+    /**
+     * 索引里记了 sha256 就必须对得上：被截断的归档照常恢复等于把坏内容装回设备。
+     *
+     * 分区快照例外地**不接受**空 sha256。空值是给"第三方归档/旧数据"留的口子，但分区快照
+     * 是本应用自己产出的，索引里必然有校验和；为空只可能是索引被改过。而这条流是刷分区前
+     * 唯一的内容校验——放它过去等于拿一份来路不明的镜像去 dd 块设备。
+     */
+    private fun verify(raw: InputStream, entry: BackupEntry): InputStream = when {
+        entry.sha256.isNotBlank() -> VerifyingInputStream(raw, entry.sha256, entry.fileName)
+        entry.kind == BackupKind.PARTITION -> throw BackupReasonException(
+            BackupReason.Corrupted(entry.fileName, "sha256 present", "missing"),
+        )
+        else -> raw
+    }
 
 
     /**
@@ -321,7 +331,22 @@ class BackupEngine(
         if (size > BackupLimits.MAX_IMPORT_BYTES) {
             throw BackupReasonException(BackupReason.ImportTooLarge(requested, BackupLimits.MAX_IMPORT_BYTES))
         }
-        val adopted = sources[kind]?.metaForImport(requested, open, size)
+        // 没有源就根本不收：收下会登记成一条永远恢复不了的记录（恢复时才在 restore 里报
+        // NoSource），而退役的 kind 在列表里还会落到默认分支、以「模块」身份显示，用户既
+        // 恢复不了也删不掉。旧的原厂镜像备份（BOOT）就是这种情况，给一条能解释清楚的专用原因。
+        val source = sources[kind]
+            ?: throw BackupReasonException(
+                if (kind == BackupKind.BOOT) {
+                    BackupReason.LegacyKindUnsupported(kind)
+                } else {
+                    BackupReason.NoSource(kind)
+                },
+            )
+        val adopted = source.metaForImport(requested, open, size)
+        // 分区快照没有边车 meta 就不能恢复（恢复时要靠它认分区），这样的归档收进来同样是死条目。
+        if (kind == BackupKind.PARTITION && adopted == null && metaJson == null) {
+            throw BackupReasonException(BackupReason.PartitionNoSidecarMeta)
+        }
         val resolvedMeta = metaJson ?: adopted?.metaJson
         // 先算校验和，再进索引锁：同一个文件被导两次只该收一份，而"是不是同一份内容"只能靠它
         // 判断（文件名可以改、大小可以一样）。同时再次限制实际流长度，不信任 SAF 声明的 size。

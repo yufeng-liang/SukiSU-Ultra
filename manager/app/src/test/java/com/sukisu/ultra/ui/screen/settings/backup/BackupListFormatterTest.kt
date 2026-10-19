@@ -36,6 +36,7 @@ class BackupListFormatterTest {
     private val labels = BackupRowLabels(
         partitionTitle = "Partition snapshot",
         compressed = "compressed",
+        uncompressed = "uncompressed",
         repoConfigTitle = "Repo sources",
         disabled = "Disabled",
         originLabel = { origin -> if (origin == BackupOrigin.CLOUD) "Cloud" else "This device" },
@@ -91,10 +92,13 @@ class BackupListFormatterTest {
     }
 
     @Test
-    fun `an uncompressed partition row does not claim to be compressed`() {
+    fun `an uncompressed partition row says uncompressed instead of compressed`() {
         val plain = partitionEntry.copy(fileName = "partition_boot_a_20261008_120000.img")
         val row = rowsOf(plain).single()
-        assertFalse(row.subtitle, row.subtitle.contains("compressed"))
+        // 断言完整的那一段而不是 contains("compressed")："uncompressed" 是 "compressed" 的超串，
+        // 用 contains 两种情况下都为真，分不出压缩与否。
+        assertTrue(row.subtitle, row.subtitle.contains(BackupListFormatter.SEPARATOR + "uncompressed"))
+        assertFalse(row.subtitle, row.subtitle.contains(BackupListFormatter.SEPARATOR + "compressed"))
     }
 
     @Test

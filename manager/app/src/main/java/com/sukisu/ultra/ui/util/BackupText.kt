@@ -64,6 +64,7 @@ object BackupText {
             ReasonText(R.string.backup_reason_module_id_unusable, listOf(Redaction.redactMessage(reason.entryId)))
         is BackupReason.RepoConfigInvalid -> ReasonText(R.string.backup_reason_repo_config_invalid)
         is BackupReason.NoSource -> ReasonText(R.string.backup_reason_no_source)
+        is BackupReason.LegacyKindUnsupported -> ReasonText(R.string.backup_reason_legacy_kind)
         is BackupReason.PartitionDumpFailed ->
             ReasonText(R.string.backup_reason_partition_dump_failed, listOf(reason.partition))
         is BackupReason.PartitionFlashFailed ->

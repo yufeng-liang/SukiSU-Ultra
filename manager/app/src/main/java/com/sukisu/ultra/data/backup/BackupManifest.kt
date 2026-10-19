@@ -125,13 +125,17 @@ object BackupManifest {
     /**
      * 解析分区快照的边车 meta。
      *
-     * 与模块 meta 不同，这里**不做容错**：分区名缺失或形状不对时，调用方必须拿到 null 去拒绝
-     * 恢复。给一个默认值（比如 "boot"）意味着蒙着眼睛往某个分区刷镜像。
+     * 与模块 meta 不同，这里**不做容错**：分区名缺失时调用方必须拿到 null 去拒绝恢复。
+     * 给一个默认值（比如 "boot"）意味着蒙着眼睛往某个分区刷镜像。
+     *
+     * 但**形状校验不在这里做**：分区名不合法（比如被人塞进 `boot_a; reboot`）是一个明确的
+     * "这个名字不能用"，恢复链要能报出 [BackupReason.PartitionNameUnusable]；若在这里就返回
+     * null，上层只能看到"没有 meta"，提示会误导用户去重新备份，而真正的问题是 meta 被人改过。
      */
     fun parsePartitionMeta(json: String): PartitionSnapshotMeta? = runCatching {
         val item = JSONObject(json)
         val partition = item.optString("partition")
-        if (!ShellPartitionIo.isValidName(partition)) return null
+        if (partition.isBlank()) return null
         PartitionSnapshotMeta(
             entryId = item.optString("entryId"),
             partition = partition,

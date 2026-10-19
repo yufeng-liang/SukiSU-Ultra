@@ -82,6 +82,25 @@ class BackupManifestTest {
     }
 
     @Test
+    fun `a legacy boot entry is still readable`() {
+        // BackupKind.BOOT 已经没有备份源了（分区快照取代了原厂 boot 镜像备份），
+        // 但它的 wireName 必须继续认得：老索引里还躺着 kind:"boot" 的条目，
+        // 认不出就会被判成"索引损坏"而整份拒绝读取，连模块备份也一起打不开。
+        // 这条用例就是防止有人顺手把 BOOT 从 enum 里删掉。
+        val json = """
+            {"schema":"${ArchiveNaming.MANIFEST_SCHEMA}","version":${ArchiveNaming.MANIFEST_VERSION},"entries":[
+              {"kind":"boot","entryId":"d5a51d7c38596491da54e3c1ca9cdcc70e3bc6176e","fileName":"boot_d5a51d7c3859_20261008_120000.img","metaFileName":null,"sizeBytes":8388608,"sha256":"s","createdAt":"2026-10-08T12:00:00Z"}
+            ]}
+        """.trimIndent()
+
+        val entries = BackupManifest.parseEntriesOrThrow(json)
+
+        assertEquals(1, entries.size)
+        assertEquals(BackupKind.BOOT, entries.first().kind)
+        assertEquals("d5a51d7c38596491da54e3c1ca9cdcc70e3bc6176e", entries.first().entryId)
+    }
+
+    @Test
     fun `an entry without a file name is refused`() {
         val json = """
             {"schema":"${ArchiveNaming.MANIFEST_SCHEMA}","version":${ArchiveNaming.MANIFEST_VERSION},"entries":[
