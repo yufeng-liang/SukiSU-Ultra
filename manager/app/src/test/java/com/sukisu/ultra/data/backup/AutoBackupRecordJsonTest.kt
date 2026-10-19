@@ -27,18 +27,32 @@ class AutoBackupRecordJsonTest {
         BackupReason.ArchiveFailed("zygisk-assistant", "boom"),
         BackupReason.ModuleInstallFailed("zygisk-assistant", "ksud said no"),
         BackupReason.ModuleDisableFailed("zygisk-assistant", null),
+        BackupReason.ModuleIdUnusable("../../etc/passwd"),
+        BackupReason.RepoConfigInvalid("not json"),
         BackupReason.NoSource(BackupKind.PARTITION),
+        BackupReason.LegacyKindUnsupported(BackupKind.BOOT),
         BackupReason.PartitionDumpFailed("boot_a", "dd: no such device"),
         BackupReason.PartitionFlashFailed("init_boot_a", null),
         BackupReason.PartitionMissing("boot_b"),
+        BackupReason.PartitionTableChanged("boot_a", 100663296L, 8388608L),
         BackupReason.PartitionSizeMismatch("boot_a", 100663296L, 8388608L),
         BackupReason.PartitionNameUnusable("boot_a; rm -rf /"),
         BackupReason.PartitionNoSidecarMeta,
         BackupReason.FileUnreadable,
+        BackupReason.ImportTooLarge("huge.img", 2L * 1024 * 1024 * 1024),
+        BackupReason.ImportIndexWriteFailed("index locked"),
         BackupReason.FileNameUnresolved,
         BackupReason.DuplicateContent("module_x_1_20261008_130000.zip"),
         BackupReason.External("unexpected"),
     )
+
+    @Test
+    fun `the reason list has not fallen behind the sealed type`() {
+        // 上面那份列表的全部价值在于"必须穷尽"。手工维护的列表迟早会漏（这次就漏了四个），
+        // 而漏掉的那几个等于完全没有覆盖性保证。这里用已知成员数兜底：加了新原因就挂，
+        // 逼着人来补一行。
+        assertEquals(30, everyReason.size)
+    }
 
     @Test
     fun `every reason survives a round trip`() {

@@ -121,6 +121,9 @@ object AutoBackupRecordJson {
             is BackupReason.PartitionSizeMismatch -> put("type", "partition_size_mismatch")
                 .put("partition", reason.partition)
                 .put("expected", reason.expected).put("actual", reason.actual)
+            is BackupReason.PartitionTableChanged -> put("type", "partition_table_changed")
+                .put("partition", reason.partition)
+                .put("current", reason.current).put("snapshot", reason.snapshot)
             is BackupReason.PartitionNameUnusable -> put("type", "partition_name_unusable")
                 .put("partition", reason.partition)
             BackupReason.PartitionNoSidecarMeta -> put("type", "partition_no_sidecar_meta")
@@ -180,6 +183,11 @@ object AutoBackupRecordJson {
                 partition = json.optString("partition"),
                 expected = json.optLong("expected"),
                 actual = json.optLong("actual"),
+            )
+            "partition_table_changed" -> BackupReason.PartitionTableChanged(
+                partition = json.optString("partition"),
+                current = json.optLong("current"),
+                snapshot = json.optLong("snapshot"),
             )
             "partition_name_unusable" -> BackupReason.PartitionNameUnusable(json.optString("partition"))
             "partition_no_sidecar_meta" -> BackupReason.PartitionNoSidecarMeta

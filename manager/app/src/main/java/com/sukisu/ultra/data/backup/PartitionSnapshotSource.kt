@@ -3,6 +3,7 @@ package com.sukisu.ultra.data.backup
 import java.io.File
 import java.io.InputStream
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * 分区快照：直接读块设备，把 boot / init_boot 原样存下来。
@@ -92,6 +93,9 @@ class PartitionSnapshotSource(
                     cleanup = { staged.delete() },
                 )
             } catch (error: Throwable) {
+                // 取消必须原样穿透：吞掉它会让循环继续以 root 身份读块设备、压 96MB，
+                // 用户点了"取消"却还在跑。BackupEngine 里同类 catch 也是这么写的。
+                if (error is CancellationException) throw error
                 // staging 落盘、算 sha256 这些再失败就真的没法继续了；但仍要记一条并继续
                 // 下一个分区——boot 抓失败不该让 init_boot 也不抓。
                 failures += BackupFailure(
@@ -135,18 +139,28 @@ class PartitionSnapshotSource(
         if (ShellPartitionIo.isValidName(entry.entryId) && entry.entryId != meta.partition) {
             return@runCatchingCancellable RestoreOutcome(false, BackupReason.PartitionNameUnusable(entry.entryId))
         }
+        // 文件名后缀和 meta 里的 compressed 是两份独立信息，互相矛盾时说明其中一份被改过。
+        // 提前拒绝，好过让 gunzip 在坏数据上抛一个用户看不懂的异常。
+        if (isCompressedName(entry.fileName) != meta.compressed) {
+            return@runCatchingCancellable RestoreOutcome(false, BackupReason.PartitionNameUnusable(entry.fileName))
+        }
         // 分区当前是否存在、当前大小多少，都以**现在**为准（不是 meta 里的旧值）。
         val present = io.snapshots().firstOrNull { it.name == meta.partition }
         if (present == null) {
             return@runCatchingCancellable RestoreOutcome(false, BackupReason.PartitionMissing(meta.partition))
         }
-        if (meta.partitionSizeBytes > 0L && meta.partitionSizeBytes != present.sizeBytes) {
+        if (meta.partitionSizeBytes <= 0L) {
+            // 我们自己的 meta 总会写这个字段，读到 0 只可能是被改过或来自别的工具。
+            // 按"元数据不全"拒绝，而不是"未知就放行"——放行等于让一个 JSON 字段关掉这道预检。
+            return@runCatchingCancellable RestoreOutcome(false, BackupReason.PartitionNoSidecarMeta)
+        }
+        if (meta.partitionSizeBytes != present.sizeBytes) {
             // 拍快照那刻的分区大小和现在不一样：多半是这份快照来自另一台设备（或分区被重划过）。
             // 长度校验本可以兜住大部分情况，但"来自别的设备"值得单独说清楚——用户以为是同一个
             // 分区，其实分区表已经变了。
             return@runCatchingCancellable RestoreOutcome(
                 false,
-                BackupReason.PartitionSizeMismatch(meta.partition, present.sizeBytes, meta.partitionSizeBytes),
+                BackupReason.PartitionTableChanged(meta.partition, present.sizeBytes, meta.partitionSizeBytes),
             )
         }
         staging.cleanupStale()
@@ -154,14 +168,31 @@ class PartitionSnapshotSource(
         try {
             // 先把整个归档落到 staging：流是边下边读的（云端），直接边解压边写分区等于
             // 网络抖一下就留下半截分区。落盘之后长度可查，才有下面这一步。
-            val written = content.use { input -> staged.outputStream().use { input.copyTo(it) } }
+            // 上限也必须在这里拦一道：storage 那边对远端文件大小没有保证，
+            // 一个被替换成 10GB 的归档能把 /data 写满。
+            val written = content.use { input ->
+                staged.outputStream().use { output ->
+                    input.copyBoundedTo(output, BackupLimits.MAX_IMPORT_BYTES, entry.fileName)
+                }
+            }
             if (written <= 0L) {
                 return@runCatchingCancellable RestoreOutcome(
                     false,
                     BackupReason.ReadFailed(staged.name, null),
                 )
             }
-            val payloadBytes = if (meta.compressed) staged.gunzipLength() else written
+            // gzip 头损坏/截断时 GZIPInputStream 抛 IOException；映射成备份原因，
+            // 否则用户看到的是原始异常文本，BackupText 里那套分区文案一条都用不上。
+            val payloadBytes = if (meta.compressed) {
+                runCatching { staged.gunzipLength(present.sizeBytes) }.getOrElse { error ->
+                    return@runCatchingCancellable RestoreOutcome(
+                        false,
+                        BackupReason.ReadFailed(staged.name, externalTextOrNull(error)),
+                    )
+                }
+            } else {
+                written
+            }
             if (payloadBytes != present.sizeBytes) {
                 // 长度不等就拒绝：这是"刷错分区"和"刷了残缺镜像"唯一能提前发现的地方。
                 return@runCatchingCancellable RestoreOutcome(
@@ -222,8 +253,13 @@ internal fun partitionFromName(archiveName: String): String? {
 internal fun isCompressedName(archiveName: String): Boolean =
     archiveName.substringAfterLast('/').endsWith(".gz")
 
-/** 数一遍 gzip 解压后的字节数，不落第二份临时文件。 */
-private fun File.gunzipLength(): Long =
+/**
+ * 数一遍 gzip 解压后的字节数，不落第二份临时文件。
+ *
+ * [limit] 是提前退出的阈值：解压结果一旦超过它就没有继续数的意义（长度已经不对了），
+ * 而 gzip 炸弹能让这个循环读上几分钟。超过就抛异常，由调用方映射成备份原因。
+ */
+private fun File.gunzipLength(limit: Long = Long.MAX_VALUE): Long =
     java.util.zip.GZIPInputStream(inputStream().buffered()).use { input ->
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var total = 0L
@@ -231,6 +267,7 @@ private fun File.gunzipLength(): Long =
             val read = input.read(buffer)
             if (read <= 0) break
             total += read
+            if (total > limit) throw java.io.IOException("payload exceeds $limit bytes")
         }
         total
     }

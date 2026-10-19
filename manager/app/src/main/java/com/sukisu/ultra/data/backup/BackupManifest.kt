@@ -134,6 +134,10 @@ object BackupManifest {
      */
     fun parsePartitionMeta(json: String): PartitionSnapshotMeta? = runCatching {
         val item = JSONObject(json)
+        // 认不出的 schema/version 一律拒绝：optXxx 的默认值（0 / false）会把"结构变了"
+        // 悄悄解释成"压缩没开"，进而拿压缩数据去比长度。与"不做容错"的原则保持一致。
+        if (item.optString("schema") != ArchiveNaming.PARTITION_SCHEMA) return null
+        if (item.optInt("version") != ArchiveNaming.MANIFEST_VERSION) return null
         val partition = item.optString("partition")
         if (partition.isBlank()) return null
         PartitionSnapshotMeta(

@@ -105,6 +105,21 @@ sealed interface BackupReason {
     data class PartitionMissing(val partition: String) : BackupReason
 
     /**
+     * 拍快照时的分区大小和现在不一致。
+     *
+     * 与 [PartitionSizeMismatch] 分开：那个说的是"归档内容不对"，这个说的是"分区本身变了"。
+     * 混用会让用户以为镜像损坏，去重新备份一份同样大小不符的快照；真实原因往往是这份快照
+     * 来自另一台设备，或者设备的分区表被重划过。
+     */
+    data class PartitionTableChanged(
+        val partition: String,
+        /** 现在这个分区多大。 */
+        val current: Long,
+        /** 拍快照时这个分区多大。 */
+        val snapshot: Long,
+    ) : BackupReason
+
+    /**
      * 归档解压后的字节数与分区大小不符。
      *
      * 这是刷分区前最后一道闸：boot 分区 96MB，写进去 8MB 的 init_boot 镜像会把分区头部

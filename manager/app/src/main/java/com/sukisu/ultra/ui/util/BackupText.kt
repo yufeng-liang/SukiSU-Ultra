@@ -76,6 +76,10 @@ object BackupText {
             // 大小给用户看的是 MB，而不是一长串字节数。
             listOf(reason.partition, megabytes(reason.expected), megabytes(reason.actual)),
         )
+        is BackupReason.PartitionTableChanged -> ReasonText(
+            R.string.backup_reason_partition_table_changed,
+            listOf(reason.partition, megabytes(reason.current), megabytes(reason.snapshot)),
+        )
         is BackupReason.PartitionNameUnusable ->
             ReasonText(R.string.backup_reason_partition_name, listOf(Redaction.redactMessage(reason.partition)))
         BackupReason.PartitionNoSidecarMeta -> ReasonText(R.string.backup_reason_partition_no_meta)

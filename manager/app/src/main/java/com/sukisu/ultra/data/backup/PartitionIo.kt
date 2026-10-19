@@ -65,6 +65,10 @@ class ShellPartitionIo(private val shell: () -> Shell = { getRootShell() }) : Pa
         val suffix = slotSuffix()
         BASE_NAMES.mapNotNull { base ->
             val name = "$base$suffix"
+            // 槽位后缀来自 getprop，厂商自定义后缀会让拼出来的名字不合白名单。
+            // 这种名字一旦进 entryId / meta.partition，就会变成"备份成功、恢复被拒"的自伤，
+            // 所以在源头就丢掉，而不是等恢复时才发现。
+            if (!isValidName(name)) return@mapNotNull null
             val path = "$BY_NAME_DIR/$name"
             // 分区不存在时 blockdev 会失败，sizeOf 返回 null，这一项就跳过。
             val size = sizeOf(path) ?: return@mapNotNull null
@@ -81,7 +85,9 @@ class ShellPartitionIo(private val shell: () -> Shell = { getRootShell() }) : Pa
             // 能真正验证的判据——快照宁可慢，也不能存下一份假的备份。
             val raw = File(target.absolutePath + ".raw")
             try {
-                val read = exec("dd if=${quote(info.path)} of=${quote(raw.absolutePath)} bs=1M 2>/dev/null")
+                // 不吞 stderr：dd 的真实原因（I/O error、No space left）是分区写失败时唯一
+                // 的线索，丢掉它用户只看到一句通用文案，日志里也查不到。
+                val read = exec("dd if=${quote(info.path)} of=${quote(raw.absolutePath)} bs=1M")
                 if (!read.isSuccess || raw.length() != info.sizeBytes) {
                     return@withContext Result.failure(
                         BackupReasonException(
@@ -168,7 +174,7 @@ class ShellPartitionIo(private val shell: () -> Shell = { getRootShell() }) : Pa
                     )
                 }
                 val result = exec(
-                    "dd if=${quote(payload.absolutePath)} of=${quote(info.path)} bs=1M conv=fsync 2>/dev/null && sync",
+                    "dd if=${quote(payload.absolutePath)} of=${quote(info.path)} bs=1M conv=fsync && sync",
                 )
                 if (result.isSuccess) {
                     Result.success(Unit)

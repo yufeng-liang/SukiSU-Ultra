@@ -235,7 +235,10 @@ class PartitionSnapshotSourceTest {
             ).getOrThrow()
 
             assertFalse(outcome.success)
-            assertTrue(outcome.reason is BackupReason.PartitionSizeMismatch)
+            // 大小不一致要在"拍快照时的分区大小 != 当前分区大小"这一步就被拦下来，
+            // 而不是等到解压后比长度——前者说明分区表变了（多半换了设备），
+            // 后者只能说明镜像残缺，两种事故的处置方式不同。
+            assertTrue(outcome.reason is BackupReason.PartitionTableChanged)
         }
     }
 

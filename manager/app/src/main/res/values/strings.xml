@@ -1029,6 +1029,7 @@
     <string name="backup_reason_partition_dump_failed">Reading partition %1$s failed.</string>
     <string name="backup_reason_partition_flash_failed">Writing partition %1$s failed.</string>
     <string name="backup_reason_partition_missing">This device has no partition named %1$s, so this snapshot cannot be restored here. It probably came from another device.</string>
+    <string name="backup_reason_partition_table_changed">The %1$s partition is %2$s now, but it was %3$s when this snapshot was taken. It was not flashed - the snapshot probably comes from another device.</string>
     <string name="backup_reason_partition_size_mismatch">The %1$s partition is %2$s but this image is %3$s, so it was not flashed.</string>
     <string name="backup_reason_partition_name">The partition name in this backup is not usable (%1$s), so it was not flashed.</string>
     <string name="backup_reason_partition_no_meta">This snapshot has no description file, so it cannot be restored safely.</string>

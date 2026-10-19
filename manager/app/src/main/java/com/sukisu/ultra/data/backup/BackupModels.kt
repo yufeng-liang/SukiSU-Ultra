@@ -30,8 +30,10 @@ data class ModuleBackupMeta(
  * [partition] 是恢复时的唯一依据（含槽位后缀，如 `init_boot_a`），所以它必须在 meta 里，
  * 不能只靠文件名推断——文件名给人看，meta 给程序用。
  *
- * [partitionSizeBytes] 是**拍快照那一刻**分区的大小，恢复前拿它和解压后的字节数比对：
- * 分区表变了（换过系统、改过 super 布局）而镜像长度不符时，写进去就是灾难。
+ * [partitionSizeBytes] 是**拍快照那一刻**分区的大小。恢复前拿它和**当前**分区大小比对
+ * （`PartitionInfo.sizeBytes`，来自 `blockdev --getsize64`），两者不等就拒绝：分区表变了
+ * （换过系统、改过 super 布局）说明这份快照来自另一台设备或另一个系统版本，写进去就是灾难。
+ * 解压后的长度另外还要与当前分区大小相等，那是最后一道闸门。
  */
 data class PartitionSnapshotMeta(
     val entryId: String,
