@@ -118,6 +118,15 @@ object Natives {
     external fun setSelinuxHideEnabled(enabled: Boolean): Int
 
     /**
+     * Mount hide can be disabled temporarily.
+     *  0: disabled
+     *  1: enabled
+     *  negative : error
+     */
+    external fun isMountHideEnabled(): Boolean
+    external fun setMountHideEnabled(enabled: Boolean): Int
+
+    /**
      * Get the user name for the uid.
      */
     external fun getUserName(uid: Int): String?
@@ -152,10 +161,17 @@ object Natives {
     val managerUAPIVersion: Int
         external get
 
+    /**
+     * Root through some other means, no SukiSU kernel. Kernel calls just return defaults here,
+     * so the pages can be opened and browsed.
+     */
+    fun isPreviewMode(): Boolean = !isManager && rootAvailable()
+
     fun isFullFeatured(): Boolean {
         val kernelFullVersion = getFullVersion()
         return (kernelFullVersion != null && isVersionLessThan(kernelFullVersion, MINIMAL_SUPPORTED_KERNEL_FULL)) ||
-                isManager && kernelUAPIVersion == managerUAPIVersion && rootAvailable()
+                isManager && kernelUAPIVersion == managerUAPIVersion && rootAvailable() ||
+                isPreviewMode()
     }
 
     @Keep

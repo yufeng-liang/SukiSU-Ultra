@@ -12,7 +12,6 @@
 #include "policy/feature.h"
 #include "klog.h" // IWYU pragma: keep
 #include "manager/manager_observer.h"
-#include "manager/dynamic_manager.h"
 #include "manager/throne_tracker.h"
 #include "hook/syscall_hook_manager.h"
 #include "hook/lsm_hook.h"
@@ -30,6 +29,8 @@
 #include "feature/shell_su_adb_only.h"
 #include "feature/module_blacklist.h"
 #include "infra/symbol_resolver.h"
+#include "preinit/preinit.h"
+#include "extension/extension.h"
 
 #if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
 #include <asm/cpufeature.h>
@@ -159,6 +160,8 @@ int __init kernelsu_init(void)
 
     ksu_supercalls_init();
     ksu_app_profile_init();
+    ksu_extension_init();
+    ksu_extension_register_all();
 
     if (ksu_late_loaded) {
         pr_info("late load mode, skipping kprobe hooks\n");
@@ -186,6 +189,7 @@ int __init kernelsu_init(void)
         track_throne(false);
 
         ksu_feature_apply_forced();
+        ksu_extension_apply_forced();
 
         if (!getenforce()) {
             pr_info("Permissive SELinux, enforcing\n");
@@ -200,6 +204,8 @@ int __init kernelsu_init(void)
         ksu_throne_tracker_init();
 
         ksu_ksud_init();
+
+        ksu_preinit_init();
 
         ksu_file_wrapper_init();
     }
@@ -219,8 +225,10 @@ void __exit kernelsu_exit(void)
 
     ksu_supercalls_exit();
 
-    if (!ksu_late_loaded)
+    if (!ksu_late_loaded) {
         ksu_ksud_exit();
+        ksu_preinit_exit();
+    }
 
     // Wait for any in-flight RCU readers (e.g. handler traversing allow_list)
     synchronize_rcu();
@@ -239,6 +247,7 @@ void __exit kernelsu_exit(void)
     ksu_sulog_exit();
     ksu_feature_exit();
     ksu_module_blacklist_exit();
+    ksu_extension_exit();
 
     put_cred(ksu_cred);
 }

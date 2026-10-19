@@ -1,6 +1,7 @@
 #![allow(clippy::unreadable_literal)]
 use anyhow::{Result, bail};
 
+use crate::extension_id::ExtensionId;
 use crate::ksu_uapi;
 use std::cell::Cell;
 use std::fs;
@@ -143,8 +144,6 @@ fn init_driver_fd() -> Option<RawFd> {
 
 // ioctl wrapper using libc
 pub fn ksuctl<T>(request: u32, arg: *mut T) -> Result<i32> {
-    use std::io;
-
     let fd = *DRIVER_FD.get_or_init(|| init_driver_fd().unwrap_or(-1));
     if fd < 0 {
         bail!("could not retrieve kernelsu driver fd")
@@ -184,6 +183,11 @@ pub fn is_late_load() -> bool {
 
 pub fn is_lkm() -> bool {
     get_info().flags & ksu_uapi::KSU_GET_INFO_FLAG_LKM != 0
+}
+
+/// Whether the kernel runs module preinit actions on boot.
+pub fn is_preinit_supported() -> bool {
+    get_info().flags & ksu_uapi::KSU_GET_INFO_FLAG_PREINIT != 0
 }
 
 pub const fn uapi_version() -> u32 {
@@ -285,6 +289,116 @@ pub fn set_feature(feature_id: u32, value: u64) -> Result<()> {
     let mut cmd = ksu_uapi::ksu_set_feature_cmd { feature_id, value };
     ksuctl(ksu_uapi::KSU_IOCTL_SET_FEATURE, &raw mut cmd)?;
     Ok(())
+}
+
+/// State returned by [`get_extension`] for a single extension.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtensionState {
+    /// Sticky enable bit. Most extensions use bit 0 (1 = enabled).
+    pub value: u64,
+    /// Whether the kernel has a handler registered for this id. UI
+    /// uses this to show a "Not supported" hint instead of a toggle.
+    pub supported: bool,
+    /// Forced by `force_extension=` boot param. The kernel will
+    /// refuse `KSU_EXTENSION_SET` for this id.
+    pub forced: bool,
+}
+
+pub fn get_extension(extension_id: u32) -> Result<ExtensionState> {
+    let mut cmd = ksu_uapi::ksu_extension_cmd {
+        id: extension_id,
+        op: ksu_uapi::KSU_EXTENSION_GET,
+        supported: 0,
+        reserved: 0,
+        value: 0,
+        user_ptr: 0,
+    };
+    ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
+    let flags = cmd.supported;
+    Ok(ExtensionState {
+        value: cmd.value,
+        supported: flags & ksu_uapi::KSU_FEATURE_FLAG_SUPPORTED != 0,
+        forced: flags & ksu_uapi::KSU_EXTENSION_FLAG_FORCED != 0,
+    })
+}
+
+pub fn set_extension(extension_id: u32, value: u64) -> Result<()> {
+    let mut cmd = ksu_uapi::ksu_extension_cmd {
+        id: extension_id,
+        op: ksu_uapi::KSU_EXTENSION_SET,
+        supported: 0,
+        reserved: 0,
+        value,
+        user_ptr: 0,
+    };
+    // ksuctl already converts negative errno into a `bail!`, so any
+    // non-zero value here would be a positive "soft error" from the
+    // kernel's do_extension() return path. We treat those as failure
+    // to keep the API strict: callers can rely on Ok(()) == real
+    // success rather than "no -EINVAL returned".
+    let ret = ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
+    if ret != 0 {
+        bail!("set_extension(id={extension_id}, value={value}) failed: {ret}");
+    }
+    Ok(())
+}
+
+#[allow(dead_code)] // exposed for external ksud callers
+pub fn wipe_extension(extension_id: u32) -> Result<()> {
+    let mut cmd = ksu_uapi::ksu_extension_cmd {
+        id: extension_id,
+        op: ksu_uapi::KSU_EXTENSION_WIPE,
+        supported: 0,
+        reserved: 0,
+        value: 0,
+        user_ptr: 0,
+    };
+    // See set_extension() for the rationale behind the non-zero check.
+    let ret = ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
+    if ret != 0 {
+        bail!("wipe_extension(id={extension_id}) failed: {ret}");
+    }
+    Ok(())
+}
+
+/// Forward a typed payload to the extension's io op. The payload type
+/// must match the layout the targeted extension expects; the four
+/// strongly-typed wrappers below (`kpm_io`, `umount_paths_io`,
+/// `spoof_cpu_io`, `dynamic_manager_io`) encode this constraint at the
+/// type level so the compiler catches mismatches.
+///
+/// # Safety
+///
+/// The caller must ensure `payload` points to a valid layout understood
+/// by the targeted extension and that the buffer remains alive for the
+/// duration of the call.
+pub unsafe fn extension_io<T>(extension_id: u32, payload: *mut T) -> Result<i32> {
+    let mut cmd = ksu_uapi::ksu_extension_cmd {
+        id: extension_id,
+        op: ksu_uapi::KSU_EXTENSION_IO,
+        supported: 0,
+        reserved: 0,
+        value: 0,
+        user_ptr: payload as u64,
+    };
+    ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)
+}
+
+#[allow(dead_code)]
+pub unsafe fn kpm_io(cmd: *mut ksu_uapi::ksu_kpm_cmd) -> Result<i32> {
+    unsafe { extension_io(ExtensionId::Kpm as u32, cmd) }
+}
+
+pub unsafe fn umount_paths_io(cmd: *mut ksu_uapi::ksu_extension_umount_cmd) -> Result<i32> {
+    unsafe { extension_io(ExtensionId::UmountPaths as u32, cmd) }
+}
+
+pub unsafe fn spoof_cpu_io(cmd: *mut ksu_uapi::ksu_set_spoof_cpu_cmd) -> Result<i32> {
+    unsafe { extension_io(ExtensionId::CpuSpoof as u32, cmd) }
+}
+
+pub unsafe fn dynamic_manager_io(cmd: *mut ksu_uapi::ksu_manager_cmd) -> Result<i32> {
+    unsafe { extension_io(ExtensionId::DynamicManager as u32, cmd) }
 }
 
 pub fn get_wrapped_fd(fd: RawFd) -> Result<RawFd> {
@@ -399,6 +513,31 @@ pub fn set_init_pgrp() -> Result<()> {
     Ok(())
 }
 
+/// Look up the addresses of kernel symbols, exported or not.
+///
+/// Returns one entry per name, `None` when the running kernel has no such
+/// symbol.
+pub fn lookup_symbols(names: &[&str]) -> Result<Vec<Option<u64>>> {
+    let mut result = Vec::with_capacity(names.len());
+    for chunk in names.chunks(ksu_uapi::KSU_LOOKUP_SYMBOLS_MAX as usize) {
+        let c_names = chunk
+            .iter()
+            .map(|name| std::ffi::CString::new(*name))
+            .collect::<Result<Vec<_>, _>>()?;
+        let ptrs: Vec<u64> = c_names.iter().map(|name| name.as_ptr() as u64).collect();
+        let mut addrs = vec![0u64; chunk.len()];
+        let mut cmd = ksu_uapi::ksu_lookup_symbols_cmd {
+            names: ptrs.as_ptr() as u64,
+            addrs: addrs.as_mut_ptr() as u64,
+            count: chunk.len() as u32,
+            flags: 0,
+        };
+        ksuctl(ksu_uapi::KSU_IOCTL_LOOKUP_SYMBOLS, &raw mut cmd)?;
+        result.extend(addrs.into_iter().map(|addr| (addr != 0).then_some(addr)));
+    }
+    Ok(result)
+}
+
 pub fn set_ksu_no_new_privs() -> anyhow::Result<()> {
     let result = ksuctl(
         ksu_uapi::KSU_IOCTL_DISABLE_ESCAPE_TO_ROOT,
@@ -410,20 +549,19 @@ pub fn set_ksu_no_new_privs() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// List all mount points in umount list
+/// List all mount points in umount list.
 pub fn umount_list_list() -> anyhow::Result<String> {
     const BUF_SIZE: usize = 4096;
     let mut buffer = vec![0u8; BUF_SIZE];
-    let mut cmd = ksu_uapi::ksu_list_try_umount_cmd {
-        arg: buffer.as_mut_ptr() as u64,
-        buf_size: BUF_SIZE as u32,
-    };
-    ksuctl(ksu_uapi::KSU_IOCTL_LIST_TRY_UMOUNT, &raw mut cmd)?;
-
-    // Find null terminator or end of buffer
+    let mut hdr: ksu_uapi::ksu_extension_umount_cmd = unsafe { std::mem::zeroed() };
+    hdr.op = ksu_uapi::KSU_UMOUNT_IO_OP_LIST;
+    hdr.payload.list.arg = buffer.as_mut_ptr() as u64;
+    hdr.payload.list.buf_size = BUF_SIZE as u32;
+    unsafe {
+        umount_paths_io(&raw mut hdr)?;
+    }
     let len = buffer.iter().position(|&b| b == 0).unwrap_or(BUF_SIZE);
-    let result = String::from_utf8_lossy(&buffer[..len]).to_string();
-    Ok(result)
+    Ok(String::from_utf8_lossy(&buffer[..len]).to_string())
 }
 
 pub fn set_spoof_version(release: &str, version: &str) -> anyhow::Result<()> {
@@ -458,6 +596,8 @@ pub fn set_spoof_cpu(
         hwcap,
         hwcap2,
     };
-    ksuctl(ksu_uapi::KSU_IOCTL_SET_SPOOF_CPU, &raw mut cmd)?;
+    unsafe {
+        spoof_cpu_io(&raw mut cmd)?;
+    }
     Ok(())
 }

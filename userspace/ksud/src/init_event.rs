@@ -70,11 +70,11 @@ pub fn on_post_fs_data() -> Result<()> {
         warn!("prune modules failed: {e}");
     }
 
-    // Refresh /metadata/watchdog/ksu/modules.rc so the next boot's kernel hook sees the
+    // Refresh /metadata/watchdog/ksu/{modules.rc,preinit/} so the next boot's kernel hook sees the
     // current module set. Acts as a safety net when state was changed outside
     // of ksud's normal mutation commands.
-    if let Err(e) = crate::module::regenerate_preinit_rc() {
-        warn!("regenerate preinit rc failed: {e}");
+    if let Err(e) = crate::module::regenerate_preinit() {
+        warn!("regenerate preinit failed: {e:#}");
     }
 
     if let Err(e) = restorecon::restorecon() {
@@ -97,6 +97,13 @@ pub fn on_post_fs_data() -> Result<()> {
         warn!("safe mode, skip load feature config");
     } else if let Err(e) = crate::feature::init_features() {
         warn!("init features failed: {e}");
+    }
+
+    crate::extension::init_forced_extensions();
+    if is_safe_mode() {
+        warn!("safe mode, skip load extension config");
+    } else if let Err(e) = crate::extension::init_extensions() {
+        warn!("init extensions failed: {e}");
     }
 
     #[cfg(target_arch = "aarch64")]
@@ -208,6 +215,8 @@ pub fn on_boot_completed() {
 
     ksucalls::report_boot_complete();
     info!("on_boot_completed triggered!");
+
+    crate::preinit::on_boot_completed();
 
     run_stage("boot-completed", ScriptWait::NoWait);
 }

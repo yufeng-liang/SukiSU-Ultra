@@ -1,10 +1,17 @@
+/*
+ * Dynamic manager operations, reached via the new single-extension ioctl
+ * KSU_IOCTL_EXTENSION with extension_id=KSU_EXTENSION_DYNAMIC_MANAGER.
+ * The user payload is a struct ksu_manager_cmd forwarded verbatim to
+ * kernel/extension/dynamic_manager.c::ksu_dynamic_manager_set/get().
+ */
 use anyhow::Result;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 
+use crate::extension_id::ExtensionId;
 use crate::ksu_uapi;
-use crate::ksucalls;
+use crate::ksucalls::{dynamic_manager_io, get_extension};
 
 const DYNAMIC_MANAGER_FILE: &str = "/data/adb/ksu/.dynamic_managers";
 const DYNAMIC_MANAGER_MAGIC: u32 = 0x4d53_4b44;
@@ -70,7 +77,9 @@ fn persist() -> Result<()> {
 pub fn manager_get() -> Result<ksu_uapi::ksu_manager_cmd> {
     let mut cmd: ksu_uapi::ksu_manager_cmd = unsafe { std::mem::zeroed() };
     cmd.operation = ksu_uapi::KSU_MANAGER_GET;
-    ksucalls::ksuctl(ksu_uapi::KSU_IOCTL_MANAGER, &raw mut cmd)?;
+    unsafe {
+        dynamic_manager_io(&raw mut cmd)?;
+    }
     Ok(cmd)
 }
 
@@ -81,7 +90,9 @@ pub fn manager_add(package: &str, cert_size: u32, hash: &str) -> Result<()> {
     cmd.uid = lookup_package_uid(package)?;
     copy_manager_string(&mut cmd.package, package)?;
     copy_manager_string(&mut cmd.hash, hash)?;
-    ksucalls::ksuctl(ksu_uapi::KSU_IOCTL_MANAGER, &raw mut cmd)?;
+    unsafe {
+        dynamic_manager_io(&raw mut cmd)?;
+    }
     persist()
 }
 
@@ -89,7 +100,9 @@ pub fn manager_remove(package: &str) -> Result<()> {
     let mut cmd: ksu_uapi::ksu_manager_cmd = unsafe { std::mem::zeroed() };
     cmd.operation = ksu_uapi::KSU_MANAGER_REMOVE;
     copy_manager_string(&mut cmd.package, package)?;
-    ksucalls::ksuctl(ksu_uapi::KSU_IOCTL_MANAGER, &raw mut cmd)?;
+    unsafe {
+        dynamic_manager_io(&raw mut cmd)?;
+    }
     persist()
 }
 
@@ -97,13 +110,24 @@ pub fn manager_set_enabled(enabled: bool) -> Result<()> {
     let mut cmd: ksu_uapi::ksu_manager_cmd = unsafe { std::mem::zeroed() };
     cmd.operation = ksu_uapi::KSU_MANAGER_SET_ENABLED;
     cmd.enabled = u32::from(enabled);
-    ksucalls::ksuctl(ksu_uapi::KSU_IOCTL_MANAGER, &raw mut cmd)?;
+    unsafe {
+        dynamic_manager_io(&raw mut cmd)?;
+    }
     persist()
 }
 
 pub fn manager_clear() -> Result<()> {
     let mut cmd: ksu_uapi::ksu_manager_cmd = unsafe { std::mem::zeroed() };
     cmd.operation = ksu_uapi::KSU_MANAGER_CLEAR;
-    ksucalls::ksuctl(ksu_uapi::KSU_IOCTL_MANAGER, &raw mut cmd)?;
+    unsafe {
+        dynamic_manager_io(&raw mut cmd)?;
+    }
     persist()
+}
+
+/// Read the sticky enable bit (1 = dynamic manager feature is on).
+#[allow(dead_code)] // exposed for external ksud callers
+pub fn manager_enabled() -> Result<bool> {
+    let state = get_extension(ExtensionId::DynamicManager as u32)?;
+    Ok(state.supported && state.value != 0)
 }

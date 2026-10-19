@@ -140,6 +140,117 @@ private suspend fun readFeatureValue(args: String): Long? = withContext(Dispatch
     valueLine.substringAfter("Value:").trim().toLongOrNull()
 }
 
+// Extension helpers (mirror the feature helpers above). The ksud
+// subcommand is `extension <get|set|check|list|...>`.
+//
+// All probe helpers go through withNewRootShell() rather than the
+// shared KsuCli.SHELL, so callers can fan out concurrently without
+// racing on a single shell's command queue (each shell accepts
+// exactly one command at a time, and libsu's job output is a
+// per-shell buffer).
+
+suspend fun getExtensionStatus(extension: String): String = withContext(Dispatchers.IO) {
+    val out = withNewRootShell {
+        newJob()
+            .add("${getKsuDaemonPath()} extension check $extension")
+            .to(ArrayList<String>(), null)
+            .exec()
+            .out
+    }
+    out.firstOrNull()?.trim().orEmpty()
+}
+
+suspend fun getExtensionPersistValue(extension: String): Long? = readExtensionValue("--config $extension")
+
+suspend fun getExtensionValue(extension: String): Long? = readExtensionValue(extension)
+
+private suspend fun readExtensionValue(args: String): Long? = withContext(Dispatchers.IO) {
+    val out = withNewRootShell {
+        newJob()
+            .add("${getKsuDaemonPath()} extension get $args")
+            .to(ArrayList<String>(), null)
+            .exec()
+            .out
+    }
+    out.firstOrNull { it.trim().startsWith("Value:") }
+        ?.substringAfter("Value:")
+        ?.trim()
+        ?.toLongOrNull()
+}
+
+/**
+ * Pull the state of every extension in a single `ksud extension list`
+ * shell call, then parse the trailing `EXTENSION_LIST_V1 ...` machine
+ * block that the kernel-side CLI prints after the human-readable part.
+ *
+ * This replaces the four concurrent per-id probes the manager used to
+ * do on the extension overview screen. One shell pays the libksud.so
+ * startup + root handshake + teardown cost once instead of four
+ * times, and the parse is linear in the number of extensions (4
+ * today), so the wall-clock time is bounded by the slowest single
+ * extension (typically KPM's live `kpm version` ioctl).
+ */
+suspend fun getExtensionOverview(): Map<String, ExtensionOverviewEntry> = withContext(Dispatchers.IO) {
+    val out = withNewRootShell {
+        newJob()
+            .add("${getKsuDaemonPath()} extension list")
+            .to(ArrayList<String>(), null)
+            .exec()
+            .out
+    }
+    parseExtensionOverview(out)
+}
+
+/**
+ * One row of the `ksud extension list` machine block. Field names
+ * match the on-wire format exactly so a future `EXTENSION_LIST_V2`
+ * migration can introduce a parallel parser without renaming these.
+ */
+data class ExtensionOverviewEntry(
+    val name: String,
+    val id: Int,
+    val supported: Boolean,
+    val forced: Boolean,
+    val value: Long,
+    val managed: Boolean,
+    val sticky: Boolean,
+)
+
+private val EXT_V1_LINE = Regex(
+    """^EXTENSION_LIST_V1\s+name=(\S+)\s+id=(\d+)\s+supported=(\d+)\s+forced=(\d+)\s+value=(\d+)\s+managed=(\d+)\s+sticky=(\d+)\s*$"""
+)
+
+internal fun parseExtensionOverview(lines: List<String>): Map<String, ExtensionOverviewEntry> {
+    val parsed = LinkedHashMap<String, ExtensionOverviewEntry>()
+    var inBlock = false
+    for (line in lines) {
+        if (line.startsWith("EXTENSION_LIST_END")) break
+        // A `EXTENSION_LIST_V1 ...` line is the first line of an
+        // extension row; parse it directly. We don't gate on a
+        // separate "entered the block" flag because the very first
+        // V1 line is the one that starts the block.
+        if (line.startsWith("EXTENSION_LIST_V1")) {
+            inBlock = true
+            val m = EXT_V1_LINE.matchEntire(line) ?: continue
+            val entry = ExtensionOverviewEntry(
+                name = m.groupValues[1],
+                id = m.groupValues[2].toIntOrNull() ?: continue,
+                supported = m.groupValues[3] == "1",
+                forced = m.groupValues[4] == "1",
+                value = m.groupValues[5].toLongOrNull() ?: 0L,
+                managed = m.groupValues[6] == "1",
+                sticky = m.groupValues[7] == "1",
+            )
+            parsed[entry.name] = entry
+            continue
+        }
+        if (!inBlock) continue
+        // Reserved: future per-line metadata inside the block. We
+        // currently emit only V1 rows, so anything else is ignored.
+    }
+    return parsed
+}
+
 fun install() {
     val start = SystemClock.elapsedRealtime()
     val libadbroot = File(ksuApp.applicationInfo.nativeLibraryDir, "libadbroot.so").absolutePath

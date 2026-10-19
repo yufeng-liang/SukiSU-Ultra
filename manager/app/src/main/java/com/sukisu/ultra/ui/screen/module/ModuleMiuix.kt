@@ -89,6 +89,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -562,6 +563,11 @@ fun ModulePagerMiuix(
                             },
                             contentPadding = contentPadding,
                             listState = listState,
+                            summary = if (uiState.moduleList.isEmpty()) null else stringResource(
+                                R.string.module_summary,
+                                uiState.moduleList.count { it.enabled },
+                                uiState.updateInfo.count { it.value.downloadUrl.isNotBlank() },
+                            ),
                         )
                     }
                 }
@@ -716,6 +722,7 @@ private fun ModuleList(
     onModuleAddShortcut: (Module, ShortcutType) -> Unit,
     contentPadding: PaddingValues,
     listState: LazyListState = rememberLazyListState(),
+    summary: String? = null,
 ) {
     val loadingDialog = rememberLoadingDialog()
     val scope = rememberCoroutineScope()
@@ -725,6 +732,16 @@ private fun ModuleList(
         contentPadding = contentPadding,
         overscrollEffect = null,
     ) {
+        if (summary != null) {
+            item(key = "summary", contentType = "summary") {
+                Text(
+                    text = summary,
+                    modifier = Modifier.padding(start = 28.dp, end = 16.dp, bottom = 10.dp),
+                    fontSize = 14.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+            }
+        }
         items(
             items = modules,
             key = { it.id },
@@ -805,344 +822,351 @@ fun ModuleItem(
     val hasDescription = module.description.isNotBlank()
     val maxLinesLimit = LocalModuleDescriptionMaxLines.current
     var expanded by rememberSaveable(module.id) { mutableStateOf(false) }
+    val banner = rememberModuleBanner(module.id, module.bannerPath)
 
     Card(
         modifier = Modifier
             .padding(horizontal = 12.dp)
             .padding(bottom = 12.dp),
-        insideMargin = PaddingValues(16.dp),
+        insideMargin = PaddingValues(0.dp),
         onClick = if (hasDescription) {
             { expanded = !expanded }
         } else null
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(if (module.enabled || module.remove) 1f else 0.6f)
+                .moduleBanner(banner, colorScheme.surfaceContainer)
+                .padding(16.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 4.dp)
-            ) {
-                val moduleVersion = stringResource(id = R.string.module_version)
-                val moduleAuthor = stringResource(id = R.string.module_author)
-
-                SubcomposeLayout { constraints ->
-                    val spacingPx = 6.dp.roundToPx()
-                    var nameTextLayout: TextLayoutResult? = null
-                    val tagsPlaceable = if (module.metamodule || module.zygisk) {
-                        subcompose("tags") {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (module.metamodule) {
-                                    Text(
-                                        text = "META",
-                                        fontSize = 12.sp,
-                                        color = updateTint,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(updateBg)
-                                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                                        fontWeight = FontWeight(750),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                                if (module.zygisk) {
-                                    Text(
-                                        text = "ZYGISK",
-                                        fontSize = 12.sp,
-                                        color = updateTint,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(updateBg)
-                                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                                        fontWeight = FontWeight(750),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                            }
-                        }.first().measure(Constraints(0, constraints.maxWidth, 0, constraints.maxHeight))
-                    } else null
-
-                    val reserved = (tagsPlaceable?.width ?: 0) + if (tagsPlaceable != null) spacingPx else 0
-                    val nameMax = (constraints.maxWidth - reserved).coerceAtLeast(0)
-                    val namePlaceable = subcompose("name") {
-                        Text(
-                            text = module.name,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight(550),
-                            color = colorScheme.onSurface,
-                            textDecoration = textDecoration,
-                            onTextLayout = { nameTextLayout = it }
-                        )
-                    }.first().measure(Constraints(constraints.minWidth, nameMax, constraints.minHeight, constraints.maxHeight))
-
-                    val width = (namePlaceable.width + reserved).coerceIn(constraints.minWidth, constraints.maxWidth)
-                    val height = maxOf(namePlaceable.height, tagsPlaceable?.height ?: 0)
-
-                    layout(width, height) {
-                        namePlaceable.placeRelative(0, 0)
-                        val endX = nameTextLayout?.let { layoutRes ->
-                            val last = (layoutRes.lineCount - 1).coerceAtLeast(0)
-                            layoutRes.getLineRight(last).toInt()
-                        } ?: namePlaceable.width
-                        tagsPlaceable?.placeRelative(endX + spacingPx, (height - (tagsPlaceable.height)) / 2)
-                    }
-                }
-                Text(
-                    text = "$moduleVersion: ${module.version}",
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 2.dp),
-                    fontWeight = FontWeight(550),
-                    color = colorScheme.onSurfaceVariantSummary,
-                    textDecoration = textDecoration
-                )
-                Text(
-                    text = "$moduleAuthor: ${module.author}",
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 1.dp),
-                    fontWeight = FontWeight(550),
-                    color = colorScheme.onSurfaceVariantSummary,
-                    textDecoration = textDecoration
-                )
-            }
-            Switch(
-                enabled = !module.update,
-                checked = module.enabled,
-                onCheckedChange = {
-                    if (it != module.enabled) onCheckChanged(it)
-                }
-            )
-        }
-
-        if (hasDescription) {
-            ExpandableDescriptionText(
-                text = module.description,
-                expanded = expanded,
-                maxLinesLimit = maxLinesLimit,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
-                fontSize = 14.sp,
-                color = colorScheme.onSurfaceVariantSummary,
-                textDecoration = textDecoration
-            )
-        }
-
-        if (showContribute) {
-            // 「无法确认是否已收录」挂在分享按钮**右侧**：它是这个按钮的注解（"点了会怎样"），
-            // 不是独立的一行内容；挤在下面会把这一格撑高，列表里每一条都白占一行。
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(
-                    backgroundColor = secondaryContainer,
-                    minHeight = 35.dp,
-                    minWidth = 35.dp,
-                    onClick = { contribution.openFor(module) },
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Icon(
-                            modifier = Modifier.size(20.dp),
-                            imageVector = MiuixIcons.UploadCloud,
-                            tint = actionIconTint,
-                            contentDescription = stringResource(R.string.module_contribution_submit),
-                        )
-                        Text(
-                            modifier = Modifier.padding(start = 4.dp, end = 3.dp),
-                            text = stringResource(R.string.module_contribution_submit),
-                            color = actionIconTint,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                        )
+                    SubcomposeLayout { constraints ->
+                        val spacingPx = 6.dp.roundToPx()
+                        var nameTextLayout: TextLayoutResult? = null
+                        val tagsPlaceable = if (module.metamodule || module.zygisk) {
+                            subcompose("tags") {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (module.metamodule) {
+                                        Text(
+                                            text = "META",
+                                            fontSize = 12.sp,
+                                            color = updateTint,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(updateBg)
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                            fontWeight = FontWeight(750),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                    if (module.zygisk) {
+                                        Text(
+                                            text = "ZYGISK",
+                                            fontSize = 12.sp,
+                                            color = updateTint,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(updateBg)
+                                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                                            fontWeight = FontWeight(750),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }.first().measure(Constraints(0, constraints.maxWidth, 0, constraints.maxHeight))
+                        } else null
+
+                        val reserved = (tagsPlaceable?.width ?: 0) + if (tagsPlaceable != null) spacingPx else 0
+                        val nameMax = (constraints.maxWidth - reserved).coerceAtLeast(0)
+                        val namePlaceable = subcompose("name") {
+                            Text(
+                                text = module.name,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight(550),
+                                color = colorScheme.onSurface,
+                                textDecoration = textDecoration,
+                                onTextLayout = { nameTextLayout = it }
+                            )
+                        }.first().measure(Constraints(constraints.minWidth, nameMax, constraints.minHeight, constraints.maxHeight))
+
+                        val width = (namePlaceable.width + reserved).coerceIn(constraints.minWidth, constraints.maxWidth)
+                        val height = maxOf(namePlaceable.height, tagsPlaceable?.height ?: 0)
+
+                        layout(width, height) {
+                            namePlaceable.placeRelative(0, 0)
+                            val endX = nameTextLayout?.let { layoutRes ->
+                                val last = (layoutRes.lineCount - 1).coerceAtLeast(0)
+                                layoutRes.getLineRight(last).toInt()
+                            } ?: namePlaceable.width
+                            tagsPlaceable?.placeRelative(endX + spacingPx, (height - (tagsPlaceable.height)) / 2)
+                        }
                     }
-                }
-                // 查不出来时如实说一声：用户主动点投稿，该知道"是不是已收录我们没查出来"。
-                // 吃满剩余宽度：窄屏上它换行，而不是把按钮挤出屏幕。
-                if (showUnknown) {
                     Text(
-                        modifier = Modifier.weight(1f),
-                        text = stringResource(R.string.module_contribution_unknown),
+                        text = "${module.version}, ${module.author}",
                         fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 1.dp),
+                        fontFamily = FontFamily.Monospace,
                         color = colorScheme.onSurfaceVariantSummary,
+                        textDecoration = textDecoration
                     )
+                    module.preinitWarning()?.let {
+                        Text(
+                            text = stringResource(it),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 1.dp),
+                            fontWeight = FontWeight(550),
+                            color = colorScheme.error
+                        )
+                    }
                 }
+                Switch(
+                    enabled = !module.update,
+                    checked = module.enabled,
+                    onCheckedChange = {
+                        if (it != module.enabled) onCheckChanged(it)
+                    }
+                )
             }
-        }
 
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 8.dp),
-            thickness = 0.5.dp,
-            color = colorScheme.outline.copy(alpha = 0.5f)
-        )
+            if (hasDescription) {
+                ExpandableDescriptionText(
+                    text = module.description,
+                    expanded = expanded,
+                    maxLinesLimit = maxLinesLimit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                    fontSize = 14.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                    textDecoration = textDecoration
+                )
+            }
 
-        Row {
-            AnimatedVisibility(
-                visible = module.enabled && !module.remove && !module.update,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (module.hasActionScript) {
+            if (showContribute) {
+                // 「无法确认是否已收录」挂在分享按钮**右侧**：它是这个按钮的注解（"点了会怎样"），
+                // 不是独立的一行内容；挤在下面会把这一格撑高，列表里每一条都白占一行。
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    IconButton(
+                        backgroundColor = secondaryContainer,
+                        minHeight = 35.dp,
+                        minWidth = 35.dp,
+                        onClick = { contribution.openFor(module) },
+                    ) {
                         Row(
-                            modifier = Modifier
-                                .heightIn(min = 35.dp)
-                                .widthIn(min = 35.dp)
-                                .clip(CircleShape)
-                                .background(secondaryContainer)
-                                .combinedClickable(
-                                    onClick = onExecuteAction,
-                                    onLongClick = { onAddActionShortcut(ShortcutType.Action) }
-                                )
-                                .padding(
-                                    start = if (!module.hasWebUi && !hasUpdate) 6.dp else 0.dp,
-                                    end = if (!module.hasWebUi && !hasUpdate) 8.dp else 0.dp,
-                                ),
+                            modifier = Modifier.padding(horizontal = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
                             Icon(
-                                modifier = Modifier.size(24.dp),
-                                imageVector = Icons.Rounded.PlayArrow,
+                                modifier = Modifier.size(20.dp),
+                                imageVector = MiuixIcons.UploadCloud,
                                 tint = actionIconTint,
-                                contentDescription = stringResource(R.string.action)
+                                contentDescription = stringResource(R.string.module_contribution_submit),
                             )
-                            if (!module.hasWebUi && !hasUpdate) {
-                                Text(
-                                    modifier = Modifier.padding(start = 3.dp, end = 4.dp),
-                                    text = stringResource(R.string.action),
-                                    color = actionIconTint,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 15.sp,
-                                )
-                            }
+                            Text(
+                                modifier = Modifier.padding(start = 4.dp, end = 3.dp),
+                                text = stringResource(R.string.module_contribution_submit),
+                                color = actionIconTint,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 15.sp,
+                            )
                         }
                     }
-                    if (module.hasWebUi) {
-                        Row(
-                            modifier = Modifier
-                                .heightIn(min = 35.dp)
-                                .widthIn(min = 35.dp)
-                                .clip(CircleShape)
-                                .background(secondaryContainer)
-                                .combinedClickable(
-                                    onClick = onOpenWebUi,
-                                    onLongClick = { onAddActionShortcut(ShortcutType.WebUI) }
-                                )
-                                .padding(horizontal = if (!module.hasActionScript && !hasUpdate) 10.dp else 0.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                modifier = Modifier.size(22.dp),
-                                imageVector = Icons.Rounded.Code,
-                                tint = actionIconTint,
-                                contentDescription = stringResource(R.string.open)
-                            )
-                            if (!module.hasActionScript && !hasUpdate) {
-                                Text(
-                                    modifier = Modifier.padding(start = 4.dp, end = 2.dp),
-                                    text = stringResource(R.string.open),
-                                    color = actionIconTint,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = 15.sp,
-                                )
-                            }
-                        }
+                    // 查不出来时如实说一声：用户主动点投稿，该知道"是不是已收录我们没查出来"。
+                    // 吃满剩余宽度：窄屏上它换行，而不是把按钮挤出屏幕。
+                    if (showUnknown) {
+                        Text(
+                            modifier = Modifier.weight(1f),
+                            text = stringResource(R.string.module_contribution_unknown),
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                        )
                     }
                 }
             }
 
-            Spacer(Modifier.weight(1f))
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                thickness = 0.5.dp,
+                color = colorScheme.outline.copy(alpha = 0.5f)
+            )
 
-            AnimatedVisibility(
-                visible = hasUpdate,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
+            Row {
+                AnimatedVisibility(
+                    visible = module.enabled && !module.remove && !module.update,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (module.hasActionScript) {
+                            Row(
+                                modifier = Modifier
+                                    .heightIn(min = 35.dp)
+                                    .widthIn(min = 35.dp)
+                                    .clip(CircleShape)
+                                    .background(secondaryContainer)
+                                    .combinedClickable(
+                                        onClick = onExecuteAction,
+                                        onLongClick = { onAddActionShortcut(ShortcutType.Action) }
+                                    )
+                                    .padding(
+                                        start = if (!module.hasWebUi && !hasUpdate) 6.dp else 0.dp,
+                                        end = if (!module.hasWebUi && !hasUpdate) 8.dp else 0.dp,
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    modifier = Modifier.size(24.dp),
+                                    imageVector = Icons.Rounded.PlayArrow,
+                                    tint = actionIconTint,
+                                    contentDescription = stringResource(R.string.action)
+                                )
+                                if (!module.hasWebUi && !hasUpdate) {
+                                    Text(
+                                        modifier = Modifier.padding(start = 3.dp, end = 4.dp),
+                                        text = stringResource(R.string.action),
+                                        color = actionIconTint,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 15.sp,
+                                    )
+                                }
+                            }
+                        }
+                        if (module.hasWebUi) {
+                            Row(
+                                modifier = Modifier
+                                    .heightIn(min = 35.dp)
+                                    .widthIn(min = 35.dp)
+                                    .clip(CircleShape)
+                                    .background(secondaryContainer)
+                                    .combinedClickable(
+                                        onClick = onOpenWebUi,
+                                        onLongClick = { onAddActionShortcut(ShortcutType.WebUI) }
+                                    )
+                                    .padding(horizontal = if (!module.hasActionScript && !hasUpdate) 10.dp else 0.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    modifier = Modifier.size(22.dp),
+                                    imageVector = Icons.Rounded.Code,
+                                    tint = actionIconTint,
+                                    contentDescription = stringResource(R.string.open)
+                                )
+                                if (!module.hasActionScript && !hasUpdate) {
+                                    Text(
+                                        modifier = Modifier.padding(start = 4.dp, end = 2.dp),
+                                        text = stringResource(R.string.open),
+                                        color = actionIconTint,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 15.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                AnimatedVisibility(
+                    visible = hasUpdate,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    IconButton(
+                        modifier = Modifier.padding(end = 8.dp),
+                        backgroundColor = updateBg,
+                        enabled = !module.remove,
+                        minHeight = 35.dp,
+                        minWidth = 35.dp,
+                        onClick = onUpdate,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Icon(
+                                modifier = Modifier.size(20.dp),
+                                imageVector = MiuixIcons.UploadCloud,
+                                tint = updateTint,
+                                contentDescription = stringResource(R.string.module_update),
+                            )
+                            Text(
+                                modifier = Modifier.padding(start = 4.dp, end = 3.dp),
+                                text = stringResource(R.string.module_update),
+                                color = updateTint,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 15.sp
+                            )
+                        }
+                    }
+                }
                 IconButton(
-                    modifier = Modifier.padding(end = 8.dp),
-                    backgroundColor = updateBg,
-                    enabled = !module.remove,
                     minHeight = 35.dp,
                     minWidth = 35.dp,
-                    onClick = onUpdate,
+                    onClick = if (module.remove) onUndoUninstall else onUninstall,
+                    backgroundColor = if (module.remove) {
+                        secondaryContainer.copy(alpha = 0.8f)
+                    } else {
+                        secondaryContainer
+                    },
                 ) {
+                    val animatedPadding by animateDpAsState(
+                        targetValue = if (!hasUpdate) 10.dp else 0.dp,
+                        animationSpec = tween(durationMillis = 300)
+                    )
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp),
+                        modifier = Modifier.padding(horizontal = animatedPadding),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Icon(
                             modifier = Modifier.size(20.dp),
-                            imageVector = MiuixIcons.UploadCloud,
-                            tint = updateTint,
-                            contentDescription = stringResource(R.string.module_update),
+                            imageVector = if (module.remove) {
+                                MiuixIcons.Undo
+                            } else {
+                                MiuixIcons.Delete
+                            },
+                            tint = actionIconTint,
+                            contentDescription = null
                         )
-                        Text(
-                            modifier = Modifier.padding(start = 4.dp, end = 3.dp),
-                            text = stringResource(R.string.module_update),
-                            color = updateTint,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp
-                        )
-                    }
-                }
-            }
-            IconButton(
-                minHeight = 35.dp,
-                minWidth = 35.dp,
-                onClick = if (module.remove) onUndoUninstall else onUninstall,
-                backgroundColor = if (module.remove) {
-                    secondaryContainer.copy(alpha = 0.8f)
-                } else {
-                    secondaryContainer
-                },
-            ) {
-                val animatedPadding by animateDpAsState(
-                    targetValue = if (!hasUpdate) 10.dp else 0.dp,
-                    animationSpec = tween(durationMillis = 300)
-                )
-                Row(
-                    modifier = Modifier.padding(horizontal = animatedPadding),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        modifier = Modifier.size(20.dp),
-                        imageVector = if (module.remove) {
-                            MiuixIcons.Undo
-                        } else {
-                            MiuixIcons.Delete
-                        },
-                        tint = actionIconTint,
-                        contentDescription = null
-                    )
-                    AnimatedVisibility(
-                        visible = !hasUpdate,
-                        enter = expandHorizontally(),
-                        exit = shrinkHorizontally()
-                    ) {
-                        Text(
-                            modifier = Modifier.padding(start = 4.dp, end = 3.dp),
-                            text = stringResource(
-                                if (module.remove) R.string.undo else R.string.uninstall
-                            ),
-                            color = actionIconTint,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp
-                        )
+                        AnimatedVisibility(
+                            visible = !hasUpdate,
+                            enter = expandHorizontally(),
+                            exit = shrinkHorizontally()
+                        ) {
+                            Text(
+                                modifier = Modifier.padding(start = 4.dp, end = 3.dp),
+                                text = stringResource(
+                                    if (module.remove) R.string.undo else R.string.uninstall
+                                ),
+                                color = actionIconTint,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 15.sp
+                            )
+                        }
                     }
                 }
             }

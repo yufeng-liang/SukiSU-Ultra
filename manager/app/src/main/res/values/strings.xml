@@ -120,6 +120,10 @@
     <string name="module_uninstall_failed">Failed to uninstall: %s</string>
     <string name="module_version">Version</string>
     <string name="module_author">Author</string>
+    <string name="module_preinit_no_space">preinit skipped: not enough space on /metadata</string>
+    <string name="module_preinit_error">preinit skipped: invalid preinit directory</string>
+    <string name="module_preinit_bootloop">preinit disabled after repeated boot failures</string>
+    <string name="module_preinit_unsupported">preinit skipped: not supported by the current kernel</string>
     <string name="show_system_apps">Show system apps</string>
     <string name="send_log">Send logs</string>
     <string name="safe_mode">Safe mode</string>
@@ -252,6 +256,10 @@
     <string name="settings_selinux_hide_summary">Prevent applications from detecting SELinux modifications</string>
     <string name="settings_selinux_hide_reboot_required">Reboot to take effect</string>
     <string name="settings_selinux_hide_failed">Error: %d</string>
+    <string name="settings_mount_hide">Hide suspicious mounts</string>
+    <string name="settings_mount_hide_summary">Filter KernelSU and module mount records from the /proc mount views of isolated and app processes</string>
+    <string name="settings_mount_hide_reboot_required">Reboot to take effect</string>
+    <string name="settings_mount_hide_failed">Error: %d</string>
     <string name="settings_sulog">SU Log</string>
     <string name="settings_sulog_summary">Record Root-related events into SukiSU sulog files</string>
     <string name="feature_status_unsupported_summary">Kernel does not support this feature</string>
@@ -977,6 +985,7 @@
     <string name="superuser_filter_system">System</string>
     <string name="superuser_granted_summary">%1$d of %2$d apps granted</string>
     <string name="module_summary">%1$d enabled · %2$d updatable</string>
+    <string name="home_preview_mode">No SukiSU kernel detected. Root access is available, so the pages open in preview mode; kernel features do nothing.</string>
     <string name="dynamic_manager_title">Dynamic managers</string>
     <string name="dynamic_manager_summary">Manage additional trusted KernelSU managers</string>
     <string name="dynamic_manager_enabled">Dynamic managers enabled</string>
@@ -987,4 +996,36 @@
     <string name="dynamic_manager_current">Current manager</string>
     <string name="dynamic_manager_default">Default manager</string>
     <string name="dynamic_manager_authorized">Authorized managers</string>
+
+    <!-- Extension subsystem (KSU_IOCTL_EXTENSION). The four supported
+         extensions are KPM, CPU identity spoofing, umount path manager
+         and dynamic manager. UI must always probe support before
+         showing a toggle. -->
+    <string name="extension_section_title">Extension features</string>
+    <string name="extension_section_summary">Kernel extension features</string>
+    <string name="extension_not_supported">Not supported by this kernel</string>
+    <string name="extension_status_supported">Supported</string>
+    <string name="extension_status_unsupported">Not supported</string>
+    <string name="extension_status_forced">Forced</string>
+    <string name="extension_status_managed">Module-managed</string>
+    <string name="extension_status_enabled">Enabled</string>
+    <string name="extension_status_disabled">Disabled</string>
+    <string name="extension_kpm_title">KPM (Kernel Patch Module)</string>
+    <string name="extension_kpm_summary">Load third-party .kpm modules at runtime. Requires a KPM-capable kernel build.</string>
+    <string name="extension_cpu_spoof_title">CPU identity spoofing</string>
+    <string name="extension_cpu_spoof_summary">Override reported MIDR, BogoMIPS, ELF hwcap and vDSO clock mode on the calling CPU. Subsequent reads of /proc/cpuinfo and uname() reflect the spoofed identity until the next spoof or reboot.</string>
+    <string name="extension_umount_paths_title">Umount path manager</string>
+    <string name="extension_umount_paths_summary">Manage the list of mount points the kernel will umount when an app starts.</string>
+    <string name="extension_dynamic_manager_title">Dynamic manager</string>
+    <string name="extension_dynamic_manager_summary">Allow more than one app to act as the KernelSU manager, authenticated by signing certificate.</string>
+    <string name="extension_open_details">Open details</string>
+    <string name="extension_open_kpm">Open KPM manager</string>
+    <string name="extension_open_dynamic_manager">Open dynamic manager list</string>
+    <string name="extension_open_umount_paths">Open umount path list</string>
+    <string name="extension_open_cpu_spoof">Open CPU spoofing form</string>
+
+    <!-- Empty state shown when no extension state has been observed
+         and the screen is not in the middle of a refresh. -->
+    <string name="extension_empty_title">No extension data</string>
+    <string name="extension_empty_subtitle">Pull to refresh, or check that the running kernel includes the extension hub.</string>
 </resources>
