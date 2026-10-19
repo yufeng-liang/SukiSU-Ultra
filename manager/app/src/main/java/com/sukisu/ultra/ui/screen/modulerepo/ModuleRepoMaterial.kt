@@ -89,6 +89,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -389,7 +390,6 @@ private fun RepoModuleList(
         }
         items(modules, key = { "${it.sourceId}|${it.moduleId}" }, contentType = { "module" }) { module ->
             val latestReleaseTime = remember(module.latestReleaseTime) { formatRepoTime(module.latestReleaseTime) }
-            val moduleAuthor = stringResource(id = R.string.module_author)
 
             TonalCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -408,18 +408,18 @@ private fun RepoModuleList(
                             lineHeight = MaterialTheme.typography.bodySmall.lineHeight,
                         )
                     }
-                    if (module.moduleId.isNotEmpty()) {
+                    // 紧凑一行：moduleId 与作者合并，monospace 小字（沿用上游 Material 重设计）
+                    if (module.moduleId.isNotEmpty() || module.authors.isNotEmpty()) {
                         Text(
-                            text = "ID: ${module.moduleId}",
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = listOf(module.moduleId, module.authors)
+                                .filter { it.isNotEmpty() }
+                                .joinToString(", "),
+                            modifier = Modifier.padding(top = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text(
-                        text = "$moduleAuthor: ${module.authors}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     if (module.summary.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
