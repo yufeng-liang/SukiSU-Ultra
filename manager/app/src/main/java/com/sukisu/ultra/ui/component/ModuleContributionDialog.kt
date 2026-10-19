@@ -15,6 +15,7 @@ import com.sukisu.ultra.ui.util.ModuleProp
 import com.sukisu.ultra.ui.util.ModulePropInfo
 import com.sukisu.ultra.ui.util.SubmitResult
 import com.sukisu.ultra.ui.util.makeNonce
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,6 +38,10 @@ class ModuleContributionDialogState internal constructor(
     private val submit: suspend (File, ModulePropInfo?, String, String, String, String, String) -> SubmitResult,
     private val lookupUid: suspend (String) -> CoolapkUidLookup,
     private val submittingText: () -> String,
+    /**
+     * 算整包哈希用的调度器。生产上就是 [Dispatchers.IO]；测试注入手动挡，见 [open]。
+     */
+    private val hashDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     /** 当前投稿的文件。null 表示对话框不显示。 */
@@ -77,7 +82,7 @@ class ModuleContributionDialogState internal constructor(
         val openedZip = zip
         scope.launch {
             // 读盘在 IO，写状态回到 scope（主线程）：snapshot 状态从后台线程写是 race 的来源。
-            val zipSha = withContext(Dispatchers.IO) { ModuleProp.zipSha256(openedZip) }
+            val zipSha = withContext(hashDispatcher) { ModuleProp.zipSha256(openedZip) }
             // 算完时对话框可能已经关掉、或换成了另一个包：只把哈希写回它属于的那一次。
             if (zipSha == null || file !== openedZip) return@launch
             form = form.copy(zipSha256 = zipSha)

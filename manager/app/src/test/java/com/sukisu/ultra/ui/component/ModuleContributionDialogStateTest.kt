@@ -16,8 +16,6 @@ import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentLinkedDeque
-import java.util.concurrent.Semaphore
-import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -31,9 +29,9 @@ import kotlin.coroutines.CoroutineContext
  * （仓库规则「新装的闸要当场证明自己会咬人」）。
  *
  * 怎么在纯 JVM 里驱动一个 Compose 状态宿主：构造函数是 internal（单测模块可见），
- * `scope` / `submit` / `lookupUid` / `submittingText` 全是注入的，所以既不需要 Robolectric，
- * 也不需要 Compose 的测试框架 —— 只构造状态宿主本身，界面一行都不碰。
- * scope 用下面那个 [SteppingScope]（手动挡），**不是** runBlocking，原因写在它的文档里。
+ * `scope` / `submit` / `lookupUid` / `submittingText` / `hashDispatcher` 全是注入的，
+ * 所以既不需要 Robolectric，也不需要 Compose 的测试框架 —— 只构造状态宿主本身，界面一行都不碰。
+ * scope 与算哈希的调度器都用下面那个 [SteppingScope]（手动挡），**不是** runBlocking，原因写在它的文档里。
  */
 class ModuleContributionDialogStateTest {
 
@@ -93,17 +91,17 @@ class ModuleContributionDialogStateTest {
         val harness = Harness(submit = { _, _, _, _, _, _, _ -> SubmitResult(true, null, "投稿已提交") })
         val state = harness.state
 
-        // 第 1 次 open：协程开跑 → withContext(Dispatchers.IO) 挂起 → 哈希算回来了，
-        // 但**先压在队列里不跑写回**，这样"陈旧的那一次"确定性地排在最后一次写回之后执行。
+        // 第 1 次 open：协程开跑 → 哈希任务排进队列 → 手动跑掉它，于是"A 的写回"这枚续体
+        // 明确地排在队列里、**尚未执行**。这样后面才能让"陈旧的那一次"确定性地在最后一次写回之后跑。
         state.open(zipA, meta)
-        harness.scope.runNext()
-        harness.scope.awaitQueued()
+        harness.scope.runNext() // A 的 launch 体开跑，把哈希任务派进队列
+        harness.scope.runNext() // 哈希算完，A 的写回续体入队（先按住不跑）
 
         // 对话框没关就换了另一个包（列表里点了第二个模块）。
         state.open(zipB, meta)
-        // 取队尾而不是队首：队首现在是 A 那一次的陈旧续体，故意留着最后才跑。
-        harness.scope.runLatest()
-        harness.scope.awaitQueued(2)
+        // 取队尾而不是队首：队首现在是 A 那一次的陈旧写回，故意留着最后才跑。
+        harness.scope.runLatest() // B 的 launch 体开跑，B 的哈希任务入队
+        harness.scope.runLatest() // B 的哈希算完，B 的写回续体入队
         harness.scope.runLatest() // B 的写回：file === zipB → 落进表单
         assertEquals(shaB, state.form.zipSha256)
 
@@ -227,13 +225,16 @@ class ModuleContributionDialogStateTest {
         lookupUid: suspend (String) -> CoolapkUidLookup = { CoolapkUidLookup.Verified("酷友") },
     ) {
         val scope = SteppingScope()
-        val state = ModuleContributionDialogState(scope, submit, lookupUid) { "正在提交…" }
+        // 算哈希用**另一个**调度器实例（但共用同一条队列）。必须是不同实例：
+        // withContext 见到新旧 interceptor 相同会走 undispatched 快路径，哈希就地跑完，
+        // 队列里就少了"哈希回来"这一步，陈旧写回那条断言也就没法把它按住。
+        val state = ModuleContributionDialogState(scope, submit, lookupUid, { "正在提交…" }, scope.hashDispatcher)
 
         /** 开一次对话框，并把后台算出来的整包哈希写回表单（跑到静默）。 */
         fun openAndLandZipHash(zip: File = zipNamed("a.zip", "SUkISU-WIRING-A")) {
             state.open(zip, meta)
-            scope.runNext() // 协程开跑，withContext(Dispatchers.IO) 挂起
-            scope.awaitQueued() // 哈希算回来了
+            scope.runNext() // launch 体开跑，哈希任务派进队列
+            scope.runNext() // 哈希算完，写回续体入队
             scope.runNext() // 写回表单
         }
 
@@ -257,52 +258,55 @@ class ModuleContributionDialogStateTest {
     }
 
     /**
-     * 手动挡的 [CoroutineScope]：`scope.launch { … }` 不立刻跑，而是排进队列，
-     * 由测试决定什么时候让哪一个续体执行。
+     * 手动挡的调度器兼 [CoroutineScope]：`scope.launch { … }` 与 `withContext(this)` 都不立刻跑，
+     * 而是排进队列，由测试决定什么时候让哪一个续体执行。
      *
      * 为什么不用 runBlocking / Dispatchers.Unconfined：那两种都会让 open() 的后台哈希**并发**跑完，
      * 两次 open 的写回谁先落定取决于 IO 线程 —— 「陈旧写入被丢弃」那条断言就变成碰运气，
      * 而且顺序不巧时（陈旧那次先写、新那次后写覆盖掉它），把闸门删掉测试照样绿。
      * 这里由测试亲手把陈旧的那一次续体留在队列里，等最后一次正常写回落定之后再跑它。
      *
-     * 唯一需要等的真实时间：`withContext(Dispatchers.IO)` 用的是真 IO 线程池，所以「它算完了」
-     * 得等一个后台线程（[awaitQueued] 有上限，超时就红，不会挂住）。除那之外没有时序假设。
+     * 同一个队列既承载 scope 的续体、也承载算整包哈希那一步，
+     * 于是**没有任何一步需要等真实时间**：读盘也是队列里的一枚续体。
+     * 早先那版把哈希留给 `Dispatchers.IO` 真线程池、用 5 秒上限等它回来，在 CI 的 2 核
+     * runner 上跑到第 577 条测试时就会真的超时（Build Manager #73 两条失败正是这么来的）——
+     * 「测试不依赖墙钟」不是洁癖，是这份测试能在慢机器上活下来的前提。
      *
      * 这个 scope 之所以要自己实现：`testImplementation` 只有 junit 与 org.json
      * （`manager/app/build.gradle.kts`），没有 kotlinx-coroutines-test 的 TestScheduler，
      * 而这个任务不许动 build 文件。
      */
-    private class SteppingScope : CoroutineScope, AutoCloseable {
+    private class SteppingScope : CoroutineDispatcher(), CoroutineScope, AutoCloseable {
         private val tasks = ConcurrentLinkedDeque<Runnable>()
-        private val arrived = Semaphore(0)
         private val job = SupervisorJob()
 
-        override val coroutineContext: CoroutineContext = object : CoroutineDispatcher() {
-            // 永远走 dispatch：于是一次 launch 的启动也是一枚可控的续体。
+        override val coroutineContext: CoroutineContext = this + job
+
+        /**
+         * 交给 `withContext` 的调度器。必须是**另一个实例**：`withContext` 见到新旧
+         * interceptor 是同一个对象时会走 undispatched 快路径，哈希就地跑完，
+         * 队列里就少了「哈希回来」这一步，陈旧写回那条断言也就没法把它按住。
+         */
+        val hashDispatcher: CoroutineDispatcher = object : CoroutineDispatcher() {
             override fun isDispatchNeeded(context: CoroutineContext): Boolean = true
 
             override fun dispatch(context: CoroutineContext, block: Runnable) {
                 tasks.add(block)
-                arrived.release()
             }
-        } + job
+        }
+
+        // 永远走 dispatch：于是一次 launch 的启动、一次 withContext 的进出都是可控的续体。
+        override fun isDispatchNeeded(context: CoroutineContext): Boolean = true
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            tasks.add(block)
+        }
 
         /** 跑队首那枚续体（最早排进来的那一次「回到 scope」）。 */
         fun runNext() = runTask(tasks.pollFirst() ?: throw AssertionError("队列已空：这里没有可跑的续体"))
 
         /** 跑队尾那枚续体（最后排进来的）—— 用来让后发起的那一次先写回。 */
         fun runLatest() = runTask(tasks.pollLast() ?: throw AssertionError("队列已空：这里没有可跑的续体"))
-
-        /** 等后台任务（IO 池里的那次哈希）算完、续体排进队。等的是"有没有"，不是"谁快"。 */
-        fun awaitQueued(atLeast: Int = 1, timeoutMs: Long = 5_000) {
-            val deadline = System.currentTimeMillis() + timeoutMs
-            while (tasks.size < atLeast) {
-                val left = deadline - System.currentTimeMillis()
-                if (left <= 0L || !arrived.tryAcquire(left, TimeUnit.MILLISECONDS)) {
-                    fail("等了 ${timeoutMs}ms，后台任务没回到 scope：队列 $tasks.size 枚，期望至少 $atLeast 枚")
-                }
-            }
-        }
 
         /** 把队列里排着的全跑完，走到静默（一次提交、一串 UID 核实这种多任务的入口用得上）。 */
         fun drainAll(bound: Int = 100) {
