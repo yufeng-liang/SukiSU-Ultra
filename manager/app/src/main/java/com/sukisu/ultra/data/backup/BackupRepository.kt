@@ -22,8 +22,8 @@ object BackupDefaults {
     const val RETENTION = 5
 
     /**
-     * 分区快照每次两张（boot 约 96MB + init_boot 约 8MB，压缩后约 20MB），
-     * 留 5 次就是 100MB 起步，默认只留 2 份。
+     * 分区快照每次两张（boot 约 96MB + init_boot 约 8MB，压缩后一次约 20MB），
+     * 按默认的 2 份算约 40MB；上限 10 份（见 [RetentionLimit.MAX_PARTITION]）约 200MB。
      */
     const val PARTITION_RETENTION = 2
 

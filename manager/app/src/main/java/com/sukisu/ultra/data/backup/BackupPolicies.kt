@@ -79,7 +79,7 @@ object RetentionLimit {
 
     /**
      * 分区快照每次备份产出两张（boot 约 96MB + init_boot 约 8MB，压缩后约 20MB），
-     * 留 20 次就是 400MB 起步，上限比模块更紧。
+     * 留 10 次就是 200MB 起步，上限比模块更紧。
      */
     const val MAX_PARTITION = 10
 
