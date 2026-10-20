@@ -7,6 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -127,6 +128,9 @@ class ScriptPackageTest {
         ScriptPackage.extract(z, dest)
         assertEquals("echo hi\n", File(dest, "action.sh").readText())
         assertEquals("payload", File(dest, "data/nested/file.txt").readText())
+        // 执行位只在 POSIX 文件系统上有意义：Windows 没有「可执行」权限的概念，canExecute()
+        // 对一切可读文件都返回 true，下面两条断言在 Windows 上永远过不了——按平台跳过（CI 是 Linux，仍然生效）。
+        Assume.assumeFalse(System.getProperty("os.name")?.lowercase()?.contains("windows") == true)
         assertTrue(File(dest, "bin/helper").canExecute())
         assertFalse(File(dest, "data/nested/file.txt").canExecute())
         // No temporary directory is left next to the extraction.
