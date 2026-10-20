@@ -367,34 +367,40 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * 勾选/取消一个来源。
      *
-     * 允许一个都不勾（列表随即变成"请先勾一个"），但**不允许**在用户什么都没勾时按立即备份，
+     * 来源只决定「立即备份」写到哪，不影响恢复列表（列表始终全量列举，见 [refresh]），
+     * 所以这里不刷新。允许一个都不勾，但**不允许**在用户什么都没勾时按立即备份，
      * 见 [BackupUiState.canBackUp]。
      */
     fun toggleOrigin(origin: BackupOrigin) {
-        // 用户主动换来源：上一次操作的结果已经过期，清掉，别让它和新的列表状态混在一起。
+        // 用户主动改设置：上一次操作的结果已经过期，清掉，别让它和新设置混在一起。
         _uiState.update { state ->
             state.copy(
                 origins = if (origin in state.origins) state.origins - origin else state.origins + origin,
                 message = null,
             )
         }
-        refresh()
     }
 
     /**
      * 整批指定备份位置（下拉框那三项：本地 / 云端 / 本地+云端）。
      *
      * 下拉框里没有"一个都不选"这一项，所以这里也不收空集合——那会让界面显示「本地」而实际
-     * 哪儿都不写；真收到空的就按「本地」处理。重选当前那一项直接返回：换位置要重新列一遍
-     * 云端清单（一次网络往返），没换位置就不该付这个钱。
+     * 哪儿都不写；真收到空的就按「本地」处理。重选当前那一项直接返回。这里**不需要刷新**：
+     * 恢复列表与勾选解耦（见 [refresh]），换位置影响的只是"下次备份写到哪"，不再付一次
+     * 云端清单的网络往返。
      */
     fun setOrigins(origins: Set<BackupOrigin>) {
         val next = origins.ifEmpty { setOf(BackupOrigin.LOCAL) }
         if (_uiState.value.origins == next) return
         _uiState.update { it.copy(origins = next, message = null) }
-        refresh()
     }
 
+    /**
+     * 勾选/取消一种备份内容。
+     *
+     * 勾选只影响「立即备份」写哪些，不影响恢复列表（列表始终全量列举，见 [refresh]），
+     * 所以这里不刷新。
+     */
     fun toggleKind(kind: BackupKind) {
         _uiState.update { state ->
             state.copy(
@@ -405,7 +411,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         // 上次读模块列表失败（当时没 root、ksud 没起来）就再试一次：勾上模块时用户马上要看
         // 的就是那份列表，不能一直停在"读不到"。
         if (kind == BackupKind.MODULE && _uiState.value.modules.isEmpty()) loadModules()
-        refresh()
     }
 
     /**
@@ -446,39 +451,31 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     private data class RefreshOutcome(
         val origins: Set<BackupOrigin>,
-        val kinds: Set<BackupKind>,
         val listingFailed: Boolean,
     )
 
     /**
-     * 重新列勾选的来源与内容。
+     * 重新列恢复列表。
+     *
+     * 列表与备份 tab 的勾选**解耦**：不管备份位置选了哪一档、内容勾了哪几样，这里都把本机
+     * 和（已配置时）云端的全部可恢复类型列出来。勾选决定的是"备份写到哪、写哪些"，不该反过来
+     * 决定"能恢复什么"——用户没勾分区快照只说明这次不备份它，不是不想恢复它。
      *
      * 注意这里**不碰 message**：操作的结果（备份摘要、失败原因）刚写进 message，紧接着就 refresh，
      * 如果 refresh 顺手清掉它，用户在一次主线程 turn 里看不到任何提示——失败会被当成成功。
      * message 只由 [clearMessage]（消费掉之后）、用户主动换来源/内容/服务器，或下一次操作覆盖。
      */
     fun refresh() = viewModelScope.launch {
-        val origins = _uiState.value.origins
-        val kinds = _uiState.value.kinds
+        // 云端只在真的配置好了才去列：没配不是错误（静默跳过，不存在"请先配置云端"的报错——
+        // 那句话是给备份动作的），配了却列不出来才是错误，由下面的 describe 把原因说出来。
+        val origins = buildSet {
+            add(BackupOrigin.LOCAL)
+            if (repository.cloudConfigured()) add(BackupOrigin.CLOUD)
+        }
+        val kinds = BackupKind.LIVE_KINDS
         // 顺带把自动备份记录重新读一遍：装完模块的自动备份是在别的界面跑完的，
         // 用户回到这一页时才看得到它。
         _uiState.update { it.copy(loading = true, autoBackupRecord = repository.lastAutoBackup()) }
-        if (origins.isEmpty() || kinds.isEmpty()) {
-            entries = emptyList()
-            metas = emptyMap()
-            _uiState.update {
-                it.copy(
-                    loading = false,
-                    rows = emptyList(),
-                    groups = emptyList(),
-                    openGroupId = null,
-                    // 列表都被清空了，勾选跟着清掉：留着也只会是一条点了没反应的操作栏。
-                    selectedGroupIds = emptySet(),
-                    emptyText = string(R.string.backup_pick_a_target),
-                )
-            }
-            return@launch
-        }
 
         val collected = mutableListOf<OriginEntry>()
         val collectedMetas = mutableMapOf<String, ModuleBackupMeta>()
@@ -486,11 +483,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         var listingFailed = false
         for (kind in kinds.sortedBy { it.ordinal }) {
             for (origin in origins.sortedBy { it.ordinal }) {
-                if (origin == BackupOrigin.CLOUD && !repository.cloudConfigured()) {
-                    message = BackupListFormatter.mergeMessages(message, string(R.string.backup_cloud_required))
-                    listingFailed = true
-                    continue
-                }
                 val listed = repository.list(origin, kind)
                 if (listed.isFailure) {
                     message = BackupListFormatter.mergeMessages(
@@ -505,12 +497,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 collectedMetas += loadMetas(origin, list)
             }
         }
-        // 慢的那次可能后落地：勾选已经变了就丢弃这份结果，别用它覆盖新选择的列表。
-        if (_uiState.value.origins != origins || _uiState.value.kinds != kinds) {
-            lastRefreshOutcome = null
-            return@launch
-        }
-        lastRefreshOutcome = RefreshOutcome(origins, kinds, listingFailed)
+        lastRefreshOutcome = RefreshOutcome(origins, listingFailed)
         entries = collected
         metas = collectedMetas
         // 两侧合起来列，最新的在最上面：来源不同不影响"我最近备了什么"这个问题。
@@ -530,10 +517,10 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 rows = rows,
                 groups = groups,
                 selectedGroupIds = stillSelected,
-                // 空列表要说清"为什么空"：模块是"还没备份过"，分区快照是"这台设备上没有可拍照的分区"。
-                // 读取失败时不给空状态文案——那句"还没有备份"会把"没读到"说成"没有"。
+                // 空列表只有一种原因：哪儿都没有备份，空状态一句话说完。读取失败时不给空状态
+                // 文案——那句"还没有备份"会把"没读到"说成"没有"。
                 emptyText = if (collected.isEmpty() && !listingFailed) {
-                    emptyText(origins, kinds)
+                    string(R.string.backup_empty_mixed)
                 } else {
                     null
                 },
@@ -1026,25 +1013,17 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * 导入的目标后端**永远是本地**（[BackupRepository.importFromSaf] 写死 localStorage），
-     * 所以导入之后要把本机勾上，否则用户看到"已导入"却在当前列表里找不到那一项。
-     * 失败也一样：操作本身是本地操作，提示该出现在它真正动过的那个列表上。
+     * 导入完刷新一次即可：恢复列表与勾选解耦（见 [refresh]），本机的新条目自己就会出现，
+     * 不需要再替用户改备份 tab 的勾选。
      */
     fun importFrom(uri: Uri) = viewModelScope.launch {
-        // 先按勾选猜一个类型交给仓库：它认得归档名（partition_ 前缀是分区快照），会以自己认出的为准，
-        // 认不出才用这个。猜错了不至于出事，但导入完得按**实际**类型去列，否则刚导进来的那份
-        // 不在列表里——"已导入"却找不到东西，和没导一样。
-        val guess = _uiState.value.kinds.minByOrNull { it.ordinal } ?: BackupKind.MODULE
+        // 类型让仓库自己认（归档名 partition_ 前缀是分区快照，仓库会以认出的为准）；
+        // 认不出时按模块兜底。退役的 kind（如旧的 BOOT）仓库那边会报错拒绝，传不出去。
         _uiState.update { it.copy(loading = true, message = null) }
-        val result = repository.importFromSaf(uri, guess)
+        val result = repository.importFromSaf(uri, BackupKind.MODULE)
         _uiState.update {
-            // 只把「这个版本真的能备份/恢复」的类型并进勾选：退役的 kind（如旧的 BOOT）没有
-            // 勾选框，一旦进了 kinds 用户就关不掉，而按 kinds 列举又会让那些条目出现在列表里。
-            // 仓库那边已经对它报错拒绝，这里再兜一道，保证状态里不会出现不可操作的项。
-            val imported = result.getOrNull()?.takeIf { kind -> kind in BackupKind.LIVE_KINDS }
             it.copy(
                 loading = false,
-                origins = it.origins + BackupOrigin.LOCAL,
-                kinds = if (imported != null) it.kinds + imported else it.kinds,
                 message = result.fold(
                     onSuccess = { string(R.string.backup_imported) },
                     onFailure = { error -> describe(error) },
@@ -1190,29 +1169,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun clearMessage(shown: String) = _uiState.update {
         if (it.message == shown) it.copy(message = null) else it
-    }
-
-    /**
-     * 列表为空时该说的那句话。
-     *
-     * 分区快照与模块要分开：模块空 = 还没备份过（可操作），分区快照空 = 这台设备上没有可拍照的
-     * 分区（比如 boot / init_boot 都读不到，用户做什么都不会有），这两件事给同一句话就是误导。
-     * 勾了多个来源/内容时四种组合都可能是空的，那就只说"还没有备份"。
-     */
-    private fun emptyText(origins: Set<BackupOrigin>, kinds: Set<BackupKind>): String =
-        if (origins.size == 1 && kinds.size == 1) {
-            emptyTextFor(origins.first(), kinds.first())
-        } else {
-            string(R.string.backup_empty_mixed)
-        }
-
-    private fun emptyTextFor(origin: BackupOrigin, kind: BackupKind): String = when {
-        kind == BackupKind.PARTITION && origin == BackupOrigin.CLOUD ->
-            string(R.string.backup_empty_partition_cloud)
-        kind == BackupKind.PARTITION -> string(R.string.backup_empty_partition_local)
-        kind == BackupKind.REPO_CONFIG -> string(R.string.backup_empty_repo_config)
-        origin == BackupOrigin.CLOUD -> string(R.string.backup_empty_module_cloud)
-        else -> string(R.string.backup_empty_module_local)
     }
 
     /** 列表里那几段必须跟着语言走的文案，见 [BackupListFormatter.rows]。 */

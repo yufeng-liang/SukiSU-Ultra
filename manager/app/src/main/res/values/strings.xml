@@ -801,13 +801,12 @@
     <string name="backup_location_local">Local backups are in %1$s</string>
     <string name="backup_location_cloud">Cloud backups are in %1$s</string>
     <string name="backup_pick_a_target">Pick at least one location and one kind of content.</string>
-    <string name="backup_empty_mixed">No backups in the selected locations yet. Back up now creates one.</string>
+    <string name="backup_empty_mixed">No backups yet. Back up now creates one.</string>
     <string name="backup_origin_plan">Backing up to %1$s</string>
     <string name="backup_origin_hint">Choose where backups go</string>
     <string name="backup_origin_none">Pick at least one destination</string>
     <string name="backup_origin_local">Local</string>
     <string name="backup_origin_cloud">Cloud</string>
-    <string name="backup_cloud_required">Configure the WebDAV server above and save it first.</string>
     <string name="backup_cloud_chip_locked">Set up Cloud above before you can select it.</string>
     <string name="backup_cloud_test_ok">Connection OK</string>
     <string name="backup_restored">Restored %s</string>
@@ -815,9 +814,6 @@
     <string name="backup_imported">Imported</string>
     <string name="backup_row_disabled">Disabled</string>
     <string name="backup_restore_failed">Restore failed</string>
-    <string name="backup_empty_module_local">No backups yet. Back up now packages the modules onto this device.</string>
-    <string name="backup_empty_module_cloud">Nothing on the server yet. Back up now uploads the modules here.</string>
-    <string name="backup_empty_repo_config">No repo source backups yet. Tick "Repo sources" on the Back up tab and back up once - the backup will show up here.</string>
 
     <!-- Backup summaries and diagnostics. Every string here is shown to the user, so no
          internal vocabulary (PUT/MKCOL/index-read) and no bare counters. Technical details
@@ -1024,8 +1020,6 @@
     <string name="backup_partition_restore_confirm_body_mixed_partitions">This will flash %1$d partitions (%2$s). The images are written straight to the block device. If the partition or the image is wrong the device may not boot, and there is no undo.\n\n%3$d module(s) in this selection are reinstalled as well.</string>
     <string name="backup_kmi_mismatch_title">Kernel KMI has changed</string>
     <string name="backup_kmi_mismatch_body">This snapshot was taken on kernel %1$s, but the system now runs %2$s. The system has likely been updated since: flashing the old snapshot back may leave the device unable to boot. If that happens, switch back to the other slot via fastboot to return to the pre-update system. Continue anyway?</string>
-    <string name="backup_empty_partition_local">No snapshot yet - this captures boot, init_boot and vendor_boot as they are now.</string>
-    <string name="backup_empty_partition_cloud">No snapshot on the server yet. Back up now uploads one from this device.</string>
     <string name="backup_nothing_partition">no partition to snapshot</string>
     <string name="backup_result_note_partition">This device has no boot, init_boot or vendor_boot partition to snapshot, so nothing was backed up</string>
     <string name="backup_retention_partition">Partition snapshots</string>

@@ -796,13 +796,12 @@
     <string name="backup_location_local">本机备份在 %1$s</string>
     <string name="backup_location_cloud">云端备份在 %1$s</string>
     <string name="backup_pick_a_target">请至少勾选一个位置和一种内容。</string>
-    <string name="backup_empty_mixed">勾选的位置还没有备份。点「立即备份」即可创建一份。</string>
+    <string name="backup_empty_mixed">还没有备份。点「立即备份」即可创建一份。</string>
     <string name="backup_origin_plan">备份写到 %1$s</string>
     <string name="backup_origin_hint">选择备份到哪里</string>
     <string name="backup_origin_none">还没选位置，先勾一个</string>
     <string name="backup_origin_local">本地</string>
     <string name="backup_origin_cloud">云端</string>
-    <string name="backup_cloud_required">请先在上面配置 WebDAV 服务器并保存。</string>
     <string name="backup_cloud_chip_locked">配置好上面的云端后，才能选择「云端」。</string>
     <string name="backup_cloud_test_ok">连接正常</string>
     <string name="backup_restored">已恢复 %s</string>
@@ -810,9 +809,6 @@
     <string name="backup_imported">已导入</string>
     <string name="backup_row_disabled">已禁用</string>
     <string name="backup_restore_failed">恢复失败</string>
-    <string name="backup_empty_module_local">还没有备份。点「立即备份」将模块打包备份到本机。</string>
-    <string name="backup_empty_module_cloud">云端还没有备份。点「立即备份」上传到这里。</string>
-    <string name="backup_empty_repo_config">还没有仓库源的备份。先在「备份」页勾上仓库源配置并点「立即备份」，备份会显示在这里。</string>
 
     <!-- 备份摘要与诊断。这里每一句都会显示给用户：不出现内部术语（PUT/MKCOL/index-read），
          不出现裸露的计数器；但对排查有用的技术细节保留在括号里（HTTP 状态码、截断的哈希、文件名）。 -->
@@ -1013,8 +1009,6 @@
     <string name="backup_partition_restore_confirm_body_mixed_partitions">将刷回 %1$d 个分区（%2$s）。镜像会直接写入块设备，分区或镜像不对可能导致无法开机，而且无法撤销。\n\n这次勾选里还有 %3$d 个模块会被重新安装。</string>
     <string name="backup_kmi_mismatch_title">内核 KMI 已变化</string>
     <string name="backup_kmi_mismatch_body">这份快照拍自内核 %1$s，当前系统是 %2$s——系统多半已经升级过，把旧快照刷回去可能无法开机。万一卡在开机画面，可用 fastboot 切回另一个槽位回到升级前的系统。仍要继续吗？</string>
-    <string name="backup_empty_partition_local">还没有分区快照——它会抓取 boot、init_boot 与 vendor_boot 当前的内容。</string>
-    <string name="backup_empty_partition_cloud">云端还没有分区快照。点「立即备份」上传本机这份。</string>
     <string name="backup_nothing_partition">没有可快照的分区</string>
     <string name="backup_result_note_partition">这台设备上没有 boot、init_boot 或 vendor_boot 分区可快照，所以这次没备到</string>
     <string name="backup_retention_partition">分区快照</string>
