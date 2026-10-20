@@ -77,6 +77,24 @@ pub fn kpm_actually_working() -> bool {
     }
 }
 
+/// Whether the SuSFS module is actually installed.
+///
+/// The KSU_EXTENSION_GET handler only reports "supported" when the
+/// kernel is built with the SuSFS extension stub. A live `susfs status`
+/// ioctl distinguishes the two (stub returns success but the module may
+/// not be installed). Used by `check_extension` and `list_extensions`
+/// so the answer is computed once per ksud invocation.
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+pub fn susfs_actually_working() -> bool {
+    crate::susfs::get_susfs_status()
+}
+
+/// Stub for non-aarch64 builds (susfs module is aarch64-only).
+#[cfg(not(all(target_os = "android", target_arch = "aarch64")))]
+pub const fn susfs_actually_working() -> bool {
+    false
+}
+
 pub fn load_binary_config() -> Result<HashMap<u32, u64>> {
     let path = Path::new(EXTENSION_CONFIG_PATH);
     if !path.exists() {
@@ -352,6 +370,11 @@ pub fn list_extensions() {
     let kpm_advertised = states.get(&ExtensionId::Kpm).is_some_and(|s| s.supported);
     let kpm_working = kpm_advertised && kpm_actually_working();
 
+    // Lazy SuSFS probe: only run `susfs status` if the kernel
+    // advertised SuSFS support (i.e. the stub handler is registered).
+    let susfs_advertised = states.get(&ExtensionId::Susfs).is_some_and(|s| s.supported);
+    let susfs_working = susfs_advertised && susfs_actually_working();
+
     let mut extension_to_modules: HashMap<String, Vec<String>> = HashMap::new();
     for (module_id, ext_list) in &managed_extensions_map {
         for ext_name in ext_list {
@@ -367,9 +390,11 @@ pub fn list_extensions() {
         let state = states.get(extension_id).copied().unwrap_or_default();
 
         // For KPM, "supported" requires the live ioctl probe to succeed.
+        // For SuSFS, "supported" requires the susfs status probe.
         // For the other three, the kernel-side supported flag is enough.
-        let really_supported =
-            state.supported && (extension_id != &ExtensionId::Kpm || kpm_working);
+        let really_supported = state.supported
+            && (extension_id != &ExtensionId::Kpm || kpm_working)
+            && (extension_id != &ExtensionId::Susfs || susfs_working);
 
         let label = if !really_supported {
             "NOT_SUPPORTED".to_string()
@@ -427,8 +452,9 @@ pub fn list_extensions() {
     for extension_id in &ExtensionId::ALL {
         let id = *extension_id as u32;
         let state = states.get(extension_id).copied().unwrap_or_default();
-        let really_supported =
-            state.supported && (extension_id != &ExtensionId::Kpm || kpm_working);
+        let really_supported = state.supported
+            && (extension_id != &ExtensionId::Kpm || kpm_working)
+            && (extension_id != &ExtensionId::Susfs || susfs_working);
         let managed = extension_to_modules
             .get(extension_id.name())
             .is_some_and(|v| !v.is_empty());
@@ -519,6 +545,13 @@ pub fn check_extension(id: &str) -> Result<()> {
     // KPM reports supported whenever CONFIG_KPM=y, but the live
     // control surface may still be unreachable. Probe it once.
     if extension_id == ExtensionId::Kpm && !kpm_actually_working() {
+        println!("unsupported");
+        return Ok(());
+    }
+
+    // SuSFS reports supported whenever the stub handler is registered,
+    // but the module may not be installed. Probe it once.
+    if extension_id == ExtensionId::Susfs && !susfs_actually_working() {
         println!("unsupported");
         return Ok(());
     }

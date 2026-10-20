@@ -1,10 +1,12 @@
 package com.sukisu.ultra.ui.component.material
 
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -48,29 +51,33 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.round
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
@@ -318,21 +325,50 @@ fun SegmentedListItem(
     leadingContent: @Composable (() -> Unit)? = null,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
-    SegmentedListItem(
-        onClick = onClick ?: {},
-        onLongClick = onLongClick,
-        enabled = enabled,
-        colors = colors,
-        interactionSource = interactionSource,
-        shapes = LocalListItemShapes.current ?: ListItemDefaults.segmentedShapes(0, 1),
-        modifier = modifier,
-        leadingContent = leadingContent,
-        trailingContent = trailingContent,
-        overlineContent = overlineContent,
-        supportingContent = supportingContent,
-        verticalAlignment = Alignment.CenterVertically,
-        content = headlineContent
-    )
+    if (onClick != null) {
+        val resolvedSource = interactionSource ?: remember { MutableInteractionSource() }
+        val pressed by resolvedSource.collectIsPressedAsState()
+        val scale by animateFloatAsState(
+            targetValue = if (pressed) 0.97f else 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+            ),
+            label = "SegmentedListItemPressScale",
+        )
+        val haptic = LocalHapticFeedback.current
+        LaunchedEffect(pressed) {
+            if (pressed) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+        SegmentedListItem(
+            onClick = onClick,
+            onLongClick = onLongClick,
+            enabled = enabled,
+            colors = colors,
+            interactionSource = resolvedSource,
+            shapes = LocalListItemShapes.current ?: ListItemDefaults.segmentedShapes(0, 1),
+            modifier = modifier.scale(scale),
+            leadingContent = leadingContent,
+            trailingContent = trailingContent,
+            overlineContent = overlineContent,
+            supportingContent = supportingContent,
+            verticalAlignment = Alignment.CenterVertically,
+            content = headlineContent
+        )
+    } else {
+        SegmentedListItem(
+            shapes = LocalListItemShapes.current ?: ListItemDefaults.segmentedShapes(0, 1),
+            modifier = modifier,
+            enabled = enabled,
+            colors = colors,
+            leadingContent = leadingContent,
+            trailingContent = trailingContent,
+            overlineContent = overlineContent,
+            supportingContent = supportingContent,
+            verticalAlignment = Alignment.CenterVertically,
+            content = headlineContent
+        )
+    }
 }
 
 @Composable

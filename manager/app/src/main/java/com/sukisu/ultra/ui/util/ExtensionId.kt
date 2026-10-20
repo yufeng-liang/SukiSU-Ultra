@@ -12,10 +12,11 @@ enum class ExtensionId(val id: Int, val wireName: String, @StringRes val display
     Kpm(0, "kpm", R.string.extension_kpm_title),
     CpuSpoof(1, "cpu_spoof", R.string.extension_cpu_spoof_title),
     UmountPaths(2, "umount_paths", R.string.extension_umount_paths_title),
-    DynamicManager(3, "dynamic_manager", R.string.extension_dynamic_manager_title);
+    DynamicManager(3, "dynamic_manager", R.string.extension_dynamic_manager_title),
+    SuSFS(4, "susfs", R.string.extension_susfs_title);
 
     companion object {
-        val ALL: List<ExtensionId> = listOf(Kpm, CpuSpoof, UmountPaths, DynamicManager)
+        val ALL: List<ExtensionId> = listOf(Kpm, CpuSpoof, UmountPaths, DynamicManager, SuSFS)
 
         fun fromWireName(name: String): ExtensionId? =
             ALL.firstOrNull { it.wireName == name }
@@ -25,14 +26,17 @@ enum class ExtensionId(val id: Int, val wireName: String, @StringRes val display
      * Whether this extension exposes a runtime sticky bit at all.
      *
      * `true`  → kernel has a get/set handler; UI may show a toggle.
-     * `false` → the subsystem is either compile-time-only (KPM) or
-     *           purely io-driven (CPU spoof, umount paths). The
-     *           status line in the overview shows "Supported" and
-     *           the card has no on/off control; opening the
-     *           sub-screen reveals whatever real controls exist.
+     * `false` → the subsystem is either compile-time-only (KPM), purely
+     *           io-driven (CPU spoof, umount paths). 
+     *           The status line in the overview shows "Supported" and
+     *           the card has no on/off control; opening the sub-screen
+     *           reveals whatever real controls exist.
      *
      * Mirrors `ExtensionId::has_sticky_bit` in
-     * `userspace/ksud/src/extension_id.rs`.
+     * `userspace/ksud/src/extension_id.rs`. SuSFS is intentionally not
+     * on the Rust side: it has no kernel extension handler, so adding
+     * `KSU_EXTENSION_SUSFS` would require a UAPI bump and a kernel
+     * patch that we cannot assume is present.
      */
     val hasStickyBit: Boolean
         get() = this == DynamicManager

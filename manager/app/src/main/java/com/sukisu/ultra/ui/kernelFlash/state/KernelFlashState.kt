@@ -330,25 +330,33 @@ class HorizonKernelWorker(
             runCommand(true, "cp $workDir/kptools $imageDir/")
             runCommand(true, "cp $workDir/kpimg $imageDir/")
 
-            // 执行KPM修补命令
-            val patchCommand = if (kpmUndoPatch) {
-                "cd $imageDir && chmod a+rx kptools && ./kptools -u -s 123 -i $imageName -k kpimg -o oImage && mv oImage $imageName"
+            if (kpmUndoPatch) {
+                // ---- 取消修补：返回值允许为空，失败时不覆盖原文件 ----
+                // 仅当 kptools 执行成功且生成了 oImage 时才替换原 Image；
+                // 命令末尾用 `[ -f oImage ] && mv ...` 保证原文件不被半成品覆盖。
+                val undoCommand = "cd $imageDir && chmod a+rx kptools && " +
+                        "./kptools -u -s 123 -i $imageName -k kpimg -o oImage; " +
+                        "[ -f oImage ] && mv oImage $imageName"
+
+                val patchResult: Int? = runCommand(true, undoCommand)
+                if (patchResult == null) {
+                    state.addLog("${context.getString(R.string.kpm_undo_patch_failed)} (no exit code)")
+                } else if (patchResult != 0) {
+                    state.addLog(context.getString(R.string.kpm_undo_patch_failed))
+                } else {
+                    state.addLog(context.getString(R.string.kpm_undo_patch_success))
+                }
             } else {
-                "cd $imageDir && chmod a+rx kptools && ./kptools -p -s 123 -i $imageName -k kpimg -o oImage && mv oImage $imageName"
-            }
+                // ---- 打补丁：必须成功 ----
+                val patchCommand = "cd $imageDir && chmod a+rx kptools && " +
+                        "./kptools -p -s 123 -i $imageName -k kpimg -o oImage && mv oImage $imageName"
 
-            val patchResult = runCommand(true, patchCommand)
-            if (patchResult != 0) {
-                throw IOException(
-                    if (kpmUndoPatch) context.getString(R.string.kpm_undo_patch_failed)
-                    else context.getString(R.string.kpm_patch_failed)
-                )
+                val patchResult = runCommand(true, patchCommand)
+                if (patchResult != 0) {
+                    throw IOException(context.getString(R.string.kpm_patch_failed))
+                }
+                state.addLog(context.getString(R.string.kpm_patch_success))
             }
-
-            state.addLog(
-                if (kpmUndoPatch) context.getString(R.string.kpm_undo_patch_success)
-                else context.getString(R.string.kpm_patch_success)
-            )
 
             // 清理KPM工具文件
             runCommand(true, "rm -f $imageDir/kptools $imageDir/kpimg $imageDir/oImage")
@@ -526,14 +534,17 @@ class HorizonKernelWorker(
         }
     }
 
-    private fun runCommand(su: Boolean, cmd: String): Int {
+    private fun runCommand(su: Boolean, cmd: String): Int? {
         val shell = if (su) "su" else "sh"
-        val process = Runtime.getRuntime().exec(arrayOf(shell, "-c", cmd))
-
         return try {
-            process.waitFor()
-        } finally {
-            process.destroy()
+            val process = Runtime.getRuntime().exec(arrayOf(shell, "-c", cmd))
+            try {
+                process.waitFor()
+            } finally {
+                process.destroy()
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 }

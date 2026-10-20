@@ -47,6 +47,7 @@ import com.sukisu.ultra.ui.component.dialog.rememberLoadingDialog
 import com.sukisu.ultra.ui.util.getBugreportFile
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import top.yukonga.miuix.kmp.nav.gesture.WindowNavigationEventBridge
 
 private tailrec fun Context.findComponentActivity(): ComponentActivity? {
     return when (this) {
@@ -104,6 +105,7 @@ fun SendLogBottomSheet(
         onDismissRequest = { dismiss() },
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         content = {
+            WindowNavigationEventBridge()
             Row(
                 modifier = Modifier
                     .padding(top = 16.dp, bottom = 32.dp)

@@ -16,16 +16,14 @@ import com.sukisu.ultra.ui.util.getExtensionOverview
  * Probe strategy: a single `ksud extension list` invocation returns
  * the state of every extension at once. The kernel-side CLI prints a
  * stable `EXTENSION_LIST_V1 ...` machine block after the human
- * block; see `KsuCli.getExtensionOverview`. The previous design
- * issued four concurrent per-id probes; each paid libksud.so startup
- * + root handshake + teardown, so the wall-clock time was
- * 4× the slowest single probe. The batched design is bounded by the
- * slowest single probe (typically KPM's live `kpm version` ioctl).
+ * block; see `KsuCli.getExtensionOverview`. The batched design
+ * pays libksud.so startup + root handshake + teardown once instead
+ * of N times per refresh.
  */
 interface ExtensionRepository {
     /**
      * Probe all extensions at once. The returned map is keyed by
-     * `ExtensionId.wireName`; missing entries mean the kernel did not
+     * `ExtensionId`; missing entries mean the kernel did not
      * report on that id (older kernels, or an id that was never
      * registered).
      */

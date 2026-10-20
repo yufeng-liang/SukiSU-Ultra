@@ -7,7 +7,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,7 +27,6 @@ fun SettingPager(
     val context = LocalContext.current
     val viewModel = viewModel<SettingsViewModel>()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val isSusfsSupported = getSuSFSStatus().equals("true", ignoreCase = true)
     val latestIsCurrentPage by rememberUpdatedState(isCurrentPage)
     val initialResumeHandled = rememberSaveable { mutableStateOf(false) }
 
@@ -80,13 +78,11 @@ fun SettingPager(
             uiState = uiState,
             actions = actions,
             bottomInnerPadding = bottomInnerPadding,
-            isSusfsSupported = isSusfsSupported
         )
         UiMode.Material -> SettingPagerMaterial(
             uiState = uiState,
             actions = actions,
             bottomInnerPadding = bottomInnerPadding,
-            isSusfsSupported = isSusfsSupported
         )
     }
 }

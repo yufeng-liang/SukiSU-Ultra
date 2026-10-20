@@ -19,15 +19,6 @@ data class ExtensionsUiState(
     val states: Map<ExtensionId, ExtensionState> = emptyMap(),
 )
 
-/**
- * Read-only view model for the extension overview screen.
- *
- * The overview never toggles extensions: every subsystem that has a
- * runtime sticky bit (currently only DynamicManager) exposes its own
- * sub-screen with the appropriate controls, and the other three
- * extensions (KPM, CPU spoof, umount paths) are either compile-time
- * capabilities or purely io-driven. Refresh is the only operation.
- */
 class ExtensionsViewModel(
     private val repo: ExtensionRepository = ExtensionRepositoryImpl()
 ) : ViewModel() {
@@ -39,13 +30,6 @@ class ExtensionsViewModel(
         refresh()
     }
 
-    /**
-     * Pull the state of every extension in a single `ksud extension
-     * list` shell call (see [ExtensionRepository.probeAll]). The wall
-     * time is bounded by the slowest single probe — typically KPM's
-     * live `kpm version` ioctl, which the kernel-side ksud CLI only
-     * runs when the kernel advertised CONFIG_KPM support.
-     */
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }

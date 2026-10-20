@@ -12,6 +12,7 @@ import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.milliseconds
 
 class RemoteToolsDownloader(
     private val context: Context,
@@ -103,7 +104,7 @@ class RemoteToolsDownloader(
 
             if (attempt < MAX_RETRY_COUNT - 1) {
                 listener?.onLog("$fileName download failed, retrying in ${(attempt + 1) * 2} seconds...")
-                delay(TimeUnit.SECONDS.toMillis((attempt + 1) * 2L))
+                delay(TimeUnit.SECONDS.toMillis((attempt + 1) * 2L).milliseconds)
             }
         }
 
