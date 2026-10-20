@@ -579,17 +579,20 @@ internal fun SubEntryRowMiuix(
     summary: String?,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    /** false 时整行点不动、勾选框置灰——恢复跑着的时候勾选不该再动。 */
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(
             state = if (checked) ToggleableState.On else ToggleableState.Off,
             onClick = { onCheckedChange(!checked) },
+            enabled = enabled,
         )
         Column(
             modifier = Modifier

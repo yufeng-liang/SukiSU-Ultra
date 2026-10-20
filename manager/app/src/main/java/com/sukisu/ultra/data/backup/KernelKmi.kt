@@ -18,12 +18,13 @@ package com.sukisu.ultra.data.backup
 object KernelKmi {
 
     /**
-     * 从 `uname -r` 里抓 KMI 三段：版本前缀（`5.15.`）、android release（`13`）、generation（`8`）。
+     * 从 `uname -r` 里抓 KMI 三段：版本前缀（`5.15`）、android release（`13`）、generation（`8`）。
      *
      * android 段之前允许有任意内容（自定义内核会往版本号里缀东西），段本身必须以
-     * `android<数字>-<数字>` 开头才认。
+     * `android<数字>-<数字>` 开头才认。补丁号（`5.15.104` 的 `104`）可有可无——两段式的
+     * `5.15-android13-8` 少见但存在，认不出它的代价是少警告一次，宁滥勿缺。
      */
-    private val KMI = Regex("^(\\d+\\.\\d+)\\.\\d+.*android(\\d+)-(\\d+)")
+    private val KMI = Regex("^(\\d+\\.\\d+)(?:\\.\\d+)?.*android(\\d+)-(\\d+)")
 
     /**
      * [release] 的 KMI 键，如 `5.15-android13-8`；认不出返回 null。

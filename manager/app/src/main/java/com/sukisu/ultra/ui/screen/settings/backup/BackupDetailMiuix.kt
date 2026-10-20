@@ -185,7 +185,9 @@ fun BackupDetailMiuix(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable(enabled = picks.total > 0) { actions.onToggleGroupOrigin(origin) }
+                                // busy（恢复/检查跑着）时整行锁住：等待确认的窗口里改勾选，
+                                // 弹窗说的和实际执行的就对不上了。
+                                .clickable(enabled = picks.total > 0 && !busy) { actions.onToggleGroupOrigin(origin) }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -197,6 +199,7 @@ fun BackupDetailMiuix(
                                 },
                                 // 半选时点一下是"补全到全选"，和 Material 那边一致。
                                 onClick = { actions.onSetOriginEntries(origin, !picks.allSelected) },
+                                enabled = !busy,
                             )
                             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                 Text(
@@ -232,6 +235,7 @@ fun BackupDetailMiuix(
                                     summary = row.subtitle.takeIf { it.isNotBlank() },
                                     checked = row.id in state.openGroupSelected,
                                     onCheckedChange = { actions.onToggleGroupEntry(row.id) },
+                                    enabled = !busy,
                                 )
                             }
                         }

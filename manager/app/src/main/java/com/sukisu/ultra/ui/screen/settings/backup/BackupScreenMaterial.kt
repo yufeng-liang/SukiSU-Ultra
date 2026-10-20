@@ -514,12 +514,14 @@ internal fun SubEntryRowMaterial(
     summary: String?,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    /** false 时整行点不动、勾选框置灰——恢复跑着的时候勾选不该再动。 */
+    enabled: Boolean = true,
 ) {
     SegmentedItemContainer {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onCheckedChange(!checked) }
+                .clickable(enabled = enabled) { onCheckedChange(!checked) }
                 .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -527,6 +529,7 @@ internal fun SubEntryRowMaterial(
                 checked = checked,
                 onCheckedChange = null,
                 modifier = Modifier.size(24.dp),
+                enabled = enabled,
             )
             Column(
                 modifier = Modifier

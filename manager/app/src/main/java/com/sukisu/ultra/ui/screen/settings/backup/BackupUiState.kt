@@ -11,6 +11,7 @@ import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.CloudProfileBook
 import com.sukisu.ultra.data.backup.CloudSlots
 import com.sukisu.ultra.data.backup.KernelKmi
+import com.sukisu.ultra.data.backup.PartitionSnapshotMeta
 import com.sukisu.ultra.data.backup.RetentionLimit
 import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.model.Module
@@ -159,8 +160,9 @@ data class BackupUiState(
     /**
      * 列表为空时该说的那句话（已本地化）。
      *
-     * 空列表的原因不止一种——"还没有备份，点立即备份"和"这台设备没有可快照的分区"完全是两件事——
-     * 界面上什么都不显示的话，用户会以为功能坏了。
+     * 空列表的原因不止一种——「还没有备份，点立即备份」和「云端清单读不出来」完全是两件事——
+     * 界面上什么都不显示的话，用户会以为功能坏了。内容由 ViewModel 在刷新后按结果给，
+     * 不再按备份内容分型（恢复列表与勾选解耦后，「没勾分区」和列表里有没有分区无关）。
      */
     val emptyText: String? = null,
     /** 安装模块成功后是否自动备份一次。默认开。 */
@@ -312,6 +314,22 @@ data class OriginPicks(
  */
 internal fun pruneSelection(selected: Set<String>, groups: List<BackupGroup>): Set<String> =
     selected intersect groups.mapTo(mutableSetOf()) { it.id }
+
+/**
+ * 从分区行们的边车 meta 里拿快照的内核版本（`uname -r`）。
+ *
+ * 同一次快照的每份 meta 共享同一个内核版本：读到第一份非空就停，[readMeta] 只对还没读出
+ * 结果的行调用——避免为一次确认把云端的三份 meta 全拉一遍。全都没有（旧快照没记这个字段、
+ * 导入的归档、meta 读失败）返回 null，恢复确认按「KMI 未知」走普通路径。
+ *
+ * 抽成纯函数（meta 读取由调用方注入）是为了能上 JVM 单测：真机路径要 root shell 和 WebDAV。
+ */
+internal suspend fun snapshotKernelReleaseOf(
+    partitions: List<BackupRow>,
+    readMeta: suspend (BackupRow) -> PartitionSnapshotMeta?,
+): String? = partitions.firstNotNullOfOrNull { row ->
+    readMeta(row)?.kernelRelease?.takeIf { it.isNotBlank() }
+}
 
 /**
  * 详情页里勾选/取消一行之后的下一个勾选集合。

@@ -181,7 +181,9 @@ fun BackupDetailMaterial(
                                 label = "detailArrow",
                             )
                             SegmentedListItem(
-                                onClick = if (picks.total > 0) {
+                                // busy（恢复/检查跑着）时整行锁住：等待确认的窗口里改勾选，
+                                // 弹窗说的和实际执行的就对不上了。
+                                onClick = if (picks.total > 0 && !busy) {
                                     { actions.onToggleGroupOrigin(origin) }
                                 } else {
                                     null
@@ -194,12 +196,14 @@ fun BackupDetailMaterial(
                                             state = ToggleableState.Indeterminate,
                                             onClick = { actions.onSetOriginEntries(origin, true) },
                                             modifier = Modifier.size(24.dp),
+                                            enabled = !busy,
                                         )
                                     } else {
                                         Checkbox(
                                             checked = picks.allSelected,
                                             onCheckedChange = { actions.onSetOriginEntries(origin, it) },
                                             modifier = Modifier.size(24.dp),
+                                            enabled = !busy,
                                         )
                                     }
                                 },
@@ -242,6 +246,7 @@ fun BackupDetailMaterial(
                                     summary = row.subtitle.takeIf { it.isNotBlank() },
                                     checked = row.id in state.openGroupSelected,
                                     onCheckedChange = { actions.onToggleGroupEntry(row.id) },
+                                    enabled = !busy,
                                 )
                             }
                         }

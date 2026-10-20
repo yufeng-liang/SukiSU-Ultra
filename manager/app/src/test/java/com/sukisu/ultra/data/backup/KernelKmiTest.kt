@@ -35,6 +35,24 @@ class KernelKmiTest {
         assertNull(KernelKmi.kmiOf("5.10.101"))
     }
 
+    /** 两段式版本号（没有补丁号）：少见但存在，认不出它的代价是少警告一次。 */
+    @Test
+    fun `a two segment version still parses`() {
+        assertEquals("5.15-android13-8", KernelKmi.kmiOf("5.15-android13-8"))
+    }
+
+    /** -dirty 尾缀（内核源码树有未提交改动时 uname 自己带）：照常解析。 */
+    @Test
+    fun `a dirty suffix is ignored`() {
+        assertEquals("6.1-android14-6", KernelKmi.kmiOf("6.1.75-android14-6-dirty"))
+    }
+
+    /** 两头带空白（shell 输出最常见的杂质）：trim 掉再认。 */
+    @Test
+    fun `surrounding whitespace is trimmed`() {
+        assertEquals("5.15-android13-8", KernelKmi.kmiOf(" 5.15.104-android13-8 \n"))
+    }
+
     @Test
     fun `blank releases have no kmi`() {
         assertNull(KernelKmi.kmiOf(null))

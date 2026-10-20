@@ -41,6 +41,7 @@ import com.sukisu.ultra.ui.screen.settings.backup.PartitionKmiCheck
 import com.sukisu.ultra.ui.screen.settings.backup.entryToggleSelection
 import com.sukisu.ultra.ui.screen.settings.backup.oneCopyPerContent
 import com.sukisu.ultra.ui.screen.settings.backup.pruneSelection
+import com.sukisu.ultra.ui.screen.settings.backup.snapshotKernelReleaseOf
 import com.sukisu.ultra.ui.util.BackupText
 import com.sukisu.ultra.ui.util.formatSessionTime
 import com.sukisu.ultra.ui.util.isoToEpochMillis
@@ -372,11 +373,9 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 见 [BackupUiState.canBackUp]。
      */
     fun toggleOrigin(origin: BackupOrigin) {
-        // 用户主动改设置：上一次操作的结果已经过期，清掉，别让它和新设置混在一起。
         _uiState.update { state ->
             state.copy(
                 origins = if (origin in state.origins) state.origins - origin else state.origins + origin,
-                message = null,
             )
         }
     }
@@ -392,7 +391,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     fun setOrigins(origins: Set<BackupOrigin>) {
         val next = origins.ifEmpty { setOf(BackupOrigin.LOCAL) }
         if (_uiState.value.origins == next) return
-        _uiState.update { it.copy(origins = next, message = null) }
+        _uiState.update { it.copy(origins = next) }
     }
 
     /**
@@ -405,7 +404,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { state ->
             state.copy(
                 kinds = if (kind in state.kinds) state.kinds - kind else state.kinds + kind,
-                message = null,
             )
         }
         // 上次读模块列表失败（当时没 root、ksud 没起来）就再试一次：勾上模块时用户马上要看
@@ -445,9 +443,12 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 上一次 [refresh] 的结果，供调用方在刷新**之后**再说话。
      *
      * 刷新是异步的（[refresh] 返回的是 Job），调用方得先 join 再看这里，否则读到的还是刷新前
-     * 的列表。刷新中途用户改了勾选时为 null——那份结果已经过期。
+     * 的列表。刷新被下一次 [refresh] 取代（Job 被取消）时不再有意义——写它的新一轮会盖上来。
      */
     private var lastRefreshOutcome: RefreshOutcome? = null
+
+    /** 进行中的一轮 [refresh]。新一轮开始时取消上一轮（过期结果不许落回状态）。 */
+    private var refreshJob: Job? = null
 
     private data class RefreshOutcome(
         val origins: Set<BackupOrigin>,
@@ -463,9 +464,15 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      *
      * 注意这里**不碰 message**：操作的结果（备份摘要、失败原因）刚写进 message，紧接着就 refresh，
      * 如果 refresh 顺手清掉它，用户在一次主线程 turn 里看不到任何提示——失败会被当成成功。
-     * message 只由 [clearMessage]（消费掉之后）、用户主动换来源/内容/服务器，或下一次操作覆盖。
+     * message 只由 [clearMessage]（消费掉之后）或下一次操作覆盖。
+     *
+     * 返回的是本轮刷新的 Job：调用方要"刷新完之后"再说话就得 join 它。新一轮开始时取消上一轮
+     * ——上一轮在云端清单上等网络时用户重进了页面（或配置刚变过），让它把**过期的** origins
+     * 集合写进 [lastRefreshOutcome]、把已不存在的行刷回列表，就是自欺。
      */
     fun refresh() = viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = coroutineContext[Job]
         // 云端只在真的配置好了才去列：没配不是错误（静默跳过，不存在"请先配置云端"的报错——
         // 那句话是给备份动作的），配了却列不出来才是错误，由下面的 describe 把原因说出来。
         val origins = buildSet {
@@ -652,34 +659,47 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
      * 当前的版本读不到、或两侧 KMI 相同——只有真的能认定「KMI 变了」才给结果，
      * 由界面弹升级版确认框（展示两个版本号，不硬拒）。
      *
-     * 快照的内核版本从边车 meta 里读：同一次快照的每份共享同一个值，本机在先、
-     * [firstNotNullOfOrNull] 读到第一份非空就停——为一次确认把云端的三份 meta 全拉一遍不值。
+     * 检查期间把恢复路径锁住（busy）：云端拉 meta 可能要几秒，这段时间按钮和行勾选全被
+     * 禁用——不给「等待中又点一次恢复」留窗口（重复的确认弹窗会互相覆盖 continuation）。
+     * 快照的内核版本从边车 meta 里读：本机在先、读到第一份非空就停（见
+     * [snapshotKernelReleaseOf]），为一次确认把云端的三份 meta 全拉一遍不值。
      */
     suspend fun partitionKmiCheck(selection: List<BackupRow>): PartitionKmiCheck? {
         val partitions = oneCopyPerContent(selection).filter { it.kind == BackupKind.PARTITION }
         if (partitions.isEmpty()) return null
-        val snapshotRelease = partitions.firstNotNullOfOrNull { row ->
-            entryOf(row)?.let { repository.readPartitionMeta(row.origin, it) }?.kernelRelease
-        }?.takeIf { it.isNotBlank() } ?: return null
-        val currentRelease = repository.currentKernelRelease() ?: return null
-        return if (KernelKmi.changed(snapshotRelease, currentRelease) == true) {
-            PartitionKmiCheck(snapshotRelease = snapshotRelease, currentRelease = currentRelease)
-        } else {
-            null
+        _uiState.update { it.copy(loading = true) }
+        try {
+            val snapshotRelease = snapshotKernelReleaseOf(partitions) { row ->
+                entryOf(row)?.let { repository.readPartitionMeta(row.origin, it) }
+            } ?: return null
+            val currentRelease = repository.currentKernelRelease() ?: return null
+            return if (KernelKmi.changed(snapshotRelease, currentRelease) == true) {
+                PartitionKmiCheck(snapshotRelease = snapshotRelease, currentRelease = currentRelease)
+            } else {
+                null
+            }
+        } finally {
+            // 检查结束就松开：确认框一弹，去不去恢复由用户定。真去恢复时 restoreSelected
+            // 自己会把 loading 再置起来。
+            _uiState.update { it.copy(loading = false) }
         }
     }
 
     /**
-     * 恢复勾中的那些条目。
+     * 恢复 [chosen] 里列出的那些条目。
+     *
+     * [chosen] 是**确认框弹出的那一刻**的勾选快照（界面用 [oneCopyPerContent] 算好再传进来）：
+     * 等待确认的间隙用户再改勾选，改的只是屏幕状态，实际恢复的仍是弹窗里说的那份——
+     * 「弹窗说的」和「真正执行的」不许是两份东西。[deduped] 由调用方一并告知（chosen 比
+     * 确认时的勾选少，说明同内容两侧只恢复了一份），结果里要专门说一句，不然用户看着
+     * 两行会以为恢复了两份。
      *
      * 一条一条来、逐个记结果：中途失败不能把已经恢复成功的那几条说成没恢复，也不能因为第一条
-     * 失败就放弃后面几条——用户勾了 5 个，最坏情况是"3 个好了、2 个没好"，那就照实说。
+     * 失败就放弃后面几条——用户勾了 5 个，最坏情况是「3 个好了、2 个没好」，那就照实说。
      */
-    fun restoreSelected() = viewModelScope.launch {
-        val selected = _uiState.value.openGroupSelection
-        if (selected.isEmpty() || restoreJob?.isActive == true) return@launch
+    fun restoreSelected(chosen: List<BackupRow>, deduped: Boolean = false) = viewModelScope.launch {
+        if (chosen.isEmpty() || restoreJob?.isActive == true) return@launch
         restoreJob = coroutineContext[Job]
-        val chosen = oneCopyPerContent(selected)
         _uiState.update {
             it.copy(
                 loading = true,
@@ -742,7 +762,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     add(restoreCountMessage(restored, failures.size))
                     // 两侧各有一份时把"只恢复了一次"说出来：用户看着两行、默认还全选，不说一句
                     // 就不知道到底恢复了几份、动的是哪一份。
-                    if (chosen.size < selected.size) add(string(R.string.backup_restore_deduped))
+                    if (deduped) add(string(R.string.backup_restore_deduped))
                     // 恢复"成功"只是文件到位：模块要重启才加载，刷回去的分区也要重启才真正
                     // 离开 KSU。只说"N 项已恢复"会让用户以为已经在跑了。
                     if (restored > 0 && restoredKinds.any { it != BackupKind.REPO_CONFIG }) {

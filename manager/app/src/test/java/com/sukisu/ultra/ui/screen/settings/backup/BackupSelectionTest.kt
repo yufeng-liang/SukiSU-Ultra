@@ -2,8 +2,11 @@ package com.sukisu.ultra.ui.screen.settings.backup
 
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
+import com.sukisu.ultra.data.backup.PartitionSnapshotMeta
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -353,5 +356,56 @@ class BackupSelectionTest {
             selected,
             entryToggleSelection(selected, partitionRows, "cloud/gone"),
         )
+    }
+
+    // ---- 快照内核版本的读取（snapshotKernelReleaseOf）----
+    //
+    // KMI 警告的唯一信息源。同一次快照的每份 meta 共享同一个 uname：读到第一份非空就停，
+    // readMeta 只对还没读出结果的行调用——为一次确认把云端的三份 meta 全拉一遍不值。
+
+    private fun meta(kernelRelease: String?) = PartitionSnapshotMeta(
+        entryId = "partition_boot_a",
+        partition = "boot_a",
+        sourceDevice = "/dev/block/bootdevice/by-name/boot_a",
+        partitionSizeBytes = 134217728L,
+        compressed = true,
+        createdAt = "2026-10-09T09:35:56Z",
+        kernelRelease = kernelRelease,
+    )
+
+    /** 第一份就带版本：只读第一份，后面的 meta 一个都不碰。 */
+    @Test
+    fun `the first release wins and later metas are not read`() = runBlocking {
+        val read = mutableListOf<String>()
+
+        val release = snapshotKernelReleaseOf(partitionRows) { row ->
+            read += row.id
+            meta("5.15.104-android13-8-g1234567890ab")
+        }
+
+        assertEquals("5.15.104-android13-8-g1234567890ab", release)
+        assertEquals(listOf(partitionRows[0].id), read)
+    }
+
+    /** 前面几份没记版本（旧快照）：继续往后读，直到读到或读完。 */
+    @Test
+    fun `rows without a release fall through to later metas`() = runBlocking {
+        val release = snapshotKernelReleaseOf(partitionRows) { row ->
+            when (row.id) {
+                partitionRows[0].id -> meta(null)
+                partitionRows[1].id -> meta("6.1.75-android14-6")
+                else -> meta("should not be read")
+            }
+        }
+
+        assertEquals("6.1.75-android14-6", release)
+    }
+
+    /** 全都没有（导入的归档、meta 读失败）：null，恢复确认按「KMI 未知」走普通文案。 */
+    @Test
+    fun `no meta at all yields null`() = runBlocking {
+        assertNull(snapshotKernelReleaseOf(partitionRows) { null })
+        // meta 在但版本是空白串：一样算没记。
+        assertNull(snapshotKernelReleaseOf(partitionRows) { meta("   ") })
     }
 }

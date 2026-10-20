@@ -225,6 +225,11 @@ private class ConfirmDialogHandleImpl(
     }
 
     private suspend fun awaitResult(): ConfirmResult {
+        // 已经有协程在等这次弹窗（比如列表还在做恢复前检查、按钮尚未禁用的瞬间又点了一次）：
+        // 后到者直接拿「已取消」返回，不要覆盖——覆盖会让先到的 continuation 永远等不到
+        // resume（协程挂死泄漏，还持有调用点的 selection 闭包），两次 showConfirm 也会
+        // 抢同一份 visuals。这里和 resultFlow 的收集都在主线程，检查与赋值之间没有竞态。
+        awaitContinuation?.takeIf { it.isActive }?.let { return ConfirmResult.Canceled }
         return suspendCancellableCoroutine {
             awaitContinuation = it.apply {
                 if (isCallbackEmpty) {

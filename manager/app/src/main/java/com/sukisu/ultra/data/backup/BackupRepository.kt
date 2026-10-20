@@ -360,7 +360,9 @@ class BackupRepository(private val context: Context = ksuApp) {
             val metaName = entry.metaFileName ?: return@withContext null
             storageFor(origin).readText(metaName).getOrNull()
                 ?.takeIf { it.isNotBlank() }
-                ?.let { runCatching { BackupManifest.parsePartitionMeta(it) }.getOrNull() }
+                // parsePartitionMeta 内部已把解析失败折成 null（runCatching+getOrNull），
+                // 这里不再兜一层：坏 meta 就是「KMI 未知」，恢复确认按普通文案走。
+                ?.let { BackupManifest.parsePartitionMeta(it) }
         }
 
     /** 当前系统的内核版本（`uname -r`）；取不到（root shell 失败）返回 null。 */

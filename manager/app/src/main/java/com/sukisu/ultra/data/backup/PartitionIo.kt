@@ -28,7 +28,9 @@ data class PartitionInfo(
  * 完全不同——分区默认只读、写错分区会变砖、写到一半掉电会留下半截镜像，所以单独一个窄接口，
  * 让 [PartitionSnapshotSource] 的校验逻辑能被单测盯着。
  *
- * 所有方法不抛异常，失败用 `Result` / `null` 返回。
+ * 所有方法不抛异常：返回 `Result` 的失败给 `Result.failure`，返回裸值的失败给空串 / 空集合 /
+ * `null`——**失败和"没有"共用一个形状**（比如 [kernelRelease] 取不到 uname 和这台机器没有
+ * uname 是一回事），调用方一律按「拿不到就降级」处理，不区分原因。
  */
 interface PartitionIo {
     /** 当前槽位后缀，非 A/B 设备返回空串。 */

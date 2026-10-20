@@ -997,7 +997,7 @@
     <string name="extension_empty_subtitle">下拉刷新,或检查当前内核是否包含扩展中心。</string>
     <string name="backup_kind_partition">分区快照</string>
     <string name="backup_partition_row_title">分区快照</string>
-    <string name="backup_partition_explain">含 boot、init_boot、vendor_boot</string>
+    <string name="backup_partition_explain">含 boot、init_boot、vendor_boot（设备上有才抓）</string>
     <string name="backup_partition_compress_title">压缩快照</string>
     <string name="backup_partition_compress_summary">以 96MB 的 boot 为例，gzip 之后约 20MB；其他分区大小不一。只有在想直接拿 .img 去别的工具里用时才需要关掉。</string>
     <string name="backup_partition_compressed_tag">已压缩</string>
@@ -1005,8 +1005,11 @@
     <string name="backup_partition_restore_confirm_title">刷回这些分区？</string>
     <string name="backup_partition_restore_confirm_body">镜像会直接写入块设备。分区或镜像不对可能导致无法开机，而且无法撤销。</string>
     <string name="backup_partition_restore_confirm_body_mixed">镜像会直接写入块设备。分区或镜像不对可能导致无法开机，而且无法撤销。\n\n这次勾选里还有 %1$d 个模块会被重新安装。</string>
-    <string name="backup_partition_restore_confirm_body_partitions">将刷回 %1$d 个分区（%2$s）。镜像会直接写入块设备，分区或镜像不对可能导致无法开机，而且无法撤销。</string>
-    <string name="backup_partition_restore_confirm_body_mixed_partitions">将刷回 %1$d 个分区（%2$s）。镜像会直接写入块设备，分区或镜像不对可能导致无法开机，而且无法撤销。\n\n这次勾选里还有 %3$d 个模块会被重新安装。</string>
+    <string name="backup_partition_restore_confirm_body_partitions">将刷回 %1$s（%2$s）。镜像会直接写入块设备，分区或镜像不对可能导致无法开机，而且无法撤销。</string>
+    <string name="backup_partition_restore_confirm_body_mixed_partitions">将刷回 %1$s（%2$s）。镜像会直接写入块设备，分区或镜像不对可能导致无法开机，而且无法撤销。\n\n这次勾选里还有 %3$d 个模块会被重新安装。</string>
+    <plurals name="backup_partition_count">
+        <item quantity="other">%1$d 个分区</item>
+    </plurals>
     <string name="backup_kmi_mismatch_title">内核 KMI 已变化</string>
     <string name="backup_kmi_mismatch_body">这份快照拍自内核 %1$s，当前系统是 %2$s——系统多半已经升级过，把旧快照刷回去可能无法开机。万一卡在开机画面，可用 fastboot 切回另一个槽位回到升级前的系统。仍要继续吗？</string>
     <string name="backup_nothing_partition">没有可快照的分区</string>

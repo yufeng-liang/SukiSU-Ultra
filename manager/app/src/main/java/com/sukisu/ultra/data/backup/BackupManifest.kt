@@ -74,12 +74,21 @@ object BackupManifest {
             kind = kind,
             entryId = item.optString("entryId"),
             fileName = fileName,
-            metaFileName = item.optString("metaFileName").takeIf { it.isNotBlank() && it != "null" },
+            metaFileName = optStringOrNull(item, "metaFileName"),
             sizeBytes = item.optLong("sizeBytes"),
             sha256 = item.optString("sha256"),
             createdAt = item.optString("createdAt"),
         )
     }
+
+    /**
+     * 读一个「可有可无」的字符串字段。
+     *
+     * [JSONObject.optString] 的两个坑都在这里拦：键不存在返回空串；键**存在但值是 JSON null**
+     * 返回字面量 `"null"`——手写或别处写出的 meta 里这是合法内容。两处都归一成 Kotlin null。
+     */
+    private fun optStringOrNull(item: JSONObject, key: String): String? =
+        item.optString(key).takeIf { it.isNotBlank() && it != "null" }
 
     fun renderModuleMeta(meta: ModuleBackupMeta): String = JSONObject().apply {
         put("schema", ArchiveNaming.MODULE_SCHEMA)
@@ -150,10 +159,9 @@ object BackupManifest {
             partitionSizeBytes = item.optLong("partitionSizeBytes"),
             compressed = item.optBoolean("compressed"),
             createdAt = item.optString("createdAt"),
-            // 旧快照没有这个键（optString 得空串）、或显式写了 null（optString 得字面量
-            // "null"）——两种都当「没记版本」：KMI 未知时恢复确认走普通文案，不弹警告。
-            kernelRelease = item.optString("kernelRelease")
-                .takeIf { it.isNotBlank() && it != "null" },
+            // 旧快照没有这个键、或显式写了 null——optString 的两种坑由 [optStringOrNull]
+            // 一并拦下：KMI 未知时恢复确认走普通文案，不弹警告。
+            kernelRelease = optStringOrNull(item, "kernelRelease"),
         )
     }.getOrNull()
 }
