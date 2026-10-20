@@ -49,6 +49,10 @@ jobs:
     steps:
     - name: Checkout source code
       uses: actions/checkout@v6
+      # 完整历史：Kbuild 用 git rev-list --count HEAD 计算内核版本号，
+      # 浅克隆会得到 1，导致版本号错乱。
+      with:
+        fetch-depth: 0
 
     - name: Build kernelsu.ko
       env:
