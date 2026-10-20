@@ -778,7 +778,7 @@
     <string name="backup_preset_hint_nextcloud">Replace USERNAME with your account name and use a new app password.</string>
     <string name="backup_preset_hint_alist">Mount Aliyun Drive/Quark/Baidu in Alist first, then enter the address Alist serves.</string>
     <string name="backup_cloud_url">Server URL</string>
-    <string name="backup_cloud_user">Username</string>
+    <string name="backup_cloud_user">Account</string>
     <string name="backup_cloud_password">App password</string>
     <string name="backup_cloud_test">Test connection</string>
     <string name="backup_cloud_save">Save</string>
@@ -1012,7 +1012,7 @@
     <string name="extension_empty_subtitle">Pull to refresh, or check that the running kernel includes the extension hub.</string>
     <string name="backup_kind_partition">Partition snapshot</string>
     <string name="backup_partition_row_title">Partition snapshot</string>
-    <string name="backup_partition_explain">boot, init_boot and vendor_boot where present, captured as they are right now.</string>
+    <string name="backup_partition_explain">Includes boot, init_boot and vendor_boot where present.</string>
     <string name="backup_partition_compress_title">Compress snapshots</string>
     <string name="backup_partition_compress_summary">A 96 MB boot partition shrinks to about 20 MB with gzip; other partitions vary. Turn it off only if you want plain .img files.</string>
     <string name="backup_partition_compressed_tag">compressed</string>

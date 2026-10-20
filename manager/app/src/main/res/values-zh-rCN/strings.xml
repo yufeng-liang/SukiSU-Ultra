@@ -774,7 +774,7 @@
     <string name="backup_preset_hint_nextcloud">把 USERNAME 换成你的用户名，密码填新建的应用密码。</string>
     <string name="backup_preset_hint_alist">先通过 Alist 挂载阿里云盘/夸克/百度，再填写 Alist 的地址。</string>
     <string name="backup_cloud_url">服务器地址</string>
-    <string name="backup_cloud_user">用户名</string>
+    <string name="backup_cloud_user">账号</string>
     <string name="backup_cloud_password">应用密码</string>
     <string name="backup_cloud_test">测试连接</string>
     <string name="backup_cloud_save">保存</string>
@@ -1001,7 +1001,7 @@
     <string name="extension_empty_subtitle">下拉刷新,或检查当前内核是否包含扩展中心。</string>
     <string name="backup_kind_partition">分区快照</string>
     <string name="backup_partition_row_title">分区快照</string>
-    <string name="backup_partition_explain">抓取 boot、init_boot 与 vendor_boot（这台设备上有的那些）当前的内容。</string>
+    <string name="backup_partition_explain">含 boot、init_boot、vendor_boot</string>
     <string name="backup_partition_compress_title">压缩快照</string>
     <string name="backup_partition_compress_summary">以 96MB 的 boot 为例，gzip 之后约 20MB；其他分区大小不一。只有在想直接拿 .img 去别的工具里用时才需要关掉。</string>
     <string name="backup_partition_compressed_tag">已压缩</string>
