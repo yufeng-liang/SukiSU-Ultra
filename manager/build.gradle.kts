@@ -27,6 +27,12 @@ fun getVersionCode(): Int {
     return major * 10000 + commitCount - end
 }
 
+/**
+ * 版本名只做品牌标识，版本号不重复进来：APK 输出名规则是
+ * `SukiSU_<versionName>_<versionCode>`，而 versionCode（4*10000 + 提交数 - 2815）
+ * 每次提交都会变，塞进 versionName 只会让文件名出现两遍同样的数字。
+ * 版本号在文件名末尾和首页「mod (41150-xxx)」里各出现一次，够了。
+ */
 fun getVersionName(): String {
-    return "custom-repo&backup"
+    return "mod"
 }

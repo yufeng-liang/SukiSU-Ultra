@@ -15,12 +15,14 @@ class SelfUpdateApkTest {
 
     @Test
     fun `the fork release apk matches`() {
-        assertEquals(41149L, matchSelfUpdateApk("SukiSU_custom-repo.backup_41149-release.apk"))
+        // versionName 现为 mod，文件名形如 SukiSU_mod_<versionCode>-release.apk。
+        assertEquals(41151L, matchSelfUpdateApk("SukiSU_mod_41151-release.apk"))
     }
 
     @Test
     fun `the version name may contain dots`() {
-        // 上传时文件名里的 & 会被替换成 .，所以不能假设分隔符只有下划线。
+        // 版本名历史上是 custom-repo&backup，上传时文件名里的 & 会被替换成 .，
+        // 所以正则用的是 .+，不能假设分隔符只有下划线。留着这条防改回去时踩坑。
         assertEquals(41090L, matchSelfUpdateApk("SukiSU_custom.repo.backup_41090-release.apk"))
     }
 
@@ -32,7 +34,7 @@ class SelfUpdateApkTest {
     @Test
     fun `the spoofed variant does not match`() {
         // 随机包名变体，用在隐藏管理器身份的场景，不该被当成常规升级推给用户。
-        assertNull(matchSelfUpdateApk("SukiSU_custom-repo.backup_41149-release-spoofed.apk"))
+        assertNull(matchSelfUpdateApk("SukiSU_mod_41151-release-spoofed.apk"))
     }
 
     @Test
@@ -44,6 +46,6 @@ class SelfUpdateApkTest {
 
     @Test
     fun `a name without a version does not match`() {
-        assertNull(matchSelfUpdateApk("SukiSU_custom-repo.backup-release.apk"))
+        assertNull(matchSelfUpdateApk("SukiSU_mod-release.apk"))
     }
 }

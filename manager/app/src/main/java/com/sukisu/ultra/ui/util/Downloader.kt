@@ -84,8 +84,8 @@ private const val SELF_UPDATE_REPO = "yufeng-liang/SukiSU-Ultra"
 /**
  * 从 release 资产名里认出管理器 APK 并抽出 versionCode。
  *
- * 本 fork 的 APK 形如 `SukiSU_custom-repo.backup_41149-release.apk`（versionName 里
- * 带 `.`，不能假设分隔符全是下划线）；release 里同一批还躺着 8 个 `.ko`，以及可选
+ * 本 fork 的 APK 形如 `SukiSU_mod_41151-release.apk`（versionName 是品牌标识 mod，
+ * 版本号只在文件名末尾出现一次）；release 里同一批还躺着 8 个 `.ko`，以及可选
  * 的随机包名变体 `…-release-spoofed.apk`（不是给用户常规升级用的，排除掉）。
  * 认不出就返回 null，调用方按“没有更新”处理。
  */
@@ -93,7 +93,7 @@ internal fun matchSelfUpdateApk(name: String): Long? {
     if (!name.endsWith("-release.apk")) return null
     if (name.endsWith("-release-spoofed.apk")) return null
     // 上游用 SukiSU_v4.2.1_40994-release.apk 这套命名。本 fork 的 versionName 是
-    // custom-repo&backup，绝不会以 v 开头；这里显式挡掉，是防「某次 release 误传了
+    // mod，绝不会以 v 开头；这里显式挡掉，是防「某次 release 误传了
     // 官方 APK」——那种情况下把用户引导去装它是覆盖安装不了的。
     if (name.startsWith("SukiSU_v")) return null
     val match = Regex("""^SukiSU_.+_(\d+)-release\.apk$""").find(name) ?: return null
