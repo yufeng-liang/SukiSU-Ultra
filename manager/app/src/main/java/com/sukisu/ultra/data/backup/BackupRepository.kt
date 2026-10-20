@@ -76,6 +76,9 @@ class BackupRepository(private val context: Context = ksuApp) {
         )
     }
 
+    /** 分区快照的块设备读写。引擎里的源与恢复确认前的 KMI 比对共用同一份（PartitionIo 无状态）。 */
+    private val partitionIo: PartitionIo = ShellPartitionIo()
+
     /** 本地与云端两个引擎共用同一份源，模块打包/ksud 调用都不便宜。 */
     private val engineSources: Map<BackupKind, BackupSource> = mapOf(
         BackupKind.MODULE to ModuleBackupSource(
@@ -89,7 +92,7 @@ class BackupRepository(private val context: Context = ksuApp) {
         // 分区快照不走 ksud：boot-restore 只认 /data/adb/ksu/ksu_backup_<sha1>（那是卸载 root
         // 用的原厂镜像），而这里要的是"把某个分区当前的样子存下来、以后原样刷回去"，只能自己 dd。
         BackupKind.PARTITION to PartitionSnapshotSource(
-            io = ShellPartitionIo(),
+            io = partitionIo,
             clock = { Instant.now() },
             deviceName = { android.os.Build.MODEL ?: "unknown" },
             staging = workStaging,
@@ -343,6 +346,26 @@ class BackupRepository(private val context: Context = ksuApp) {
         storageFor(origin).readText(metaName).getOrNull()
             ?.takeIf { it.isNotBlank() }
             ?.let { runCatching { BackupManifest.parseModuleMeta(it) }.getOrNull() }
+    }
+
+    /**
+     * 读某条分区快照的边车元数据。
+     *
+     * 恢复确认前要用它拿拍快照时的内核版本（[PartitionSnapshotMeta.kernelRelease]）。
+     * 本机那份是普通文件读取，云端那份要经 WebDAV 下载——调用方应先试本机再试云端，
+     * 且同一次快照的每份 meta 共享同一个内核版本，读到第一份非空即可停。
+     */
+    suspend fun readPartitionMeta(origin: BackupOrigin, entry: BackupEntry): PartitionSnapshotMeta? =
+        withContext(Dispatchers.IO) {
+            val metaName = entry.metaFileName ?: return@withContext null
+            storageFor(origin).readText(metaName).getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { BackupManifest.parsePartitionMeta(it) }.getOrNull() }
+        }
+
+    /** 当前系统的内核版本（`uname -r`）；取不到（root shell 失败）返回 null。 */
+    suspend fun currentKernelRelease(): String? = withContext(Dispatchers.IO) {
+        partitionIo.kernelRelease().takeIf { it.isNotBlank() }
     }
 
     /**

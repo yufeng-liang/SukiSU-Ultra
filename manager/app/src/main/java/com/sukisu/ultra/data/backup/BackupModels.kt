@@ -42,6 +42,15 @@ data class PartitionSnapshotMeta(
     val partitionSizeBytes: Long,
     val compressed: Boolean,
     val createdAt: String,
+    /**
+     * 拍快照那一刻的 `uname -r`；旧快照和导入的归档没有这个字段，为 null。
+     *
+     * 分区大小一致拦不住「系统升级过」：OTA 原位更新 boot/init_boot 后分区长度不变，
+     * 大小两道闸全过，刷回去的却是旧内核。恢复确认前拿它和当前的 `uname -r` 比对
+     * （[KernelKmi]），KMI 变了就让界面把两版本号摆出来让用户自己决定——数据层不硬拒，
+     * 同 KMI 的月度 OTA 之后刷旧快照是正当操作。
+     */
+    val kernelRelease: String? = null,
 )
 
 /** [openContent] 每次调用都要返回一个新的流；调用方负责关闭。 */

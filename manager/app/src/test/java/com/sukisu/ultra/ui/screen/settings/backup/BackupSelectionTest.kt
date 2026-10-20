@@ -279,4 +279,79 @@ class BackupSelectionTest {
     fun `an empty selection needs no confirmation`() {
         assertEquals(RestoreConfirm.NONE, restoreConfirmFor(emptyList()))
     }
+
+    // ---- 分区快照的组级联动（entryToggleSelection）----
+    //
+    // 一次快照是「内核 ↔ ksu.ko ↔ ramdisk」同刻的配对集，只刷回其中一两个会把配对拆散
+    // （vermagic 对不上、root 失效）。所以分区行的 checkbox 是联动的：点任何一行，整组
+    // 分区（跨本机/云端）一起动；模块行维持单选。
+
+    private val partitionRows = listOf(
+        rowOf("partition_boot_a_20261009_093107.img.gz", BackupOrigin.LOCAL, BackupKind.PARTITION),
+        rowOf("partition_init_boot_a_20261009_093107.img.gz", BackupOrigin.LOCAL, BackupKind.PARTITION),
+        rowOf("partition_boot_a_20261009_093107.img.gz", BackupOrigin.CLOUD, BackupKind.PARTITION),
+    )
+
+    /** 点一行没勾的分区：整组（含另一侧那份）全勾上。 */
+    @Test
+    fun `toggling one partition row selects the whole partition set`() {
+        val next = entryToggleSelection(
+            selected = setOf(partitionRows[0].id),
+            rows = partitionRows,
+            rowId = partitionRows[0].id,
+        )
+
+        assertEquals(partitionRows.mapTo(mutableSetOf()) { it.id }, next)
+    }
+
+    /** 已全勾时再点：整组一起取消，而不是只取消点到的那一行。 */
+    @Test
+    fun `toggling a fully selected partition set clears it`() {
+        val all = partitionRows.mapTo(mutableSetOf()) { it.id }
+        val next = entryToggleSelection(all, partitionRows, partitionRows[1].id)
+
+        assertTrue(next.isEmpty())
+    }
+
+    /** 模块行照旧单选：全选状态下取消它，分区行的勾选一个都不能少。 */
+    @Test
+    fun `a module row is toggled on its own next to partitions`() {
+        val module = rowOf("module_a_1_20261009_093107.zip", BackupOrigin.LOCAL)
+        val rows = partitionRows + module
+        val all = rows.mapTo(mutableSetOf()) { it.id }
+
+        assertEquals(
+            all - module.id,
+            entryToggleSelection(all, rows, module.id),
+        )
+        // 反方向也一样：没勾时点模块只勾模块，不会顺手把分区拖进来。
+        assertEquals(
+            setOf(module.id),
+            entryToggleSelection(emptySet(), rows, module.id),
+        )
+    }
+
+    /** 两侧各一份的分区行一起动：联动按分区集合算，不看来源。 */
+    @Test
+    fun `partition rows on both sides move together`() {
+        val next = entryToggleSelection(
+            selected = setOf(partitionRows[2].id), // 只有云端那份勾着
+            rows = partitionRows,
+            rowId = partitionRows[2].id,
+        )
+
+        // 有一行没勾上就整组补齐，本机那两份也被带进来。
+        assertEquals(partitionRows.mapTo(mutableSetOf()) { it.id }, next)
+    }
+
+    /** 勾选里已经不在列表里的 id：原样返回，别崩也别误动。 */
+    @Test
+    fun `an id that is not listed leaves the selection alone`() {
+        val selected = setOf(partitionRows[0].id)
+
+        assertEquals(
+            selected,
+            entryToggleSelection(selected, partitionRows, "cloud/gone"),
+        )
+    }
 }

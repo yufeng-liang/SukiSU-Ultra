@@ -120,6 +120,9 @@ object BackupManifest {
         put("partitionSizeBytes", meta.partitionSizeBytes)
         put("compressed", meta.compressed)
         put("createdAt", meta.createdAt)
+        // 拍不到（shell 失败）就不写这个键：缺字段和空串是两回事——解析侧以「有没有」区分
+        // 新旧快照，写个空串进去反而让旧 meta 看起来带了版本。
+        meta.kernelRelease?.takeIf { it.isNotBlank() }?.let { put("kernelRelease", it) }
     }.toString(2)
 
     /**
@@ -147,6 +150,10 @@ object BackupManifest {
             partitionSizeBytes = item.optLong("partitionSizeBytes"),
             compressed = item.optBoolean("compressed"),
             createdAt = item.optString("createdAt"),
+            // 旧快照没有这个键（optString 得空串）、或显式写了 null（optString 得字面量
+            // "null"）——两种都当「没记版本」：KMI 未知时恢复确认走普通文案，不弹警告。
+            kernelRelease = item.optString("kernelRelease")
+                .takeIf { it.isNotBlank() && it != "null" },
         )
     }.getOrNull()
 }

@@ -15,6 +15,7 @@ import com.sukisu.ultra.data.backup.CloudProfileBook
 import com.sukisu.ultra.data.backup.CloudProfileBookJson
 import com.sukisu.ultra.data.backup.CloudSlots
 import com.sukisu.ultra.data.backup.CredentialCipher
+import com.sukisu.ultra.data.backup.KernelKmi
 import com.sukisu.ultra.data.backup.KeystoreKeyProvider
 import com.sukisu.ultra.data.backup.ModuleBackupMeta
 import com.sukisu.ultra.data.backup.OriginEntry
@@ -36,6 +37,8 @@ import com.sukisu.ultra.ui.screen.settings.backup.BackupRunState
 import com.sukisu.ultra.ui.screen.settings.backup.RestoreRunState
 import com.sukisu.ultra.ui.screen.settings.backup.BackupTargetResult
 import com.sukisu.ultra.ui.screen.settings.backup.BackupUiState
+import com.sukisu.ultra.ui.screen.settings.backup.PartitionKmiCheck
+import com.sukisu.ultra.ui.screen.settings.backup.entryToggleSelection
 import com.sukisu.ultra.ui.screen.settings.backup.oneCopyPerContent
 import com.sukisu.ultra.ui.screen.settings.backup.pruneSelection
 import com.sukisu.ultra.ui.util.BackupText
@@ -639,14 +642,44 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         refresh()
     }
 
+    /**
+     * 详情页里勾选/取消一行。
+     *
+     * 分区快照的行是联动的——点任何一行整组一起动（内核与 ksu.ko 的配对不能拆散，
+     * 见 [entryToggleSelection]）；模块、仓库源行维持单选。
+     */
     fun toggleGroupEntry(rowId: String) = _uiState.update { state ->
         state.copy(
-            openGroupSelected = if (rowId in state.openGroupSelected) {
-                state.openGroupSelected - rowId
-            } else {
-                state.openGroupSelected + rowId
-            },
+            openGroupSelected = entryToggleSelection(
+                selected = state.openGroupSelected,
+                rows = state.openGroup?.rows.orEmpty(),
+                rowId = rowId,
+            ),
         )
+    }
+
+    /**
+     * 恢复确认前的 KMI 比对。
+     *
+     * 返回 null 表示「不用警告」：选的不是分区、快照没记内核版本（旧快照/导入的归档）、
+     * 当前的版本读不到、或两侧 KMI 相同——只有真的能认定「KMI 变了」才给结果，
+     * 由界面弹升级版确认框（展示两个版本号，不硬拒）。
+     *
+     * 快照的内核版本从边车 meta 里读：同一次快照的每份共享同一个值，本机在先、
+     * [firstNotNullOfOrNull] 读到第一份非空就停——为一次确认把云端的三份 meta 全拉一遍不值。
+     */
+    suspend fun partitionKmiCheck(selection: List<BackupRow>): PartitionKmiCheck? {
+        val partitions = oneCopyPerContent(selection).filter { it.kind == BackupKind.PARTITION }
+        if (partitions.isEmpty()) return null
+        val snapshotRelease = partitions.firstNotNullOfOrNull { row ->
+            entryOf(row)?.let { repository.readPartitionMeta(row.origin, it) }?.kernelRelease
+        }?.takeIf { it.isNotBlank() } ?: return null
+        val currentRelease = repository.currentKernelRelease() ?: return null
+        return if (KernelKmi.changed(snapshotRelease, currentRelease) == true) {
+            PartitionKmiCheck(snapshotRelease = snapshotRelease, currentRelease = currentRelease)
+        } else {
+            null
+        }
     }
 
     /**

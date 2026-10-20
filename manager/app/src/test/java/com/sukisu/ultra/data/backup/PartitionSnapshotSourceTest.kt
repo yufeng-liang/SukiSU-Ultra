@@ -38,6 +38,10 @@ class PartitionSnapshotSourceTest {
 
         override suspend fun slotSuffix(): String = "_a"
 
+        var release: String = "5.15.104-android13-8"
+
+        override suspend fun kernelRelease(): String = release
+
         override suspend fun snapshots(): List<PartitionInfo> = names.map {
             PartitionInfo(name = it, path = "/dev/block/by-name/$it", sizeBytes = size)
         }
@@ -133,6 +137,33 @@ class PartitionSnapshotSourceTest {
             assertTrue(outcome.artifacts.isEmpty())
             // 空结果不等于失败：非 A/B 老设备根本没有独立 init_boot，报错只会吓人。
             assertTrue(outcome.failures.isEmpty())
+        }
+    }
+
+    /** 快照把拍它那一刻的 uname 记进每份 meta：恢复确认前靠它做 KMI 比对。 */
+    @Test
+    fun `export records the kernel release into every meta`() {
+        runBlocking {
+            val outcome = source(FakeIo()).export().getOrThrow()
+
+            assertEquals(
+                setOf("5.15.104-android13-8"),
+                outcome.artifacts
+                    .map { BackupManifest.parsePartitionMeta(it.metaJson!!)?.kernelRelease }
+                    .toSet(),
+            )
+        }
+    }
+
+    /** uname 取不到（shell 失败）时 meta 里不写这个键：解析回来是 null，KMI 按未知处理。 */
+    @Test
+    fun `a blank kernel release leaves the meta without one`() {
+        runBlocking {
+            val io = FakeIo(names = listOf("boot_a")).apply { release = "" }
+            val outcome = source(io).export().getOrThrow()
+
+            assertFalse(outcome.artifacts.single().metaJson!!.contains("kernelRelease"))
+            assertNull(BackupManifest.parsePartitionMeta(outcome.artifacts.single().metaJson!!)?.kernelRelease)
         }
     }
 

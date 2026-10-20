@@ -10,6 +10,7 @@ import com.sukisu.ultra.data.backup.BackupOrigin
 import com.sukisu.ultra.data.backup.BackupRunResult
 import com.sukisu.ultra.data.backup.CloudProfileBook
 import com.sukisu.ultra.data.backup.CloudSlots
+import com.sukisu.ultra.data.backup.KernelKmi
 import com.sukisu.ultra.data.backup.RetentionLimit
 import com.sukisu.ultra.data.backup.WebDavPreset
 import com.sukisu.ultra.data.model.Module
@@ -310,6 +311,51 @@ data class OriginPicks(
  */
 internal fun pruneSelection(selected: Set<String>, groups: List<BackupGroup>): Set<String> =
     selected intersect groups.mapTo(mutableSetOf()) { it.id }
+
+/**
+ * 详情页里勾选/取消一行之后的下一个勾选集合。
+ *
+ * 分区快照的各行是**联动**的：一次快照是「内核 ↔ ksu.ko ↔ ramdisk」同刻的配对集，
+ * 只刷回其中一两个会把配对拆散（内核和模块 vermagic 对不上、root 直接失效）——所以点任何
+ * 一行分区，整组分区（跨本机/云端两侧）一起勾上或一起取消。内容层面的「只刷一份」仍由
+ * [oneCopyPerContent] 去重保证：两侧都勾时只刷本机那份。
+ *
+ * 其他行（模块、仓库源）维持单选：单独勾选本来就是它们的正当用法。
+ *
+ * 提成纯函数是为了能上 JVM 单测——这正是 [pruneSelection] 的先例。
+ */
+internal fun entryToggleSelection(
+    selected: Set<String>,
+    rows: List<BackupRow>,
+    rowId: String,
+): Set<String> {
+    val row = rows.firstOrNull { it.id == rowId } ?: return selected
+    if (row.kind != BackupKind.PARTITION) {
+        return if (rowId in selected) selected - rowId else selected + rowId
+    }
+    val partitionIds = rows.filter { it.kind == BackupKind.PARTITION }.mapTo(mutableSetOf()) { it.id }
+    // 有一行没勾上就整组补齐；已经全勾了才整组取消——checkbox 的点击语义按「当前是否全选」走。
+    return if (partitionIds.any { it !in selected }) {
+        selected + partitionIds
+    } else {
+        selected - partitionIds
+    }
+}
+
+/**
+ * 恢复确认前的内核版本比对结果：快照拍它时的 `uname -r` 和当前系统的 `uname -r`。
+ *
+ * 只有能**认定**两侧 KMI 不同（[KernelKmi] 解析两边都成功且键不一致）才会构造它；
+ * 界面把两个版本号摆进警告框，决定权留给用户——同 KMI 的月度 OTA 之后刷旧快照是正当
+ * 操作，数据层不该硬拒。
+ */
+@Immutable
+data class PartitionKmiCheck(
+    /** 快照拍摄时的 `uname -r`。 */
+    val snapshotRelease: String,
+    /** 当前系统的 `uname -r`。 */
+    val currentRelease: String,
+)
 
 /**
  * 备份弹窗的状态：正在跑哪个目标、推了多少字节、多快，跑完则是结果。

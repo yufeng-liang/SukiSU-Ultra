@@ -31,6 +31,7 @@ import com.sukisu.ultra.BuildConfig
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.BackupKind
 import com.sukisu.ultra.data.backup.BackupOrigin
+import com.sukisu.ultra.data.backup.partitionFromName
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.dialog.ConfirmResult
@@ -121,18 +122,51 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
             val selection = state.openGroupSelection
             when (restoreConfirmFor(selection)) {
                 RestoreConfirm.PARTITION -> confirmScope.launch {
-                    // 勾选里可能同时有模块（同一 session 的备份在详情页默认全选）。只说
-                    // "刷分区"会漏掉模块也会被重装，所以带模块时正文多一句。
-                    val moduleCount = oneCopyPerContent(selection)
-                        .count { it.kind == BackupKind.MODULE }
-                    val confirmed = confirmDialog.awaitConfirm(
-                        title = partitionConfirmTitle,
-                        content = if (moduleCount > 0) {
-                            context.getString(R.string.backup_partition_restore_confirm_body_mixed, moduleCount)
-                        } else {
-                            partitionConfirmBody
-                        },
-                    ) == ConfirmResult.Confirmed
+                    // 原子选择保证勾中的分区一定是整组；把分区名说进正文，按下去之前
+                    // 用户知道刷回的是哪几个（boot_a / init_boot_a / vendor_boot_a）。
+                    val contents = oneCopyPerContent(selection)
+                    val moduleCount = contents.count { it.kind == BackupKind.MODULE }
+                    val separator = context.getString(R.string.backup_list_separator)
+                    val partitions = contents
+                        .filter { it.kind == BackupKind.PARTITION }
+                        .mapNotNull { partitionFromName(it.fileName) }
+                    // 先比 KMI：快照记了拍它时的 uname，和当前的属于不同 KMI 时（系统升级过）
+                    // 刷回去大概率开不了机——这句话必须赶在普通确认之前说。
+                    val kmi = viewModel.partitionKmiCheck(selection)
+                    val confirmed = if (kmi != null) {
+                        confirmDialog.awaitConfirm(
+                            title = context.getString(R.string.backup_kmi_mismatch_title),
+                            content = context.getString(
+                                R.string.backup_kmi_mismatch_body,
+                                kmi.snapshotRelease,
+                                kmi.currentRelease,
+                            ),
+                        ) == ConfirmResult.Confirmed
+                    } else {
+                        val body = when {
+                            // 理论上到不了（分区行必有可认的文件名），认不出时退回普通文案兜底。
+                            partitions.isEmpty() && moduleCount > 0 -> context.getString(
+                                R.string.backup_partition_restore_confirm_body_mixed,
+                                moduleCount,
+                            )
+                            partitions.isEmpty() -> partitionConfirmBody
+                            moduleCount > 0 -> context.getString(
+                                R.string.backup_partition_restore_confirm_body_mixed_partitions,
+                                partitions.size,
+                                partitions.joinToString(separator),
+                                moduleCount,
+                            )
+                            else -> context.getString(
+                                R.string.backup_partition_restore_confirm_body_partitions,
+                                partitions.size,
+                                partitions.joinToString(separator),
+                            )
+                        }
+                        confirmDialog.awaitConfirm(
+                            title = partitionConfirmTitle,
+                            content = body,
+                        ) == ConfirmResult.Confirmed
+                    }
                     if (confirmed) viewModel.restoreSelected()
                 }
 

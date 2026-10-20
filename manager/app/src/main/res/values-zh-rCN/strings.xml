@@ -1009,6 +1009,10 @@
     <string name="backup_partition_restore_confirm_title">刷回这些分区？</string>
     <string name="backup_partition_restore_confirm_body">镜像会直接写入块设备。分区或镜像不对可能导致无法开机，而且无法撤销。</string>
     <string name="backup_partition_restore_confirm_body_mixed">镜像会直接写入块设备。分区或镜像不对可能导致无法开机，而且无法撤销。\n\n这次勾选里还有 %1$d 个模块会被重新安装。</string>
+    <string name="backup_partition_restore_confirm_body_partitions">将刷回 %1$d 个分区（%2$s）。镜像会直接写入块设备，分区或镜像不对可能导致无法开机，而且无法撤销。</string>
+    <string name="backup_partition_restore_confirm_body_mixed_partitions">将刷回 %1$d 个分区（%2$s）。镜像会直接写入块设备，分区或镜像不对可能导致无法开机，而且无法撤销。\n\n这次勾选里还有 %3$d 个模块会被重新安装。</string>
+    <string name="backup_kmi_mismatch_title">内核 KMI 已变化</string>
+    <string name="backup_kmi_mismatch_body">这份快照拍自内核 %1$s，当前系统是 %2$s——系统多半已经升级过，把旧快照刷回去可能无法开机。万一卡在开机画面，可用 fastboot 切回另一个槽位回到升级前的系统。仍要继续吗？</string>
     <string name="backup_empty_partition_local">还没有分区快照——它会抓取 boot、init_boot 与 vendor_boot 当前的内容。</string>
     <string name="backup_empty_partition_cloud">云端还没有分区快照。点「立即备份」上传本机这份。</string>
     <string name="backup_nothing_partition">没有可快照的分区</string>

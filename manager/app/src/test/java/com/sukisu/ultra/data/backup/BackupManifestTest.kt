@@ -1,6 +1,8 @@
 package com.sukisu.ultra.data.backup
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -127,5 +129,63 @@ class BackupManifestTest {
             emptyList<BackupEntry>(),
             BackupManifest.parseEntriesOrThrow(BackupManifest.renderEntries(emptyList())),
         )
+    }
+
+    // ---- 分区快照边车 meta 的 kernelRelease（KMI 警告的数据来源）----
+
+    private val partitionMeta = PartitionSnapshotMeta(
+        entryId = "boot_a",
+        partition = "boot_a",
+        sourceDevice = "Xiaomi 14 Pro",
+        partitionSizeBytes = 100663296L,
+        compressed = true,
+        createdAt = "2026-10-08T12:00:00Z",
+        kernelRelease = "5.15.104-android13-8-g1234567890ab",
+    )
+
+    /** 记了 uname 的快照：渲染、解析一个来回不能丢。 */
+    @Test
+    fun `partition meta with a kernel release survives a round trip`() {
+        assertEquals(
+            partitionMeta,
+            BackupManifest.parsePartitionMeta(BackupManifest.renderPartitionMeta(partitionMeta)),
+        )
+    }
+
+    /** 拍不到 uname（shell 失败）时不写这个键：缺字段不等于空串。 */
+    @Test
+    fun `a missing kernel release is not rendered at all`() {
+        val json = BackupManifest.renderPartitionMeta(partitionMeta.copy(kernelRelease = null))
+
+        assertFalse(json.contains("kernelRelease"))
+        assertNull(BackupManifest.parsePartitionMeta(json)?.kernelRelease)
+    }
+
+    /** 旧版 meta（或外部工具写的）没有这个键：解析成 null，KMI 按未知处理、不拦恢复。 */
+    @Test
+    fun `a legacy partition meta without kernel release parses to null`() {
+        val json = """
+            {"schema":"${ArchiveNaming.PARTITION_SCHEMA}","version":${ArchiveNaming.MANIFEST_VERSION},
+             "entryId":"boot_a","partition":"boot_a","sourceDevice":"Xiaomi 14 Pro",
+             "partitionSizeBytes":100663296,"compressed":true,"createdAt":"2026-10-08T12:00:00Z"}
+        """.trimIndent()
+
+        val parsed = BackupManifest.parsePartitionMeta(json)
+
+        assertEquals("boot_a", parsed?.partition)
+        assertNull(parsed?.kernelRelease)
+    }
+
+    /** 手工 JSON 里显式写了 null（optString 会给出字面量 "null"）：同样当「没记版本」。 */
+    @Test
+    fun `an explicit json null for kernel release parses to null`() {
+        val json = """
+            {"schema":"${ArchiveNaming.PARTITION_SCHEMA}","version":${ArchiveNaming.MANIFEST_VERSION},
+             "entryId":"boot_a","partition":"boot_a","sourceDevice":"Xiaomi 14 Pro",
+             "partitionSizeBytes":100663296,"compressed":true,"createdAt":"2026-10-08T12:00:00Z",
+             "kernelRelease":null}
+        """.trimIndent()
+
+        assertNull(BackupManifest.parsePartitionMeta(json)?.kernelRelease)
     }
 }

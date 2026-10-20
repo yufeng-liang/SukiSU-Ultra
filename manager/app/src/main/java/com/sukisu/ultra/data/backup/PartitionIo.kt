@@ -35,6 +35,14 @@ interface PartitionIo {
     suspend fun slotSuffix(): String
 
     /**
+     * 当前的内核版本号（`uname -r`），如 `5.15.104-android13-8-g…`；取不到返回空串。
+     *
+     * 拍快照时记进 meta，恢复确认前和当时再取一次比对（[KernelKmi]）：KMI 变了说明
+     * 系统升级过，旧快照刷回去大概率开不了机。
+     */
+    suspend fun kernelRelease(): String
+
+    /**
      * 本机现在能拍快照的分区（boot / init_boot / vendor_boot 中存在的那些）。
      *
      * 顺序固定为 boot、init_boot、vendor_boot，方便界面稳定地展示。
@@ -59,6 +67,10 @@ class ShellPartitionIo(private val shell: () -> Shell = { getRootShell() }) : Pa
 
     override suspend fun slotSuffix(): String = withContext(Dispatchers.IO) {
         exec("getprop ro.boot.slot_suffix").out.firstOrNull()?.trim().orEmpty()
+    }
+
+    override suspend fun kernelRelease(): String = withContext(Dispatchers.IO) {
+        exec("uname -r").out.firstOrNull()?.trim().orEmpty()
     }
 
     override suspend fun snapshots(): List<PartitionInfo> = withContext(Dispatchers.IO) {

@@ -52,6 +52,9 @@ class PartitionSnapshotSource(
         // 压缩开关在**同一次导出内**只读一次：中途改设置不该让同一次备份里一半压缩一半不压缩。
         val gzip = compress()
         val device = deviceName()
+        // 内核版本同样只读一次：同一次快照就是同一个内核，每份 meta 共享同一个 uname——
+        // 恢复确认前拿它和当前的比对（KMI 变了要警告）。
+        val kernelRelease = io.kernelRelease().takeIf { it.isNotBlank() }
         val artifacts = mutableListOf<BackupArtifact>()
         val failures = mutableListOf<BackupFailure>()
         targets.forEachIndexed { index, info ->
@@ -78,6 +81,7 @@ class PartitionSnapshotSource(
                     partitionSizeBytes = info.sizeBytes,
                     compressed = gzip,
                     createdAt = createdAt,
+                    kernelRelease = kernelRelease,
                 )
                 artifacts += BackupArtifact(
                     kind = kind,
@@ -229,6 +233,8 @@ class PartitionSnapshotSource(
             partitionSizeBytes = info.sizeBytes,
             compressed = isCompressedName(fileName),
             createdAt = clock().toString(),
+            // 导入的归档拍自哪个内核无从知晓：留 null，恢复确认按「KMI 未知」走普通文案。
+            kernelRelease = null,
         )
         return ImportMeta(partition, BackupManifest.renderPartitionMeta(meta))
     }
