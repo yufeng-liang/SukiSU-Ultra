@@ -13,15 +13,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -73,6 +77,26 @@ fun ModuleUploadListMaterial(
             TopAppBar(
                 title = { Text(stringResource(R.string.module_upload_title)) },
                 navigationIcon = { TopBarBackButton(onClick = onBack) },
+                // 刷新放顶栏而不是列表行里：列表一滚，行内按钮就看不见了；
+                // 而且在模块为空时那一行只剩一个孤零零的「刷新」。
+                actions = {
+                    IconButton(
+                        onClick = onRefresh,
+                        enabled = !state.refreshing && !state.loading,
+                    ) {
+                        if (state.refreshing || state.loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = stringResource(R.string.module_upload_refresh),
+                            )
+                        }
+                    }
+                },
                 scrollBehavior = scrollBehavior,
                 colors = expressiveTopAppBarColors(),
             )
@@ -130,9 +154,6 @@ fun ModuleUploadListMaterial(
                             .padding(top = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = onRefresh, enabled = !state.refreshing && !state.loading) {
-                            Text(stringResource(R.string.module_upload_refresh))
-                        }
                         if (state.remaining > 0) {
                             TextButton(onClick = onContinueCheck, enabled = !state.checking) {
                                 Text(stringResource(R.string.module_upload_continue_check))

@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,6 +104,19 @@ fun ModuleUploadListMiuix(
                             )
                         }
                     },
+                    // 刷新放顶栏：列表一滚行内按钮就看不见了，空列表时那一行也只剩它一个。
+                    actions = {
+                        IconButton(
+                            onClick = onRefresh,
+                            enabled = !state.refreshing && !state.loading,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = stringResource(R.string.module_upload_refresh),
+                                tint = colorScheme.onSurface,
+                            )
+                        }
+                    },
                 )
             }
         },
@@ -147,11 +161,6 @@ fun ModuleUploadListMiuix(
                             .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(
-                            text = stringResource(R.string.module_upload_refresh),
-                            onClick = onRefresh,
-                            enabled = !state.refreshing && !state.loading,
-                        )
                         if (state.remaining > 0) {
                             TextButton(
                                 text = stringResource(R.string.module_upload_continue_check),
