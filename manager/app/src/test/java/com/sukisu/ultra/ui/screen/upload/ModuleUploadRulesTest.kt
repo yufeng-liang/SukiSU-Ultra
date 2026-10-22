@@ -219,6 +219,15 @@ class ModuleUploadRulesTest {
             ModuleUploadRules.SourceProblem.OK,
             ModuleUploadRules.sourceProblem("https://coolapk.com/u/10086001"),
         )
+        // 酷安复制出来的链接经常没写协议：网页端与 Worker 都会补 https://，App 不能自己拦掉。
+        assertEquals(
+            ModuleUploadRules.SourceProblem.OK,
+            ModuleUploadRules.sourceProblem("www.coolapk.com/feed/123"),
+        )
+        assertEquals(
+            ModuleUploadRules.SourceProblem.OK,
+            ModuleUploadRules.sourceProblem("m.coolapk.com/feed/123"),
+        )
         assertEquals(
             ModuleUploadRules.SourceProblem.EMPTY,
             ModuleUploadRules.sourceProblem("   "),
@@ -227,6 +236,11 @@ class ModuleUploadRulesTest {
         assertEquals(
             ModuleUploadRules.SourceProblem.NOT_COOLAPK,
             ModuleUploadRules.sourceProblem("https://evil-coolapk.com/feed/1"),
+        )
+        // 补协议不能把冒名域名也放进来。
+        assertEquals(
+            ModuleUploadRules.SourceProblem.NOT_COOLAPK,
+            ModuleUploadRules.sourceProblem("evil-coolapk.com/feed/1"),
         )
         assertEquals(
             ModuleUploadRules.SourceProblem.NOT_COOLAPK,

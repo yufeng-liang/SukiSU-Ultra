@@ -171,11 +171,16 @@ object ModuleUploadRules {
      * 只认 `coolapk.com` 与其子域（`www.` / `m.`）：`evil-coolapk.com` 这种后缀相同的
      * 冒名域名必须拒掉，否则「出处」一栏就成了一个可以指向任意站点的文本框。
      * 协议只认 http/https（`toHttpUrlOrNull` 本身也只解析这两种）。
+     *
+     * 没写协议时按 `https://` 补全再判，与网页端和 Worker 同一条规则：
+     * 用户从酷安复制出来的链接常常是 `www.coolapk.com/feed/123`，只因为少个协议
+     * 就在本地被拦下，而服务端明明会收。
      */
     fun sourceProblem(raw: String): SourceProblem {
         val text = raw.trim()
         if (text.isEmpty()) return SourceProblem.EMPTY
-        val url = text.toHttpUrlOrNull() ?: return SourceProblem.NOT_COOLAPK
+        val candidate = if (text.contains("://")) text else "https://$text"
+        val url = candidate.toHttpUrlOrNull() ?: return SourceProblem.NOT_COOLAPK
         val host = url.host.lowercase(Locale.ROOT)
         val coolapk = host == "coolapk.com" || host.endsWith(".coolapk.com")
         return if (coolapk) SourceProblem.OK else SourceProblem.NOT_COOLAPK

@@ -70,6 +70,9 @@ class ModuleUploadViewModel(
 
     private var entered = false
 
+    /** 提交批次号；结果回来时对不上就丢弃（见 [submit]）。 */
+    private var submitGeneration = 0
+
     // ── 列表 ────────────────────────────────────────────────────────────────
 
     /** 进入页面：拉模块列表 + 服务端限制，然后开查。重复进入不重跑。 */
@@ -200,15 +203,17 @@ class ModuleUploadViewModel(
                 emptyMap()
             }
         }
+        // 只认「同一个 id 且同一个 versionCode」：查的这段时间里列表可能刷新过，
+        // 把旧版本的结论写给新版本，等于给用户看了一个不属于这一版的读数。
+        val queried = chunk.associateBy { it.id }
         _listState.update { state ->
             state.copy(
                 rows = state.rows.map { row ->
-                    when {
-                        row.id !in chunk.map { it.id } -> row
-                        else -> row.copy(
-                            status = result[row.id] ?: CheckStatus.UNKNOWN,
-                            checking = false,
-                        )
+                    val asked = queried[row.id]
+                    if (asked != null && asked.versionCode == row.versionCode) {
+                        row.copy(status = result[row.id] ?: CheckStatus.UNKNOWN, checking = false)
+                    } else {
+                        row
                     }
                 }
             )
@@ -233,6 +238,8 @@ class ModuleUploadViewModel(
      * 拿它上传会把这个包登记到另一个模块名下，所以只警告、不加入。
      */
     fun stageForRow(context: Context, uri: Uri, expectedId: String?) {
+        // 上传在飞时不再改这一套：文件正被 OkHttp 当请求体读，换包/删包都会让请求半路烂掉。
+        if (_formState.value.submitting) return
         val current = _listState.value
         if (current.pickingFor != null) return
         val maxBytes = current.limits?.takeIf { it.usable }?.maxBytes
@@ -278,6 +285,7 @@ class ModuleUploadViewModel(
     /** 全局「选择 zip 上传」：多个 uri 一起 stage，能读的都进表单，读不出的逐条提示。 */
     fun stageMany(context: Context, uris: List<Uri>) {
         if (uris.isEmpty()) return
+        if (_formState.value.submitting) return
         val maxBytes = _listState.value.limits?.takeIf { it.usable }?.maxBytes
         if (maxBytes == null) {
             postMessage(res.getString(R.string.module_upload_limit_unknown))
@@ -325,6 +333,11 @@ class ModuleUploadViewModel(
         )
 
     private fun addToForm(zips: List<UploadZip>) {
+        if (_formState.value.submitting) {
+            // 提交在飞：这一轮 stage 出来的副本没人接手，直接删掉，别留在 cache。
+            zips.forEach { zip -> File(zip.path).delete() }
+            return
+        }
         val before = _formState.value
         // 同一批里同一个 id 只留最后一份：服务端按 id 归并，两条同 id 会让清单自相矛盾。
         // 被顶掉的那一份副本立刻删掉，别在 cache 里留孤儿。
@@ -374,14 +387,28 @@ class ModuleUploadViewModel(
      * 可能不是同一版。查不出来就是 [CheckStatus.UNKNOWN]，不猜成「未收录」。
      */
     private fun checkManual(zips: List<UploadZip>) {
-        val query = zips.mapNotNull { zip ->
+        if (zips.isEmpty()) return
+        val checkable = zips.filter {
+            ModuleContributionEntry.checkableVersionCode(it.versionCode) != null
+        }
+        val query = checkable.mapNotNull { zip ->
             ModuleContributionEntry.checkableVersionCode(zip.versionCode)?.let { zip.id to it }
         }
-        if (query.isEmpty()) return
-        val ids = query.map { it.first }.toSet()
+        val byPath = checkable.associateBy { it.path }
+        val allIds = zips.map { it.id }.toSet()
         _formState.update { state ->
-            state.copy(items = state.items.map { if (it.id in ids) it.copy(checking = true) else it })
+            state.copy(
+                items = state.items.map { item ->
+                    when {
+                        item.id !in allIds -> item
+                        // 版本号超出可查范围：直接算「查不了」，别让它挂在「正在查」。
+                        item.path !in byPath -> item.copy(status = CheckStatus.UNKNOWN, checking = false)
+                        else -> item.copy(checking = true)
+                    }
+                }
+            )
         }
+        if (query.isEmpty()) return
         viewModelScope.launch {
             val result = try {
                 ModuleContribution.checkBatch(query)
@@ -394,7 +421,10 @@ class ModuleUploadViewModel(
             _formState.update { state ->
                 state.copy(
                     items = state.items.map { item ->
-                        if (item.id in ids) {
+                        // 按 path + versionCode 认这一份：同一个 id 的新版本要被换上来时，
+                        // 上一版那次查询的结论不能落到它头上。
+                        val asked = byPath[item.path]
+                        if (asked != null && item.versionCode == asked.versionCode) {
                             item.copy(status = result[item.id] ?: CheckStatus.UNKNOWN, checking = false)
                         } else {
                             item
@@ -412,6 +442,8 @@ class ModuleUploadViewModel(
     // ── 表单 ────────────────────────────────────────────────────────────────
 
     fun removeItem(path: String) {
+        // 上传在飞时不许删：这个文件正是请求体，删掉会让上传半路失败。
+        if (_formState.value.submitting) return
         // 移除即删副本：staging 里的文件只为这一批活着，留着就是一份没人认领的 cache。
         File(path).delete()
         _formState.update { state ->
@@ -510,8 +542,14 @@ class ModuleUploadViewModel(
         _formState.update { it.copy(notice = null) }
     }
 
-    /** 回到列表；表单内容保留，用户再挑一个包时接着上一批。 */
+    /**
+     * 回到列表；表单内容保留，用户再挑一个包时接着上一批。
+     *
+     * 提交在飞时不放行：回列表后挑新包会让「这一批」在用户不知情时换掉，
+     * 而写入结果的那一侧还以为屏幕上仍是刚提交的那一套。
+     */
     fun backToList() {
+        if (_formState.value.submitting) return
         _step.value = UploadStep.LIST
     }
 
@@ -536,6 +574,8 @@ class ModuleUploadViewModel(
         val snapshot = _formState.value
         val limits = _listState.value.limits
         if (!snapshot.canSubmit(limits) || snapshot.submitting) return
+        // 每次提交领一个号：结果回来时如果这一批已经不是当时那一批，就不许写进界面。
+        val generation = ++submitGeneration
         viewModelScope.launch {
             _formState.update {
                 it.copy(
@@ -579,11 +619,16 @@ class ModuleUploadViewModel(
                 limits = limits,
             )
 
-            applySubmitResult(result, snapshot.nonce)
+            applySubmitResult(result, snapshot.nonce, generation)
         }
     }
 
-    private fun applySubmitResult(result: BatchSubmitResult, submittedNonce: String) {
+    private fun applySubmitResult(
+        result: BatchSubmitResult,
+        submittedNonce: String,
+        generation: Int,
+    ) {
+        if (generation != submitGeneration) return
         if (result.ok) {
             val count = result.modules.size
             // 成功这一批留在屏幕上（用户要能对照自己投了哪几枚），但 outcome 是 Success

@@ -3,6 +3,9 @@ package com.sukisu.ultra.ui.screen.upload
 import android.annotation.SuppressLint
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -68,6 +71,9 @@ interface TurnstileTokenProvider {
  * 站点密钥绑的是主机名，两者都能出题；少一跳就少一个 WebView 可能拦下的重定向。
  */
 const val TURNSTILE_URL = "https://cool-module.pages.dev/turnstile"
+
+/** 取令牌页的源。顶层文档只许待在这里（子框架放行给 Cloudflare）。 */
+private const val TURNSTILE_HOST = "cool-module.pages.dev"
 
 /**
  * 用 WebView 跑人机校验。
@@ -225,15 +231,40 @@ fun TurnstileDialog(provider: WebViewTurnstileProvider) {
                             )
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
+                            // 只需要渲染这一页：文件 / content 访问与混合内容都不开。
+                            settings.allowFileAccess = false
+                            settings.allowContentAccess = false
+                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                             addJavascriptInterface(TurnstileBridge(provider), "TurnstileBridge")
                             webViewClient = object : WebViewClient() {
+                                /**
+                                 * 只让顶层文档待在取令牌页所在的源。
+                                 *
+                                 * JS 接口是挂在 WebView 上的：一旦顶层被导航到别处，那个页面
+                                 * 也能调 `TurnstileBridge`。令牌本身服务端会验，但一个随便的
+                                 * 页面不该有机会冒充这道对话框。
+                                 * 子框架（Turnstile 自己的 iframe）不拦：它需要和 Cloudflare 通信。
+                                 */
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                ): Boolean {
+                                    if (request == null || !request.isForMainFrame) return false
+                                    val url = request.url
+                                    val trusted = (url.scheme == "https" && url.host == TURNSTILE_HOST) ||
+                                        url.scheme == "about"
+                                    if (trusted) return false
+                                    provider.deliverError("校验页试图离开受信任站点")
+                                    return true
+                                }
+
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     loading = false
                                 }
 
                                 override fun onReceivedError(
                                     view: WebView?,
-                                    request: android.webkit.WebResourceRequest?,
+                                    request: WebResourceRequest?,
                                     error: android.webkit.WebResourceError?,
                                 ) {
                                     // 只有主文档失败才算「校验页打不开」。favicon / 子资源失败
@@ -245,7 +276,7 @@ fun TurnstileDialog(provider: WebViewTurnstileProvider) {
 
                                 override fun onReceivedHttpError(
                                     view: WebView?,
-                                    request: android.webkit.WebResourceRequest?,
+                                    request: WebResourceRequest?,
                                     errorResponse: android.webkit.WebResourceResponse?,
                                 ) {
                                     if (request?.isForMainFrame == true &&
@@ -253,6 +284,17 @@ fun TurnstileDialog(provider: WebViewTurnstileProvider) {
                                     ) {
                                         provider.deliverError("HTTP ${errorResponse?.statusCode}")
                                     }
+                                }
+
+                                override fun onRenderProcessGone(
+                                    view: WebView?,
+                                    detail: RenderProcessGoneDetail?,
+                                ): Boolean {
+                                    // 渲染进程被杀（低内存等）：收尾并让系统回收这个 WebView，
+                                    // 否则要么卡到 120 秒，要么整个 App 被带走。
+                                    provider.deliverError("校验组件崩溃")
+                                    view?.destroy()
+                                    return true
                                 }
                             }
                             loadUrl(TURNSTILE_URL)
@@ -277,6 +319,9 @@ fun TurnstileDialog(provider: WebViewTurnstileProvider) {
     DisposableEffect(Unit) {
         onDispose {
             webView?.let { view ->
+                // 先摘掉 JS 接口再销毁：销毁后的 renderer 仍可能被引用一会儿，
+                // 那个接口不该跟着活到那时。
+                view.removeJavascriptInterface("TurnstileBridge")
                 view.stopLoading()
                 view.destroy()
             }
