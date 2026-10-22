@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.DeveloperMode
@@ -152,17 +153,39 @@ fun SettingPagerMiuix(
                                 onCheckedChange = actions.onSetCheckModuleUpdate
                             )
                         }
-                        // 关掉后：装本地模块不再弹分享提示，模块列表也不再显示投稿按钮。
-                        // 投稿功能风险未解决暂时下线（ModuleContributionPrefs.SUSPENDED），开关一并隐藏。
-                        if (!ModuleContributionPrefs.SUSPENDED) {
+                    }
+
+                    // 模块上传的入口与「安装后提示分享」开关放在同一张卡里：
+                    // 前者是主动上传，后者只控制装完本地模块后的提示，两件事都不受 root 影响。
+                    // 投稿功能风险未解决暂时下线（ModuleContributionPrefs.SUSPENDED），整张卡一起隐藏。
+                    if (!ModuleContributionPrefs.SUSPENDED) {
+                        Card(
+                            modifier = Modifier
+                                .padding(top = 12.dp)
+                                .fillMaxWidth(),
+                        ) {
+                            val uploadTitle = stringResource(R.string.module_upload_entry_title)
+                            ArrowPreference(
+                                title = uploadTitle,
+                                summary = stringResource(R.string.module_upload_entry_summary),
+                                startAction = {
+                                    Icon(
+                                        Icons.Rounded.CloudUpload,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        contentDescription = uploadTitle,
+                                        tint = colorScheme.onBackground
+                                    )
+                                },
+                                onClick = actions.onOpenModuleUpload,
+                            )
                             SwitchPreference(
-                                title = stringResource(id = R.string.module_contribution_settings_title),
-                                summary = stringResource(id = R.string.module_contribution_settings_summary),
+                                title = stringResource(R.string.module_upload_after_install_title),
+                                summary = stringResource(R.string.module_upload_after_install_summary),
                                 startAction = {
                                     Icon(
                                         Icons.Rounded.Share,
                                         modifier = Modifier.padding(end = 6.dp),
-                                        contentDescription = stringResource(id = R.string.module_contribution_settings_title),
+                                        contentDescription = stringResource(R.string.module_upload_after_install_title),
                                         tint = colorScheme.onBackground
                                     )
                                 },

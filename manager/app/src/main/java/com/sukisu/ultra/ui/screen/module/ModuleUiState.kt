@@ -83,4 +83,6 @@ data class ModuleActions(
     val onUndoUninstallModule: (Module) -> Unit,
     val onOpenFlash: (List<Uri>) -> Unit,
     val onExecuteModuleAction: (Module) -> Unit,
+    /** 模块页的「分享此模块」改为进入新的上传页（列表 + 表单），不再就地打包提交。 */
+    val onOpenUpload: () -> Unit,
 )

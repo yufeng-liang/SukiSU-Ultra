@@ -63,15 +63,23 @@ class ModuleContributionController internal constructor(
 
     /** 列表渲染时用：这个模块该不该显示投稿按钮。 */
     fun showButton(module: Module): Boolean {
-        if (!enabled) return false
+        if (!gateOpen) return false
         return ModuleContributionRules.showContributeButton(statusOf(module))
     }
 
     /** 列表渲染时用：按钮旁要不要挂「无法确认是否已收录」。 */
     fun showUnknownHint(module: Module): Boolean {
-        if (!enabled) return false
+        if (!gateOpen) return false
         return ModuleContributionRules.showUnknownHint(statusOf(module))
     }
+
+    /**
+     * 上传入口是否开放：只看总闸，不看「安装后提示分享」开关。
+     *
+     * 那个开关现在只控制「装完本地模块后提示分享」，与「能不能进上传页」是两件事；
+     * 拿它一起当门，会让用户关掉提示后连入口都找不到（需求 B1/B2）。
+     */
+    internal val gateOpen: Boolean get() = !ModuleContributionPrefs.SUSPENDED
 
     /**
      * 查一次这个模块的收录状态（带缓存与去重）。
@@ -85,7 +93,7 @@ class ModuleContributionController internal constructor(
      * 而索引是随时在变的。
      */
     internal fun ensureChecked(module: Module) {
-        if (!enabled) return
+        if (!gateOpen) return
         val key = statusKey(module)
         if (statuses.value.containsKey(key) || !inFlight.add(key)) return
         scope.launch {
@@ -103,16 +111,12 @@ class ModuleContributionController internal constructor(
      * [installed] 为 null 表示"装上之后列表里没有它"，也就是安装失败了——
      * 没装上的模块不该问用户要不要分享，直接静默。
      */
+    @Suppress("UNUSED_PARAMETER")
     fun checkAfterLocalZipInstall(installed: Module?) {
-        if (!enabled) return
-        val module = installed ?: return
-        scope.launch {
-            val status = ModuleContributionEntry.check(module) ?: return@launch
-            // 只有 NEW 留提示；VERSION_UPDATE / UNKNOWN / RECORDED 一律静默。
-            if (ModuleContributionRules.showShareSnackbar(status)) {
-                sharePrompt = module
-            }
-        }
+        // 2026-10-22 拍板：上传只收手选原始 zip，装完不再提示「分享」。
+        // 旧提示点下去会走 stageZip（把已安装目录重新打包），字节与作者发布的包不同，
+        // 口令绑的 sha 也会对不上；这条入口在解闸前保持静默，等新的手选流程接管。
+        // 函数签名保留，调用点不用跟着改。
     }
 
     /** 界面消费完分享提示后调用。 */
@@ -175,11 +179,11 @@ fun rememberModuleContributionController(
  *
  * 必须是 [LaunchedEffect] 而不是直接调用：组合里直接发起协程不受 composition
  * 生命周期约束，同一格在一次重组里可能被查多次，划出屏幕也不会取消。
- * key 里带上 [ModuleContributionController.enabled]，开关翻动时会自动重查。
+ * key 里带上 [ModuleContributionController.gateOpen]，开关翻动时会自动重查。
  */
 @Composable
 fun ModuleContributionController.rememberChecked(module: Module) {
-    LaunchedEffect(module.id, module.versionCode, enabled) {
+    LaunchedEffect(module.id, module.versionCode, gateOpen) {
         ensureChecked(module)
     }
 }

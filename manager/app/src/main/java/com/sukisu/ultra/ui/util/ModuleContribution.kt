@@ -13,10 +13,13 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import java.util.Locale
@@ -181,6 +184,27 @@ object ModuleContribution {
     )
 
     private val ZIP_MEDIA_TYPE = "application/zip".toMediaType()
+    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    /**
+     * 批量上传的整次预算：180 秒。
+     *
+     * 20 秒那档是单枚 8 MiB 的预算；8 枚 64 MiB 在 5 Mbps 上就要 ~107 秒，
+     * 再用 20 秒必然在客户端先断，而 Worker 会照常跑完、烧掉口令。
+     * Cloudflare Workers Free **没有请求挂钟上限**（限制是 10ms CPU），
+     * 所以客户端这一侧给足时间；真正的天花板在服务端 CPU，不在这个数。
+     */
+    private const val BATCH_SUBMIT_TIMEOUT_MS = 180_000L
+
+    /** `/check` 的批大小兜底。服务端当前上限也是 8；调用方应按 `maxModules` 切。 */
+    private const val CHECK_BATCH_MAX = 8
+
+    private const val TURNSTILE_HEADER = "cf-turnstile-response"
+
+    /** 客户端本地超时的机器可读码（服务端不会返回这个码）。文案由界面按 locale 取。 */
+    const val CLIENT_TIMEOUT_CODE = "client_timeout"
+
+    private val PROOF_NONCE_RE = Regex("^[a-z0-9]{6}$")
 
     /**
      * 合法模块 id 的形状：字母开头，之后只允许字母、数字、点、下划线、连字符。
@@ -233,6 +257,259 @@ object ModuleContribution {
                 CheckStatus.UNKNOWN
             }
         }
+    }
+
+    /**
+     * 读服务端自报的上限（`GET /`）。
+     *
+     * 这是上限的**唯一来源**：App 里不许再抄一本 8 / 8 MiB / 64 MiB 的账。
+     * 任何失败都返回 null，调用方必须按「拿不到上限」处理，不能退回猜的值。
+     */
+    suspend fun fetchLimits(): BatchLimits? = withContext(Dispatchers.IO) {
+        val url = BASE_URL.trimEnd('/') + "/"
+        val call = runCatching { client().newCall(Request.Builder().url(url).get().build()) }.getOrNull()
+            ?: return@withContext null
+        try {
+            withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = runCatching { response.body.string() }.getOrNull() ?: return@withContext null
+                val json = runCatching { JSONObject(body) }.getOrNull() ?: return@withContext null
+                val maxModules = json.optInt("maxModules", 0)
+                val maxBytes = json.optLong("maxBytes", 0L)
+                val maxTotalBytes = json.optLong("maxTotalBytes", 0L)
+                if (maxModules <= 0 || maxBytes <= 0L || maxTotalBytes <= 0L) {
+                    null
+                } else {
+                    BatchLimits(maxModules, maxBytes, maxTotalBytes)
+                }
+            }
+        } catch (e: CancellationException) {
+            if (e is TimeoutCancellationException) null else throw e
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * 批量查收录状态（`POST /check`）。
+     *
+     * 服务端一次最多 8 条（与 `maxModules` 同值），这里按 [CHECK_BATCH_MAX] 再切一道，
+     * 防止调用方漏切时把整张表一把塞过去。任何一批失败都只是**这一批**没有结果，
+     * 调用方按 [CheckStatus.UNKNOWN] 处理——绝不猜成 [CheckStatus.NEW]。
+     */
+    suspend fun checkBatch(modules: List<Pair<String, Int>>): Map<String, CheckStatus> =
+        withContext(Dispatchers.IO) {
+            if (modules.isEmpty()) return@withContext emptyMap()
+            val out = LinkedHashMap<String, CheckStatus>()
+            for (chunk in modules.chunked(CHECK_BATCH_MAX)) {
+                out.putAll(checkBatchChunk(chunk))
+            }
+            out
+        }
+
+    private suspend fun checkBatchChunk(modules: List<Pair<String, Int>>): Map<String, CheckStatus> {
+        val arr = JSONArray()
+        for ((id, versionCode) in modules) {
+            arr.put(JSONObject().put("id", id).put("versionCode", versionCode))
+        }
+        val payload = JSONObject().put("modules", arr).toString()
+        val url = BASE_URL.trimEnd('/') + "/check"
+        val call = runCatching {
+            client().newCall(
+                Request.Builder().url(url).post(payload.toRequestBody(JSON_MEDIA_TYPE)).build()
+            )
+        }.getOrNull() ?: return emptyMap()
+        return try {
+            withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response ->
+                if (!response.isSuccessful) return emptyMap()
+                val text = runCatching { response.body.string() }.getOrNull() ?: return emptyMap()
+                val json = runCatching { JSONObject(text) }.getOrNull() ?: return emptyMap()
+                val results = json.optJSONArray("results") ?: return emptyMap()
+                val out = LinkedHashMap<String, CheckStatus>()
+                for (i in 0 until results.length()) {
+                    val row = results.optJSONObject(i) ?: continue
+                    val id = row.optString("id").trim()
+                    if (id.isEmpty()) continue
+                    val name = row.optString("status").trim().lowercase(Locale.ROOT)
+                    out[id] = STATUS_BY_NAME[name] ?: CheckStatus.UNKNOWN
+                }
+                out
+            }
+        } catch (e: CancellationException) {
+            if (e is TimeoutCancellationException) emptyMap() else throw e
+        } catch (e: Throwable) {
+            emptyMap()
+        }
+    }
+
+    /**
+     * 一次批量提交。
+     *
+     * 形状：`manifest` 是**第一个** part，随后是共享字段（uploader / coolapkUid /
+     * pledge / nonce），最后按 manifest 顺序追加 N 个 `name="zip"`。
+     * 令牌走 header `cf-turnstile-response`（Worker 优先读 header，能在解析 body 前挡掉）。
+     *
+     * 任何失败都返回 `ok=false` 且带一句可显示的原因，不抛异常；超时交给调用方
+     * 的 `withTimeout` 捕获（与旧 [submitModule] 同一条约定）。
+     */
+    suspend fun submitBatch(
+        modules: List<BatchZip>,
+        uid: String,
+        nickname: String,
+        nonce: String,
+        turnstileToken: String?,
+        limits: BatchLimits?,
+    ): BatchSubmitResult {
+        val safeUid = uid.trim()
+        val safeNickname = nickname.trim()
+        val safeNonce = nonce.trim()
+        if (!isValidUid(safeUid)) {
+            return BatchSubmitResult(false, null, emptyList(), "酷安 UID 必须是 4~12 位数字")
+        }
+        if (safeNickname.isEmpty()) {
+            return BatchSubmitResult(false, null, emptyList(), "酷安 UID 未核实，拿不到署名")
+        }
+        if (!PROOF_NONCE_RE.matches(safeNonce)) {
+            return BatchSubmitResult(false, null, emptyList(), "口令随机段格式不对（应为 6 位小写字母数字）")
+        }
+        // 本地四闸与形状检查只留一份实现：界面上的 canSubmit 只是提前拦，
+        // 真正发请求前再用同一条规则核对一次（文件可能在这期间被删/被改）。
+        // 这一步要 stat N 个文件，放在 IO 上做。
+        val body = buildBatchBody(modules, safeNickname, safeUid, safeNonce)
+        val url = BASE_URL.trimEnd('/') + "/submit"
+        val builder = Request.Builder().url(url).post(body)
+        val token = turnstileToken?.trim().orEmpty()
+        if (token.isNotEmpty()) builder.header(TURNSTILE_HEADER, token)
+        // 必须在 IO 上跑：调用方是 viewModelScope（主线程），
+        // `call.execute()` 在主线程会直接 NetworkOnMainThreadException。
+        return withContext(Dispatchers.IO) {
+            ContributionBatch.localRejection(modules, limits)?.let { reason ->
+                return@withContext BatchSubmitResult(false, null, emptyList(), reason)
+            }
+            val call = runCatching { client().newCall(builder.build()) }.getOrNull()
+                ?: return@withContext BatchSubmitResult(false, null, emptyList(), "无法发起上传请求")
+            try {
+                withTimeout(BATCH_SUBMIT_TIMEOUT_MS) {
+                    execute(call, BATCH_SUBMIT_TIMEOUT_MS)
+                }.use { response -> readBatchSubmitResult(response, limits) }
+            } catch (e: TimeoutCancellationException) {
+                // 内层超时不是「调用方取消」：这里把它收成一句可显示的失败，
+                // 让界面能复位 submitting，而不是把整次提交挂住。
+                // 文案由界面按 locale 取（[CLIENT_TIMEOUT_CODE]），这里不写死中文。
+                BatchSubmitResult(
+                    false,
+                    null,
+                    emptyList(),
+                    message = "",
+                    code = CLIENT_TIMEOUT_CODE,
+                )
+            } catch (e: CancellationException) {
+                // 调用方取消（界面关了）照常往外传。
+                throw e
+            } catch (e: Throwable) {
+                // OkHttp 的 call timeout 通常先于协程超时触发，抛的是
+                // InterruptedIOException("timeout")——别把它报成「网络不可用」。
+                if (e is InterruptedIOException) {
+                    BatchSubmitResult(
+                        false,
+                        null,
+                        emptyList(),
+                        message = "",
+                        code = CLIENT_TIMEOUT_CODE,
+                    )
+                } else {
+                    BatchSubmitResult(false, null, emptyList(), describeUpload(e))
+                }
+            }
+        }
+    }
+
+    /**
+     * 批量 multipart。公开成 internal 只为让单测能直接盯住「manifest 是第一个 part」
+     * 与 zip 的顺序——这两件事写错，服务端会回 `manifest_late` / `batch_incomplete`，
+     * 而界面上只会看到一次没有原因的长上传失败。
+     */
+    internal fun buildBatchBody(
+        modules: List<BatchZip>,
+        uploader: String,
+        uid: String,
+        nonce: String,
+    ): MultipartBody = MultipartBody.Builder()
+        .setType(MultipartBody.FORM)
+        .addFormDataPart("manifest", ContributionBatch.buildManifestJson(modules))
+        .addFormDataPart("uploader", uploader)
+        .addFormDataPart("coolapkUid", uid)
+        .addFormDataPart("pledge", PLEDGE_VERSION)
+        .addFormDataPart("nonce", nonce)
+        .apply {
+            for (module in modules) {
+                addFormDataPart(
+                    "zip",
+                    module.file.name.ifBlank { "${module.meta.id}-${module.meta.versionCode}.zip" },
+                    module.file.asRequestBody(ZIP_MEDIA_TYPE),
+                )
+            }
+        }
+        .build()
+
+    private fun readBatchSubmitResult(response: Response, limits: BatchLimits?): BatchSubmitResult {
+        val text = runCatching { response.body.string() }.getOrNull().orEmpty()
+        val json = runCatching { JSONObject(text) }.getOrNull()
+        if (!response.isSuccessful) {
+            val serverError = json?.optString("error")?.takeIf { it.isNotBlank() }
+                ?.take(MAX_ERROR_REASON_CHARS)
+            val code = json?.optString("code")?.trim()?.takeIf { it.isNotEmpty() }
+            return BatchSubmitResult(
+                false,
+                null,
+                emptyList(),
+                ContributionBatch.errorCopy(response.code, code, serverError, limits),
+                code,
+            )
+        }
+        if (json == null) {
+            return BatchSubmitResult(false, null, emptyList(), "上传失败（服务端响应不是合法 JSON）")
+        }
+        if (!json.optBoolean("ok", false)) {
+            val serverError = json.optString("error").takeIf { it.isNotBlank() }
+                ?.take(MAX_ERROR_REASON_CHARS)
+            val code = json.optString("code").trim().takeIf { it.isNotEmpty() }
+            return BatchSubmitResult(
+                false,
+                null,
+                emptyList(),
+                ContributionBatch.errorCopy(response.code, code, serverError, limits),
+                code,
+            )
+        }
+        val submitted = mutableListOf<SubmittedModule>()
+        val arr = json.optJSONArray("modules")
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val row = arr.optJSONObject(i) ?: continue
+                submitted += SubmittedModule(
+                    id = row.optString("id"),
+                    versionCode = row.optLong("versionCode"),
+                    sha256 = row.optString("sha256"),
+                    assetName = row.optString("assetName"),
+                )
+            }
+        }
+        return BatchSubmitResult(
+            ok = true,
+            prUrl = json.optString("pr").takeIf { it.isNotBlank() },
+            modules = submitted,
+            message = "",
+        )
+    }
+
+    private fun describeUpload(error: Throwable): String = when (error) {
+        // OkHttp 的 `call.timeout` 到点抛的是 InterruptedIOException("timeout")，
+        // 不是 SocketTimeoutException；先认父类，别把超时误报成「网络不可用」。
+        is InterruptedIOException ->
+            "上传超时；口令没有消耗，可以用同一串重试。若提示口令已用过，App 会换一串。"
+        is IOException -> "网络不可用，上传未完成；口令没有消耗。"
+        else -> error.message?.takeIf { it.isNotBlank() } ?: "上传失败"
     }
 
     /**

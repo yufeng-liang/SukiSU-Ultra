@@ -249,6 +249,7 @@ fun ModulePager(
             navigator.push(Route.ExecuteModuleAction(module.id))
             viewModel.markNeedRefresh()
         },
+        onOpenUpload = { navigator.push(Route.ModuleUpload) },
     )
 
     when (uiMode) {

@@ -754,6 +754,7 @@ private fun ModuleList(
                     module = module,
                     updateUrl = moduleUpdateInfo.downloadUrl,
                     contribution = contribution,
+                    onOpenUpload = actions.onOpenUpload,
                     onUninstall = {
                         actions.onRequestUninstallConfirmation(currentModuleState.value)
                     },
@@ -801,6 +802,7 @@ fun ModuleItem(
     module: Module,
     updateUrl: String,
     contribution: ModuleContributionController,
+    onOpenUpload: () -> Unit,
     onUndoUninstall: () -> Unit,
     onUninstall: () -> Unit,
     onCheckChanged: (Boolean) -> Unit,
@@ -970,7 +972,9 @@ fun ModuleItem(
                         backgroundColor = secondaryContainer,
                         minHeight = 35.dp,
                         minWidth = 35.dp,
-                        onClick = { contribution.openFor(module) },
+                        // 点进去的是新的上传页（列表 + 表单），不再就地打包这个模块提交：
+                        // 上传的必须是作者发布的原始 zip，App 重新打出来的包字节不同，口令也会对不上。
+                        onClick = { onOpenUpload() },
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 10.dp),

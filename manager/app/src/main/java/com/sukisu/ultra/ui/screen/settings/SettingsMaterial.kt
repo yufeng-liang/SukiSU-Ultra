@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Adb
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DeveloperMode
@@ -130,22 +131,43 @@ fun SettingPagerMaterial(
                 )
             }
 
-            // 投稿开关不挂在 KsuIsValid 里：它是"要不要被打扰"的偏好，不是内核能力，
-            // 没 root 时也得能关。投稿功能风险未解决暂时下线（ModuleContributionPrefs.SUSPENDED），
-            // 整块开关一起隐藏。
+            // 模块上传入口与「安装后提示分享」开关不挂在 KsuIsValid 里：它们不是内核能力，
+            // 没 root 时也要能进 / 能关。投稿功能风险未解决暂时下线
+            // （ModuleContributionPrefs.SUSPENDED），整块一起隐藏。
             if (!ModuleContributionPrefs.SUSPENDED) {
                 SegmentedColumn(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
-                    content = listOf {
-                        // 关掉后：装本地模块不再弹分享提示，模块列表也不再显示投稿按钮。
-                        SegmentedSwitchItem(
-                            icon = Icons.Filled.Share,
-                            title = stringResource(id = R.string.module_contribution_settings_title),
-                            summary = stringResource(id = R.string.module_contribution_settings_summary),
-                            checked = uiState.moduleContributionEnabled,
-                            onCheckedChange = actions.onSetModuleContributionEnabled
-                        )
-                    }
+                    content = listOf(
+                        {
+                            val uploadTitle = stringResource(R.string.module_upload_entry_title)
+                            SegmentedListItem(
+                                onClick = actions.onOpenModuleUpload,
+                                headlineContent = { Text(uploadTitle) },
+                                supportingContent = {
+                                    Text(stringResource(R.string.module_upload_entry_summary))
+                                },
+                                leadingContent = {
+                                    IconTile(Icons.Filled.CloudUpload, uploadTitle)
+                                },
+                                trailingContent = {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        null
+                                    )
+                                }
+                            )
+                        },
+                        {
+                            // 只控制装完本地模块后要不要提示分享；上传入口在上面。
+                            SegmentedSwitchItem(
+                                icon = Icons.Filled.Share,
+                                title = stringResource(R.string.module_upload_after_install_title),
+                                summary = stringResource(R.string.module_upload_after_install_summary),
+                                checked = uiState.moduleContributionEnabled,
+                                onCheckedChange = actions.onSetModuleContributionEnabled
+                            )
+                        }
+                    )
                 )
             }
 

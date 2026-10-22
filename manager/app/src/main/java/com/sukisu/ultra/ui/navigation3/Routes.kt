@@ -112,6 +112,11 @@ sealed interface Route : NavKey, Parcelable {
     @Serializable
     data object Backup : Route
 
+    /** 模块上传：列表（收录状态）+ 表单（整批提交）两屏共用一个路由。 */
+    @Parcelize
+    @Serializable
+    data object ModuleUpload : Route
+
     @Parcelize
     @Serializable
     data object UmountManager: Route

@@ -550,6 +550,7 @@ private fun ModuleList(
                 module = module,
                 updateUrl = moduleUpdateInfo.downloadUrl,
                 contribution = contribution,
+                onOpenUpload = actions.onOpenUpload,
                 onUninstallClicked = {
                     if (module.remove) {
                         actions.onUndoUninstallModule(module)
@@ -738,6 +739,7 @@ private fun ModuleItem(
     module: Module,
     updateUrl: String,
     contribution: ModuleContributionController,
+    onOpenUpload: () -> Unit,
     onUninstallClicked: () -> Unit,
     onCheckChanged: (Boolean) -> Unit,
     onUpdate: () -> Unit,
@@ -907,7 +909,8 @@ private fun ModuleItem(
                 ) {
                     FilledTonalButton(
                         modifier = Modifier.defaultMinSize(52.dp, 32.dp),
-                        onClick = { contribution.openFor(module) },
+                        // 进入新的上传页（列表 + 表单）；不再就地打包这个模块提交。
+                        onClick = onOpenUpload,
                         contentPadding = ButtonDefaults.TextButtonContentPadding
                     ) {
                         Icon(
