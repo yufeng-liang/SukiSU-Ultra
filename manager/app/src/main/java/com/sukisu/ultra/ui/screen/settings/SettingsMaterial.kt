@@ -270,7 +270,7 @@ fun SettingPagerMaterial(
                             onClick = actions.onOpenBackup,
                             headlineContent = { Text(backupTitle) },
                             supportingContent = { Text(stringResource(id = R.string.backup_entry_summary)) },
-                            leadingContent = { Icon(Icons.Filled.Backup, backupTitle) },
+                            leadingContent = { IconTile(Icons.Filled.Backup, backupTitle) },
                             trailingContent = {
                                 Icon(
                                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
