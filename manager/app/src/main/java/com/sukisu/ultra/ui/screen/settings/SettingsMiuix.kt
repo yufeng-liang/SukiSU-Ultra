@@ -1,5 +1,11 @@
 package com.sukisu.ultra.ui.screen.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import com.sukisu.ultra.ui.component.profile.TemporaryRootPreferences
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -18,7 +24,6 @@ import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.automirrored.rounded.Rule
 import androidx.compose.material.icons.rounded.Adb
 import androidx.compose.material.icons.rounded.AdminPanelSettings
-import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CloudUpload
@@ -34,6 +39,7 @@ import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Policy
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Settings
@@ -137,6 +143,26 @@ fun SettingPagerMiuix(
                             checked = uiState.checkUpdate,
                             onCheckedChange = actions.onSetCheckUpdate
                         )
+                        AnimatedVisibility(
+                            visible = uiState.checkUpdate,
+                            enter = fadeIn() + expandVertically(),
+                            exit = shrinkVertically() + fadeOut(),
+                        ) {
+                            SwitchPreference(
+                                title = stringResource(R.string.settings_check_ci_update),
+                                summary = stringResource(R.string.settings_check_ci_update_summary),
+                                startAction = {
+                                    Icon(
+                                        Icons.Rounded.Science,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        contentDescription = stringResource(R.string.settings_check_ci_update),
+                                        tint = colorScheme.onBackground
+                                    )
+                                },
+                                checked = uiState.checkCiUpdate,
+                                onCheckedChange = actions.onSetCheckCiUpdate,
+                            )
+                        }
                         KsuIsValid {
                             SwitchPreference(
                                 title = stringResource(id = R.string.settings_module_check_update),
@@ -248,20 +274,7 @@ fun SettingPagerMiuix(
                             },
                             onClick = actions.onOpenTheme
                         )
-                        SwitchPreference(
-                        title = stringResource(id = R.string.icon_switch_title),
-                        summary = stringResource(id = R.string.icon_switch_summary),
-                        startAction = {
-                            Icon(
-                                Icons.Rounded.Android,
-                                modifier = Modifier.padding(end = 6.dp),
-                                contentDescription = stringResource(id = R.string.icon_switch_title),
-                                tint = colorScheme.onBackground
-                            )
-                        },
-                        checked = uiState.alternativeIcon,
-                        onCheckedChange = actions.onSetAlternativeIcon
-                        )
+
                     }
 
                     KsuIsValid {
@@ -345,6 +358,7 @@ fun SettingPagerMiuix(
                                 }
                             )
                         }
+                        TemporaryRootPreferences()
                     }
 
                     KsuIsValid {

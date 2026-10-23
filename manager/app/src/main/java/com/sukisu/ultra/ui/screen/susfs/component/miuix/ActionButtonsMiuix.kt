@@ -20,66 +20,21 @@ fun BottomActionButtonsMiuix(
     isLoading: Boolean = false,
     enabled: Boolean = true
 ) {
-    Card(
-        modifier = modifier
-            .padding(top = 12.dp)
-            .fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (secondaryButtonText != null && onSecondaryClick != null) {
-                Button(
-                    onClick = onSecondaryClick,
-                    enabled = !isLoading && enabled,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp),
-                    cornerRadius = 8.dp
-                ) {
-                    Text(
-                        text = secondaryButtonText,
-                        style = MiuixTheme.textStyles.body2
-                    )
-                }
-                Button(
-                    onClick = onPrimaryClick,
-                    enabled = !isLoading && enabled,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp),
-                    cornerRadius = 8.dp
-                ) {
-                    Text(
-                        text = primaryButtonText,
-                        style = MiuixTheme.textStyles.body2
-                    )
-                }
-            } else {
-                Button(
-                    onClick = onPrimaryClick,
-                    enabled = !isLoading && enabled,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp),
-                    cornerRadius = 8.dp
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = primaryButtonText,
-                        style = MiuixTheme.textStyles.body2
-                    )
-                }
-            }
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(
+            text = primaryButtonText,
+            onClick = onPrimaryClick,
+            enabled = !isLoading && enabled,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            colors = ButtonDefaults.textButtonColorsPrimary(),
+        )
+        if (secondaryButtonText != null && onSecondaryClick != null) {
+            TextButton(
+                text = secondaryButtonText,
+                onClick = onSecondaryClick,
+                enabled = !isLoading && enabled,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            )
         }
     }
 }
@@ -91,22 +46,10 @@ fun ResetButtonMiuix(
     onClick: () -> Unit,
     enabled: Boolean = true
 ) {
-    Card(
-        modifier = modifier
-            .padding(vertical = 12.dp)
-            .fillMaxWidth(),
-    ) {
-        Button(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp),
-            cornerRadius = 8.dp
-        ) {
-            Text(
-                text = title
-            )
-        }
-    }
+    TextButton(
+        text = title,
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp),
+    )
 }

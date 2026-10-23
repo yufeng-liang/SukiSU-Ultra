@@ -1,7 +1,14 @@
 package com.sukisu.ultra.ui.kernelFlash
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.core.net.toUri
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.screen.install.InstallMethod
@@ -12,18 +19,74 @@ fun rememberAnyKernel3State(
     preselectedKernelUri: String?,
     horizonKernelSummary: String,
     isAbDevice: Boolean
-) = when (LocalUiMode.current) {
-    UiMode.Miuix -> rememberAnyKernel3StateMiuix(
-        installMethodState = installMethodState,
-        preselectedKernelUri = preselectedKernelUri,
-        horizonKernelSummary = horizonKernelSummary,
-        isAbDevice = isAbDevice
-    )
-    UiMode.Material -> rememberAnyKernel3StateMaterial(
-        installMethodState = installMethodState,
-        preselectedKernelUri = preselectedKernelUri,
-        horizonKernelSummary = horizonKernelSummary,
-        isAbDevice = isAbDevice
+): AnyKernel3State {
+    var kpmPatchOption by remember { mutableStateOf(KpmPatchOption.FOLLOW_KERNEL) }
+    var showSlotSelectionDialog by remember { mutableStateOf(false) }
+    var showKpmPatchDialog by remember { mutableStateOf(false) }
+    var tempKernelUri by remember { mutableStateOf<Uri?>(null) }
+
+    val onHorizonKernelSelected: (InstallMethod.HorizonKernel) -> Unit = { method ->
+        method.uri?.let { uri ->
+            if (isAbDevice && method.slot == null) {
+                tempKernelUri = uri
+                showSlotSelectionDialog = true
+            } else {
+                installMethodState.value = method
+                showKpmPatchDialog = true
+            }
+        }
+    }
+    val onReopenSlotDialog: (InstallMethod.HorizonKernel) -> Unit = { method ->
+        method.uri?.takeIf { isAbDevice }?.let { uri ->
+            tempKernelUri = uri
+            showSlotSelectionDialog = true
+        }
+    }
+    val onSlotSelected: (String) -> Unit = { slot ->
+        val uri = tempKernelUri ?: (installMethodState.value as? InstallMethod.HorizonKernel)?.uri
+        uri?.let {
+            installMethodState.value = InstallMethod.HorizonKernel(
+                uri = it,
+                slot = slot,
+                summary = horizonKernelSummary
+            )
+            tempKernelUri = null
+            showSlotSelectionDialog = false
+            showKpmPatchDialog = true
+        }
+    }
+    val onDismissSlotDialog = { showSlotSelectionDialog = false }
+    val onOptionSelected: (KpmPatchOption) -> Unit = { option ->
+        kpmPatchOption = option
+        showKpmPatchDialog = false
+    }
+    val onDismissPatchDialog = { showKpmPatchDialog = false }
+
+    LaunchedEffect(preselectedKernelUri, isAbDevice, horizonKernelSummary) {
+        preselectedKernelUri?.let { uriString ->
+            runCatching { uriString.toUri() }.getOrNull()?.let { uri ->
+                val method = InstallMethod.HorizonKernel(uri = uri, summary = horizonKernelSummary)
+                if (isAbDevice) {
+                    tempKernelUri = uri
+                    showSlotSelectionDialog = true
+                } else {
+                    installMethodState.value = method
+                    showKpmPatchDialog = true
+                }
+            }
+        }
+    }
+
+    return AnyKernel3State(
+        kpmPatchOption = kpmPatchOption,
+        showSlotSelectionDialog = showSlotSelectionDialog,
+        showKpmPatchDialog = showKpmPatchDialog,
+        onHorizonKernelSelected = onHorizonKernelSelected,
+        onSlotSelected = onSlotSelected,
+        onDismissSlotDialog = onDismissSlotDialog,
+        onOptionSelected = onOptionSelected,
+        onDismissPatchDialog = onDismissPatchDialog,
+        onReopenSlotDialog = onReopenSlotDialog
     )
 }
 

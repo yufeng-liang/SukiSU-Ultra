@@ -40,7 +40,7 @@ fun SusLoopPathsContentMaterial(
                 icon = Icons.Default.Loop,
                 count = susLoopPaths.size
             )
-            susLoopPaths.toList().forEach { path ->
+            susLoopPaths.sorted().forEach { path ->
                 PathItemCardMaterial(
                     path = path,
                     icon = Icons.Default.Loop,
@@ -61,7 +61,8 @@ fun SusLoopPathsContentMaterial(
     if (susLoopPaths.isNotEmpty()) {
         ResetButtonMaterial(
             title = stringResource(R.string.susfs_reset_loop_paths_title),
-            onClick = onReset
+            onClick = onReset,
+            enabled = !isLoading
         )
     }
 }

@@ -13,6 +13,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -40,6 +43,17 @@ fun BackupRestoreComponentMaterial(
     var selectedBackupFile by remember { mutableStateOf<String?>(null) }
     var backupInfo by remember { mutableStateOf<BackupData?>(null) }
 
+    DisposableEffect(selectedBackupFile) {
+        val path = selectedBackupFile
+        onDispose {
+            if (path != null) {
+                // Use an independent IO task: leaving this composable cancels its UI scope.
+                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { File(path).delete() }
+            }
+        }
+    }
+
+
     // 备份文件选择器
     val backupFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -49,23 +63,20 @@ fun BackupRestoreComponentMaterial(
                 try {
                     internalLoading = true
                     onLoadingChange(true)
-                    val fileName = SuSFSManager.getDefaultBackupFileName()
-                    val tempFile = File(context.cacheDir, fileName)
-
-                    val success = SuSFSManager.createBackup(context, tempFile.absolutePath)
-                    if (success) {
+                    withContext(Dispatchers.IO) {
+                        val tempFile = File.createTempFile("susfs_backup_", ".json", context.cacheDir)
                         try {
-                            context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
-                                tempFile.inputStream().use { inputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
+                            if (SuSFSManager.createBackup(context, tempFile.absolutePath)) {
+                                val output = context.contentResolver.openOutputStream(fileUri)
+                                    ?: throw java.io.IOException("Unable to open backup destination")
+                                output.use { stream -> tempFile.inputStream().use { it.copyTo(stream) } }
                             }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
                         } finally {
                             tempFile.delete()
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
@@ -84,24 +95,36 @@ fun BackupRestoreComponentMaterial(
         uri?.let { fileUri ->
             coroutineScope.launch {
                 try {
-                    val tempFile = File(context.cacheDir, "temp_restore.susfs_backup")
-                    context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
-                        tempFile.outputStream().use { outputStream ->
-                            inputStream.copyTo(outputStream)
+                    internalLoading = true
+                    onLoadingChange(true)
+                    val prepared = withContext(Dispatchers.IO) {
+                        val tempFile = File.createTempFile("susfs_restore_", ".json", context.cacheDir)
+                        try {
+                            val input = context.contentResolver.openInputStream(fileUri)
+                                ?: throw java.io.IOException("Unable to open backup file")
+                            input.use { stream -> tempFile.outputStream().use { stream.copyTo(it) } }
+                            val backup = SuSFSManager.validateBackupFile(tempFile.absolutePath)
+                            if (backup == null) {
+                                tempFile.delete()
+                                null
+                            } else tempFile.absolutePath to backup
+                        } catch (e: Exception) {
+                            tempFile.delete()
+                            throw e
                         }
                     }
-
-                    val backup = SuSFSManager.validateBackupFile(tempFile.absolutePath)
-                    if (backup != null) {
-                        selectedBackupFile = tempFile.absolutePath
-                        backupInfo = backup
+                    if (prepared != null) {
+                        selectedBackupFile = prepared.first
+                        backupInfo = prepared.second
                         showRestoreConfirmDialog = true
-                    } else {
-                        tempFile.delete()
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
+                    internalLoading = false
+                    onLoadingChange(false)
                     showRestoreDialog = false
                 }
             }
@@ -207,13 +230,14 @@ fun BackupRestoreComponentMaterial(
                                     if (success) {
                                         onConfigReload()
                                     }
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (e: Exception) {
                                     e.printStackTrace()
                                 } finally {
                                     internalLoading = false
                                     onLoadingChange(false)
                                     showRestoreConfirmDialog = false
-                                    delay(100.milliseconds)
                                     selectedBackupFile = null
                                     backupInfo = null
                                 }
@@ -227,6 +251,7 @@ fun BackupRestoreComponentMaterial(
             },
             dismissButton = {
                 TextButton(
+                    enabled = !actualLoading,
                     onClick = {
                         showRestoreConfirmDialog = false
                         selectedBackupFile = null

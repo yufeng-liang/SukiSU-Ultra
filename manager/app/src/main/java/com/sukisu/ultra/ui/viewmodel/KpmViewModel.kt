@@ -41,6 +41,10 @@ class KpmViewModel(
 
     fun getTempFile(): File? = tempFile
 
+    fun setOperationResult(result: com.sukisu.ultra.ui.component.ConfigResult) {
+        _uiState.update { it.copy(operationResults = listOf(result)) }
+    }
+
     fun fetchModuleList() {
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true, error = null) }

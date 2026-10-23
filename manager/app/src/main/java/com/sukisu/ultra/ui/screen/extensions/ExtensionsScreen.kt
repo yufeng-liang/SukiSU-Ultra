@@ -112,11 +112,21 @@ fun ExtensionsScreen() {
                 currentCpuInfo = cpuInfo,
                 onDismiss = { cpuDialogVisible = false },
                 onApply = applyCpu,
+                onRestore = {
+                    cpuInfo?.let { info ->
+                        applyCpu(SpoofCpuParams((0 until info.coreCount).toList(), info.midrHex, info.bogomips, info.hwcap, info.hwcap2))
+                    }
+                },
             )
             UiMode.Material -> SpoofCpuDialogMaterial(
                 currentCpuInfo = cpuInfo,
                 onDismiss = { cpuDialogVisible = false },
                 onApply = applyCpu,
+                onRestore = {
+                    cpuInfo?.let { info ->
+                        applyCpu(SpoofCpuParams((0 until info.coreCount).toList(), info.midrHex, info.bogomips, info.hwcap, info.hwcap2))
+                    }
+                },
             )
         }
     }

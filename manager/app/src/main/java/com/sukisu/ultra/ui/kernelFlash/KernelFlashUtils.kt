@@ -9,7 +9,6 @@ object KernelFlashStateHolder {
     var currentSlot: String? = null
     var currentKpmPatchEnabled: Boolean = false
     var currentKpmUndoPatch: Boolean = false
-    var isFlashing = false
 
     fun clear() {
         currentState = null
@@ -17,6 +16,5 @@ object KernelFlashStateHolder {
         currentSlot = null
         currentKpmPatchEnabled = false
         currentKpmUndoPatch = false
-        isFlashing = false
     }
 }

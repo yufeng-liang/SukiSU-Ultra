@@ -364,10 +364,7 @@ fun InstallScreen(
         enableAdb = enableAdb,
         forceBackup = forceBackup,
         canForceBackup = installMethod is InstallMethod.SelectFile,
-        anyKernel3State = anyKernel3State,
         kpmPatchOption = kpmPatchOption,
-        showSlotSelectionDialog = showSlotSelectionDialog,
-        showKpmPatchDialog = showKpmPatchDialog,
         blockModulesEnabled = blockModulesEnabled,
         blockModules = blockModules,
         blockModulesValid = isBlockModulesValid(effectiveBlockModules),
@@ -464,9 +461,6 @@ fun InstallScreen(
         },
         onReopenSlotDialog = { method ->
             anyKernel3State.onReopenSlotDialog(method)
-        },
-        onReopenKpmDialog = { method ->
-            anyKernel3State.onReopenKpmDialog(method)
         },
         onSelectBlockModules = {
             blockModulesEnabled = it

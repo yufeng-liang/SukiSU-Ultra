@@ -298,6 +298,7 @@ private fun KpmList(
             ),
             overscrollEffect = null,
         ) {
+            item { com.sukisu.ultra.ui.component.ConfigResults(state.operationResults) }
             if (!isNoticeClosed) {
                 item {
                     Card(

@@ -48,7 +48,7 @@ fun KstatConfigContentMiuix(
                 icon = Icons.Default.Settings,
                 count = kstatConfigs.size
             )
-            kstatConfigs.toList().forEach { config ->
+            kstatConfigs.sorted().forEach { config ->
                 KstatConfigItemCardMiuix(
                     config = config,
                     onDelete = { onRemoveKstatConfig(config) },
@@ -67,7 +67,7 @@ fun KstatConfigContentMiuix(
                 icon = Icons.Default.Folder,
                 count = addKstatPaths.size
             )
-            addKstatPaths.toList().forEach { path ->
+            addKstatPaths.sorted().forEach { path ->
                 AddKstatPathItemCardMiuix(
                     path = path,
                     onDelete = { onRemoveAddKstat(path) },

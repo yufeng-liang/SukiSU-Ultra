@@ -172,7 +172,6 @@ fun SlotSelectionDialogMaterial(
                     onClick = {
                         showDialog.value = false
                         selectedSlot?.let { onSlotSelected(it) }
-                        onDismiss()
                     },
                     enabled = selectedSlot != null
                 ) {

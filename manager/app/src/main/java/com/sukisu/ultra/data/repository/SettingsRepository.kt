@@ -4,6 +4,7 @@ interface SettingsRepository {
     var uiMode: String
     var appLanguage: String
     var checkUpdate: Boolean
+    var checkCiUpdate: Boolean
     var checkModuleUpdate: Boolean
     var alternativeIcon : Boolean
     var themeMode: Int
@@ -24,6 +25,13 @@ interface SettingsRepository {
     var enableWebDebugging: Boolean
     var moduleSortEnabledFirst: Boolean
     var moduleSortActionFirst: Boolean
+    var moduleSortWebUiFirst: Boolean
+    var moduleSortZygiskFirst: Boolean
+    var moduleSortMetamoduleFirst: Boolean
+    var moduleSortNameOrder: String
+    var moduleSortManual: Boolean
+    var moduleManualOrder: String
+    /** 模块仓库页排序方式，存 [com.sukisu.ultra.ui.screen.modulerepo.RepoSort] 的 ordinal。 */
     var moduleRepoSortOrder: Int
 
     /**
@@ -32,7 +40,6 @@ interface SettingsRepository {
      * 默认 false：没勾过就每次进入模块仓库页都弹一次（见 [ModuleRepoDisclaimerPrefs]）。
      */
     var moduleRepoDisclaimerAccepted: Boolean
-
     var superuserShowSystemApps: Boolean
     var superuserShowOnlyPrimaryUserApps: Boolean
     var superuserSortOption: Int

@@ -48,7 +48,7 @@ fun SusMapsContentMiuix(
                 count = susMaps.size
             )
 
-            susMaps.toList().forEach { map ->
+            susMaps.sorted().forEach { map ->
                 PathItemCardMiuix(
                     path = map,
                     icon = Icons.Default.Security,
@@ -71,7 +71,8 @@ fun SusMapsContentMiuix(
     if (onReset != null && susMaps.isNotEmpty()) {
         ResetButtonMiuix(
             title = stringResource(R.string.susfs_reset_sus_maps_title),
-            onClick = onReset
+            onClick = onReset,
+            enabled = !isLoading
         )
     }
 }

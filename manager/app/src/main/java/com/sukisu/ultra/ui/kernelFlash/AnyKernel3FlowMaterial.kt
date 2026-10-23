@@ -1,6 +1,5 @@
 package com.sukisu.ultra.ui.kernelFlash
 
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
@@ -12,108 +11,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import com.sukisu.ultra.R
-import com.sukisu.ultra.ui.screen.install.InstallMethod
-
-@Composable
-fun rememberAnyKernel3StateMaterial(
-    installMethodState: MutableState<InstallMethod?>,
-    preselectedKernelUri: String?,
-    horizonKernelSummary: String,
-    isAbDevice: Boolean
-): AnyKernel3State {
-    var kpmPatchOption by remember { mutableStateOf(KpmPatchOption.FOLLOW_KERNEL) }
-    var showSlotSelectionDialog by remember { mutableStateOf(false) }
-    var showKpmPatchDialog by remember { mutableStateOf(false) }
-    var tempKernelUri by remember { mutableStateOf<Uri?>(null) }
-
-    val onHorizonKernelSelected: (InstallMethod.HorizonKernel) -> Unit = { method ->
-        val uri = method.uri
-        if (uri != null) {
-            if (isAbDevice && method.slot == null) {
-                tempKernelUri = uri
-                showSlotSelectionDialog = true
-            } else {
-                installMethodState.value = method
-                showKpmPatchDialog = true
-            }
-        }
-    }
-
-    val onReopenSlotDialog: (InstallMethod.HorizonKernel) -> Unit = { method ->
-        val uri = method.uri
-        if (uri != null && isAbDevice) {
-            tempKernelUri = uri
-            showSlotSelectionDialog = true
-        }
-    }
-
-    val onReopenKpmDialog: (InstallMethod.HorizonKernel) -> Unit = { method ->
-        installMethodState.value = method
-        showKpmPatchDialog = true
-    }
-
-    val onSlotSelected: (String) -> Unit = { slot ->
-        val uri = tempKernelUri ?: (installMethodState.value as? InstallMethod.HorizonKernel)?.uri
-        if (uri != null) {
-            installMethodState.value = InstallMethod.HorizonKernel(
-                uri = uri,
-                slot = slot,
-                summary = horizonKernelSummary
-            )
-            tempKernelUri = null
-            showSlotSelectionDialog = false
-            showKpmPatchDialog = true
-        }
-    }
-
-    val onDismissSlotDialog = {
-        showSlotSelectionDialog = false
-    }
-
-    val onOptionSelected: (KpmPatchOption) -> Unit = { option ->
-        kpmPatchOption = option
-        showKpmPatchDialog = false
-    }
-
-    val onDismissPatchDialog = {
-        showKpmPatchDialog = false
-    }
-
-    LaunchedEffect(preselectedKernelUri, isAbDevice, horizonKernelSummary) {
-        preselectedKernelUri?.let { uriString ->
-            runCatching { uriString.toUri() }
-                .getOrNull()
-                ?.let { preselectedUri ->
-                    val method = InstallMethod.HorizonKernel(
-                        uri = preselectedUri,
-                        summary = horizonKernelSummary
-                    )
-                    if (isAbDevice) {
-                        tempKernelUri = preselectedUri
-                        showSlotSelectionDialog = true
-                    } else {
-                        installMethodState.value = method
-                        showKpmPatchDialog = true
-                    }
-                }
-        }
-    }
-
-    return AnyKernel3State(
-        kpmPatchOption = kpmPatchOption,
-        showSlotSelectionDialog = showSlotSelectionDialog,
-        showKpmPatchDialog = showKpmPatchDialog,
-        onHorizonKernelSelected = onHorizonKernelSelected,
-        onSlotSelected = onSlotSelected,
-        onDismissSlotDialog = onDismissSlotDialog,
-        onOptionSelected = onOptionSelected,
-        onDismissPatchDialog = onDismissPatchDialog,
-        onReopenSlotDialog = onReopenSlotDialog,
-        onReopenKpmDialog = onReopenKpmDialog
-    )
-}
 
 @Composable
 fun KpmPatchSelectionDialogMaterial(
@@ -204,7 +102,6 @@ fun KpmPatchSelectionDialogMaterial(
                     onClick = {
                         showDialog.value = false
                         onOptionSelected(selectedOption)
-                        onDismiss()
                     }
                 ) {
                     Text(stringResource(android.R.string.ok))

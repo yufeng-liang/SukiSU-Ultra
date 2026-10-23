@@ -33,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,14 +62,6 @@ fun KernelFlashMaterial(
 
     KeyEventBlocker {
         it.key == Key.VolumeDown || it.key == Key.VolumeUp
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            if (state.isCompleted || state.error.isNotEmpty()) {
-                KernelFlashStateHolder.clear()
-            }
-        }
     }
 
     ExpressiveScaffold(

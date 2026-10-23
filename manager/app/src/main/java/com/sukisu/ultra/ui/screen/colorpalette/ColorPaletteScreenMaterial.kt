@@ -42,6 +42,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.automirrored.rounded.MenuOpen
 import androidx.compose.material.icons.filled.Brightness1
 import androidx.compose.material.icons.filled.Brightness3
@@ -329,6 +330,15 @@ fun ColorPaletteScreenMaterial(
                                 summary = stringResource(id = R.string.settings_show_fullstatus_summary),
                                 checked = state.showFullStatus,
                                 onCheckedChange = actions.onSetShowFullStatus
+                            )
+                        },
+                        {
+                            SegmentedSwitchItem(
+                                icon = Icons.Rounded.Android,
+                                title = stringResource(id = R.string.icon_switch_title),
+                                summary = stringResource(id = R.string.icon_switch_summary),
+                                checked = uiState.alternativeIcon,
+                                onCheckedChange = actions.onSetAlternativeIcon
                             )
                         }
                     )

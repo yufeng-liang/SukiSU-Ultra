@@ -25,7 +25,11 @@ class SettingsViewModel(
     private val repo: SettingsRepository = SettingsRepositoryImpl()
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(SettingsUiState(
+        checkUpdate = repo.checkUpdate,
+        checkCiUpdate = repo.checkCiUpdate,
+        checkModuleUpdate = repo.checkModuleUpdate,
+    ))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -34,8 +38,6 @@ class SettingsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            val checkUpdate = repo.checkUpdate
-            val checkModuleUpdate = repo.checkModuleUpdate
             val alternativeIcon = repo.alternativeIcon
             val themeMode = repo.themeMode
             val miuixMonet = repo.miuixMonet
@@ -104,8 +106,9 @@ class SettingsViewModel(
                 it.copy(
                     uiMode = uiMode,
                     appLanguage = appLanguage,
-                    checkUpdate = checkUpdate,
-                    checkModuleUpdate = checkModuleUpdate,
+                    checkUpdate = repo.checkUpdate,
+                    checkCiUpdate = repo.checkCiUpdate,
+                    checkModuleUpdate = repo.checkModuleUpdate,
                     alternativeIcon = alternativeIcon,
                     themeMode = themeMode,
                     miuixMonet = miuixMonet,
@@ -147,6 +150,11 @@ class SettingsViewModel(
                 )
             }
         }
+    }
+
+    fun setCheckCiUpdate(enabled: Boolean) {
+        repo.checkCiUpdate = enabled
+        _uiState.update { it.copy(checkCiUpdate = enabled) }
     }
 
     fun setCheckUpdate(enabled: Boolean) {

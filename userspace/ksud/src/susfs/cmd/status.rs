@@ -56,3 +56,25 @@ pub fn get_susfs_variant() -> String {
     let _ = send(CMD_SUSFS_SHOW_VARIANT, &mut cmd, "show_variant");
     cstr_buf_to_string(&cmd.susfs_variant)
 }
+
+/// Identify the implementation from the kernel ABI, not visible module names.
+/// susfs4ksu-lkm reports GKI-LKM and SUSFS_LKM_MODULES. For an available
+/// SuSFS implementation, default to built-in when neither LKM marker is present.
+pub fn get_susfs_implementation() -> &'static str {
+    if !get_susfs_status() {
+        return "unsupported";
+    }
+    implementation_from_info(&get_susfs_variant(), &get_susfs_features())
+}
+
+fn implementation_from_info(variant: &str, features: &str) -> &'static str {
+    let variant = variant.trim().to_ascii_uppercase().replace('_', "-");
+    if variant.ends_with("-LKM")
+        || features
+            .lines()
+            .any(|line| line.trim() == "SUSFS_LKM_MODULES")
+    {
+        return "lkm";
+    }
+    "builtin"
+}

@@ -98,7 +98,8 @@ fun SusPathsContentMaterial(
     if (susPaths.isNotEmpty()) {
         ResetButtonMaterial(
             title = stringResource(R.string.susfs_reset_paths_title),
-            onClick = onReset
+            onClick = onReset,
+            enabled = !isLoading
         )
     }
 }

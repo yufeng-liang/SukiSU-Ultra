@@ -265,6 +265,7 @@ private fun KpmListMaterial(
                     end = innerPadding.calculateEndPadding(layoutDirection),
                 ),
             ) {
+            item { com.sukisu.ultra.ui.component.ConfigResults(state.operationResults) }
                 if (!isNoticeClosed) {
                     item {
                         Card(

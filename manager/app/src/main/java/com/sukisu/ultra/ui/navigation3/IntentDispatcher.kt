@@ -1,17 +1,11 @@
 package com.sukisu.ultra.ui.navigation3
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.core.net.toUri
@@ -21,13 +15,10 @@ import com.sukisu.ultra.Natives
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.data.script.ScriptRepository
-import com.sukisu.ultra.ksuApp
-import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.screen.flash.FlashIt
 import com.sukisu.ultra.ui.util.BackupNotifier
 import com.sukisu.ultra.ui.screen.scriptrun.ScriptRunArg
 import com.sukisu.ultra.ui.util.DownloadService
-import com.sukisu.ultra.ui.util.getFileName
 import com.sukisu.ultra.ui.webui.WebUIActivity
 
 private const val SCHEME_KSU = "ksu"
@@ -40,39 +31,8 @@ private const val PARAM_TOKEN = "token"
  * Resolved intent action to execute after validation.
  */
 private sealed interface PendingAction {
-    /** Install module(s) from URI — triggered by DownloadService notification or ZIP file open. */
-    data class InstallModule(
-        val uri: Uri,
-        val displayName: String,
-        val requiresConfirmation: Boolean,
-    ) : PendingAction {
-        companion object {
-            val InstallModuleSaver = listSaver<InstallModule?, Any>(
-                save = { module ->
-                    if (module == null) {
-                        emptyList()
-                    } else {
-                        listOf(
-                            module.uri,
-                            module.displayName,
-                            module.requiresConfirmation
-                        )
-                    }
-                },
-                restore = { list ->
-                    if (list.isEmpty()) {
-                        null
-                    } else {
-                        InstallModule(
-                            uri = list[0] as Uri,
-                            displayName = list[1] as String,
-                            requiresConfirmation = list[2] as Boolean
-                        )
-                    }
-                }
-            )
-        }
-    }
+    /** 下载完成通知点「安装」：直接把下载好的模块交给安装流程，不再二次确认。 */
+    data class InstallModule(val uri: Uri) : PendingAction
 
     /** Execute a module's action script — triggered by shortcut or deep link. */
     data class ExecuteAction(val moduleId: String) : PendingAction
@@ -97,13 +57,11 @@ private fun buildInternalWebUiUri(moduleId: String): Uri {
         .build()
 }
 
-fun getDisplayName(uri: Uri): String {
-    return uri.getFileName(ksuApp) ?: uri.lastPathSegment ?: "Unknown"
-}
-
 /**
  * Resolve an intent snapshot into a [PendingAction].
  * Returns null if the intent carries no recognized action.
+ *
+ * 文件管理器/SEND 打开 ZIP 的情形由 [rememberZipFileIntentHandler] 先行拦截，这里不再处理。
  */
 private fun resolveIntent(intent: Intent): PendingAction? {
     // 自动备份失败的通知点进来：只做一次跳转，没有破坏性动作，但仍校验 token——
@@ -117,24 +75,8 @@ private fun resolveIntent(intent: Intent): PendingAction? {
     if (intent.action == DownloadService.ACTION_INSTALL_MODULE) {
         val token = intent.getStringExtra(DownloadService.EXTRA_TOKEN)?.takeIf { it.isNotBlank() } ?: return null
         if (token != SettingsRepositoryImpl().intentToken) return null
-        val uriString = intent.getStringExtra(DownloadService.EXTRA_MODULE_URI)
-            ?: return null
-        val uri = uriString.toUri()
-        return PendingAction.InstallModule(
-            uri = uri,
-            displayName = getDisplayName(uri),
-            requiresConfirmation = false,
-        )
-    }
-
-    // File manager: open ZIP
-    val viewUri = intent.data
-    if (viewUri != null && viewUri.scheme == "content" && intent.type == "application/zip") {
-        return PendingAction.InstallModule(
-            uri = viewUri,
-            displayName = getDisplayName(viewUri),
-            requiresConfirmation = true,
-        )
+        val uriString = intent.getStringExtra(DownloadService.EXTRA_MODULE_URI) ?: return null
+        return PendingAction.InstallModule(uriString.toUri())
     }
 
     // Check deep links
@@ -159,7 +101,6 @@ private fun parseValidatedDeepLink(uri: Uri?): KsuDeepLink? {
     }
 }
 
-@SuppressLint("StringFormatInvalid")
 @Composable
 fun IntentDispatcher(intentChannel: ReceiveChannel<Intent>) {
     val context = LocalContext.current
@@ -167,7 +108,7 @@ fun IntentDispatcher(intentChannel: ReceiveChannel<Intent>) {
     val navigator = LocalNavigator.current
     val isSafeMode = Natives.isSafeMode
     val isManager = Natives.isManager
-    var pendingZipInstall by rememberSaveable(stateSaver = PendingAction.InstallModule.InstallModuleSaver) { mutableStateOf(null) }
+    val handleZipIntent = rememberZipFileIntentHandler()
     val scope = rememberCoroutineScope()
 
     // A one-shot script ZIP opens the run page, which also offers installing it as a module.
@@ -182,16 +123,15 @@ fun IntentDispatcher(intentChannel: ReceiveChannel<Intent>) {
         }
     }
 
-    val installDialog = rememberConfirmDialog(
-        onConfirm = {
-            pendingZipInstall?.let { action -> openModuleZip(action.uri) }
-            pendingZipInstall = null
-        },
-        onDismiss = { pendingZipInstall = null }
-    )
-
     CollectIntentChannel(intentChannel) { intent ->
         if (!isManager) return@CollectIntentChannel
+
+        // 文件管理器 / 分享进来的 ZIP：模块、AnyKernel3 内核都从这条路径处理。
+        if (hasZipFileIntent(context, intent)) {
+            handleZipIntent(intent)
+            return@CollectIntentChannel
+        }
+
         val action = resolveIntent(intent) ?: return@CollectIntentChannel
 
         when (action) {
@@ -204,18 +144,7 @@ fun IntentDispatcher(intentChannel: ReceiveChannel<Intent>) {
                     ).show()
                     return@CollectIntentChannel
                 }
-                if (action.requiresConfirmation) {
-                    pendingZipInstall = action
-                    installDialog.showConfirm(
-                        title = resources.getString(R.string.module),
-                        content = resources.getString(
-                            R.string.module_install_prompt_with_name,
-                            "\n${action.displayName}"
-                        )
-                    )
-                } else {
-                    openModuleZip(action.uri)
-                }
+                openModuleZip(action.uri)
             }
 
             is PendingAction.ExecuteAction -> {
@@ -233,8 +162,6 @@ fun IntentDispatcher(intentChannel: ReceiveChannel<Intent>) {
             }
         }
     }
-
-    HandleZipFileIntent()
 }
 
 /**

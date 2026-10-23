@@ -144,11 +144,11 @@ private fun ExtensionCardMiuix(
         }
     )
     val labels = ExtensionStatusLabels(
-        unsupported = stringResource(R.string.extension_status_unsupported),
+        unsupported = stringResource(R.string.config_status_unsupported),
         forced = stringResource(R.string.extension_status_forced),
         managed = stringResource(R.string.extension_status_managed),
         supported = stringResource(R.string.extension_status_supported),
-        enabled = stringResource(R.string.extension_status_enabled),
+        enabled = stringResource(R.string.config_status_applied),
         disabled = stringResource(R.string.extension_status_disabled),
     )
     val supported = onOpenDetails != null

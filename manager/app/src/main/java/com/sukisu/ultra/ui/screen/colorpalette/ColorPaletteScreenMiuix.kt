@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.automirrored.rounded.MenuOpen
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BlurOn
@@ -432,6 +433,21 @@ fun ColorPaletteScreenMiuix(
                             onCheckedChange = {
                                 actions.onSetShowFullStatus(it)
                             }
+                        )
+
+                        SwitchPreference(
+                            title = stringResource(id = R.string.icon_switch_title),
+                            summary = stringResource(id = R.string.icon_switch_summary),
+                            startAction = {
+                                Icon(
+                                    Icons.Rounded.Android,
+                                    modifier = Modifier.padding(end = 6.dp),
+                                    contentDescription = stringResource(id = R.string.icon_switch_title),
+                                    tint = colorScheme.onBackground
+                                )
+                            },
+                            checked = uiState.alternativeIcon,
+                            onCheckedChange = actions.onSetAlternativeIcon
                         )
 
                         var sliderValue by remember(uiState.pageScale) { mutableFloatStateOf(uiState.pageScale) }
