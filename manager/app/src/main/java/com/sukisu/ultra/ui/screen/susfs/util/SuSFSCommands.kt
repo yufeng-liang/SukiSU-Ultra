@@ -87,28 +87,42 @@ object SuSFSCommands {
     }
 
     suspend fun getCurrentSlotInfo(): List<SlotInfo> = withContext(Dispatchers.IO) {
-        try {
-            val shell = Shell.getShell()
-            listOf("boot_a", "boot_b").mapNotNull { slot ->
-                val uname = runCmd(shell,
-                    $$"strings -n 20 /dev/block/by-name/$$slot | awk '/Linux version/ && ++c==2 {print $3; exit}'"
-                ).trim()
-                val buildTime = runCmd(shell, "strings -n 20 /dev/block/by-name/$slot | sed -n '/Linux version.*#/{s/.*#/#/p;q}'").trim()
-                if (uname.isNotEmpty() && buildTime.isNotEmpty()) {
-                    SlotInfo(slot, uname.ifEmpty { "unknown" }, buildTime.ifEmpty { "unknown" })
-                } else null
+        val shell = getRootShell()
+        listOf("boot_a", "boot_b").map { slot ->
+            val output = mutableListOf<String>()
+            val errors = mutableListOf<String>()
+            // Capture output explicitly. Use platform tools rather than depending
+            // on whichever strings/grep implementation happens to be in PATH.
+            val command = """
+                block=""
+                for candidate in /dev/block/by-name/$slot /dev/block/bootdevice/by-name/$slot; do
+                    if [ -r "${'$'}candidate" ]; then block="${'$'}candidate"; break; fi
+                done
+                if [ -n "${'$'}block" ]; then
+                    if /system/bin/toybox strings /dev/null >/dev/null 2>&1; then
+                        /system/bin/toybox strings "${'$'}block" | /system/bin/toybox grep 'Linux version '
+                    else
+                        strings "${'$'}block" | grep 'Linux version '
+                    fi
+                else
+                    echo "Partition not readable: $slot" >&2
+                    false
+                fi
+            """.trimIndent()
+            val result = shell.newJob().add(command).to(output, errors).exec()
+            if (!result.isSuccess && output.isEmpty()) {
+                Log.w(TAG, "Unable to read $slot: ${errors.joinToString("; ")}")
             }
-        } catch (_: Exception) { emptyList() }
+            parseSlotKernelBanner(slot, output.joinToString("\n"))
+        }
     }
 
     suspend fun getCurrentActiveSlot(): String = withContext(Dispatchers.IO) {
-        try {
-            when (Shell.getShell().newJob().add("getprop ro.boot.slot_suffix").to(mutableListOf(), null).exec().out.firstOrNull()?.trim()) {
-                "_a" -> "boot_a"
-                "_b" -> "boot_b"
-                else -> "unknown"
-            }
-        } catch (_: Exception) { "unknown" }
+        when (runCmd(getRootShell(), "getprop ro.boot.slot_suffix").trim()) {
+            "_a" -> "boot_a"
+            "_b" -> "boot_b"
+            else -> ""
+        }
     }
 
     suspend fun getEnabledFeatures(context: Context): List<EnabledFeature> = withContext(Dispatchers.IO) {
@@ -140,7 +154,7 @@ object SuSFSCommands {
         return featureMap.map { (configKey, displayName) ->
             val isEnabled = enabledConfigs.contains(configKey)
             val statusText = if (isEnabled) context.getString(R.string.susfs_feature_enabled) else context.getString(R.string.susfs_feature_disabled)
-            EnabledFeature(displayName, isEnabled, statusText, displayName == context.getString(R.string.enable_log_feature_label))
+            EnabledFeature(displayName, isEnabled, statusText)
         }.sortedBy { it.name }
     }
 
@@ -158,11 +172,22 @@ object SuSFSCommands {
         )
         return defaults.map { resId ->
             val displayName = context.getString(resId)
-            EnabledFeature(displayName, false, context.getString(R.string.susfs_feature_disabled), displayName == context.getString(R.string.enable_log_feature_label))
+            EnabledFeature(displayName, false, context.getString(R.string.susfs_feature_disabled))
         }.sortedBy { it.name }
     }
 
     private suspend fun showToast(context: Context, message: String) = withContext(Dispatchers.Main) {
         android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
     }
+}
+
+/** Empty fields mean unavailable, never a value that can be applied as a spoof. */
+internal fun parseSlotKernelBanner(slot: String, output: String): SlotInfo {
+    // Scan all matches: boot images can contain format strings before the real banner.
+    val banner = Regex("Linux version ([0-9]+\\.[0-9]+[^\\s]*)[^\\r\\n]*")
+        .findAll(output).map { it.value }.firstOrNull()
+        ?: return SlotInfo(slot, "", "")
+    val release = banner.removePrefix("Linux version ").substringBefore(' ')
+    val version = banner.indexOf('#').takeIf { it >= 0 }?.let { banner.substring(it).trim() }.orEmpty()
+    return SlotInfo(slot, release, version)
 }

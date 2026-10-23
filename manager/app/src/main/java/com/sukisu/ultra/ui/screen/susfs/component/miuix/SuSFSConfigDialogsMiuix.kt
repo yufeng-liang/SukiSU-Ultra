@@ -44,7 +44,7 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 fun AppIconMiuix(
@@ -53,77 +53,20 @@ fun AppIconMiuix(
     @SuppressLint("ModifierParameter") modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var iconBitmap by remember(packageName, packageInfo) { mutableStateOf<ImageBitmap?>(null) }
-    var isLoadingIcon by remember(packageName, packageInfo) { mutableStateOf(true) }
-
-    LaunchedEffect(packageName, packageInfo) {
-        isLoadingIcon = true
-        iconBitmap = null
-
-        withContext(Dispatchers.IO) {
-            try {
-                val drawable = when {
-                    packageInfo != null -> {
-                        packageInfo.applicationInfo?.loadIcon(context.packageManager)
-                    }
-                    else -> {
-                        val cachedInfo = AppInfoCache.getAppInfo(packageName)
-                        if (cachedInfo?.drawable != null) {
-                            cachedInfo.drawable
-                        } else if (cachedInfo?.packageInfo != null) {
-                            cachedInfo.packageInfo.applicationInfo?.loadIcon(context.packageManager)
-                        } else {
-                            try {
-                                val packageManager = context.packageManager
-                                val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
-                                val icon = packageManager.getApplicationIcon(applicationInfo)
-                                val newCachedInfo = AppInfoCache.CachedAppInfo(
-                                    appName = packageName,
-                                    packageInfo = null,
-                                    drawable = icon
-                                )
-                                AppInfoCache.putAppInfo(packageName, newCachedInfo)
-                                icon
-                            } catch (e: Exception) {
-                                Log.d("AppIcon", "获取应用图标失败: $packageName", e)
-                                null
-                            }
-                        }
-                    }
-                }
-
-                iconBitmap = drawable?.toBitmap()?.asImageBitmap()
-            } catch (e: Exception) {
-                Log.d("AppIcon", "获取应用图标失败: $packageName", e)
-            } finally {
-                isLoadingIcon = false
+    val resolvedInfo by produceState(packageInfo, packageName, packageInfo) {
+        if (value == null) {
+            value = withContext(Dispatchers.IO) {
+                AppInfoCache.getAppInfoFromSuperUser(packageName)?.packageInfo
+                    ?: runCatching { context.packageManager.getPackageInfo(packageName, 0) }.getOrNull()
             }
         }
     }
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(
-                if (iconBitmap == null) colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                else androidx.compose.ui.graphics.Color.Transparent
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        if (iconBitmap != null) {
-            Image(
-                bitmap = iconBitmap!!,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else if (!isLoadingIcon) {
-            Icon(
-                imageVector = Icons.Default.Android,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = colorScheme.onSurfaceVariantSummary.copy(alpha = 0.6f)
-            )
-        }
+    resolvedInfo?.let {
+        com.sukisu.ultra.ui.component.AppIconImage(
+            packageInfo = it,
+            label = packageName,
+            modifier = modifier,
+        )
     }
 }
 
@@ -337,7 +280,7 @@ fun AddPathDialogMiuix(
     }
 
     if (showDialogState.value) {
-        OverlayDialog(
+        WindowDialog(
             show = showDialogState.value,
             title = stringResource(titleRes),
             onDismissRequest = {
@@ -370,8 +313,6 @@ fun AddPathDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(stringResource(R.string.cancel))
                         }
@@ -379,271 +320,17 @@ fun AddPathDialogMiuix(
                             onClick = {
                                 if (newPath.isNotBlank()) {
                                     onConfirm(newPath.trim())
-                                    newPath = ""
                                 }
                             },
                             enabled = newPath.isNotBlank() && !isLoading,
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(
                                 text = stringResource(
                                     if (initialValue.isNotEmpty()) R.string.susfs_save else R.string.add
                                 )
-                            )
-                        }
-                    }
-                }
-            }
-        )
-    }
-}
-
-@Composable
-fun AddAppPathDialogMiuix(
-    showDialog: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: (List<String>) -> Unit,
-    isLoading: Boolean,
-    apps: List<AppInfo> = emptyList(),
-    onLoadApps: () -> Unit,
-    existingSusPaths: Set<String> = emptySet()
-) {
-    var searchText by remember { mutableStateOf("") }
-    var selectedApps by remember { mutableStateOf(setOf<AppInfo>()) }
-
-    val addedPackageNames = remember(existingSusPaths) {
-        existingSusPaths.mapNotNull { path ->
-            val regex = Regex(".*/Android/data/([^/]+)/?.*")
-            regex.find(path)?.groupValues?.get(1)
-        }.toSet()
-    }
-
-    val availableApps = remember(apps, addedPackageNames) {
-        apps.filter { app ->
-            !addedPackageNames.contains(app.packageName)
-        }
-    }
-
-    val filteredApps = remember(availableApps, searchText) {
-        if (searchText.isBlank()) {
-            availableApps
-        } else {
-            availableApps.filter { app ->
-                app.appName.contains(searchText, ignoreCase = true) ||
-                        app.packageName.contains(searchText, ignoreCase = true)
-            }
-        }
-    }
-
-    LaunchedEffect(showDialog) {
-        if (showDialog && apps.isEmpty()) {
-            onLoadApps()
-        }
-        if (showDialog) {
-            selectedApps = setOf()
-        }
-    }
-
-    val showDialogState = remember { mutableStateOf(showDialog) }
-
-    LaunchedEffect(showDialog) {
-        showDialogState.value = showDialog
-    }
-
-    if (showDialogState.value) {
-        OverlayDialog(
-            show = showDialogState.value,
-            title = stringResource(R.string.susfs_add_app_path),
-            onDismissRequest = {
-                onDismiss()
-                selectedApps = setOf()
-                searchText = ""
-            },
-            content = {
-                Column(
-                    modifier = Modifier
-                        .padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    TextField(
-                        value = searchText,
-                        onValueChange = { searchText = it },
-                        label = stringResource(R.string.search_apps),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        if (selectedApps.isNotEmpty()) {
-                            Text(
-                                text = stringResource(R.string.selected_apps_count, selectedApps.size),
-                                style = MiuixTheme.textStyles.body2,
-                                color = colorScheme.primary,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                        if (addedPackageNames.isNotEmpty()) {
-                            Text(
-                                text = stringResource(R.string.already_added_apps_count, addedPackageNames.size),
-                                style = MiuixTheme.textStyles.body2,
-                                color = colorScheme.onSurfaceVariantSummary
-                            )
-                        }
-                    }
-
-                    if (filteredApps.isEmpty()) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.defaultColors(
-                                color = colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                            )
-                        ) {
-                            Text(
-                                text = if (availableApps.isEmpty()) {
-                                    stringResource(R.string.all_apps_already_added)
-                                } else {
-                                    stringResource(R.string.no_apps_found)
-                                },
-                                modifier = Modifier.padding(16.dp),
-                                style = MiuixTheme.textStyles.body2,
-                                color = colorScheme.onSurfaceVariantSummary,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.height(300.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            items(filteredApps) { app ->
-                                val isSelected = selectedApps.contains(app)
-
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.defaultColors(
-                                        color = if (isSelected) {
-                                            colorScheme.primaryContainer.copy(alpha = 0.6f)
-                                        } else {
-                                            colorScheme.surface
-                                        }
-                                    ),
-                                    onClick = {
-                                        selectedApps = if (isSelected) {
-                                            selectedApps - app
-                                        } else {
-                                            selectedApps + app
-                                        }
-                                    },
-                                    cornerRadius = 8.dp
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        AppIconMiuix(
-                                            packageName = app.packageName,
-                                            packageInfo = app.packageInfo,
-                                            modifier = Modifier.size(40.dp)
-                                        )
-
-                                        Column(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .padding(start = 12.dp)
-                                        ) {
-                                            Text(
-                                                text = app.appName,
-                                                style = MiuixTheme.textStyles.body1,
-                                                fontWeight = FontWeight.Medium,
-                                                color = if (isSelected) {
-                                                    colorScheme.onPrimaryContainer
-                                                } else {
-                                                    colorScheme.onSurface
-                                                }
-                                            )
-                                            Text(
-                                                text = app.packageName,
-                                                style = MiuixTheme.textStyles.body2,
-                                                color = if (isSelected) {
-                                                    colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                                } else {
-                                                    colorScheme.onSurfaceVariantSummary
-                                                }
-                                            )
-                                        }
-
-                                        if (isSelected) {
-                                            Icon(
-                                                imageVector = Icons.Default.CheckCircle,
-                                                contentDescription = null,
-                                                tint = colorScheme.primary,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = Icons.Default.RadioButtonUnchecked,
-                                                contentDescription = null,
-                                                tint = colorScheme.onSurfaceVariantSummary,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                onDismiss()
-                                selectedApps = setOf()
-                                searchText = ""
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
-                        ) {
-                            Text(
-                                text = stringResource(R.string.cancel)
-                            )
-                        }
-                        Button(
-                            onClick = {
-                                if (selectedApps.isNotEmpty()) {
-                                    onConfirm(selectedApps.map { it.packageName })
-                                }
-                                selectedApps = setOf()
-                                searchText = ""
-                            },
-                            enabled = selectedApps.isNotEmpty() && !isLoading,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
-                        ) {
-                            Text(
-                                text = stringResource(R.string.add)
                             )
                         }
                     }
@@ -922,8 +609,7 @@ fun PathItemCardMiuix(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        cornerRadius = 8.dp
+            .padding(vertical = 2.dp)
     ) {
         Row(
             modifier = Modifier
@@ -969,7 +655,7 @@ fun PathItemCardMiuix(
                     IconButton(
                         onClick = onEdit,
                         enabled = !isLoading,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
@@ -982,7 +668,7 @@ fun PathItemCardMiuix(
                 IconButton(
                     onClick = onDelete,
                     enabled = !isLoading,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
@@ -1006,8 +692,7 @@ fun KstatConfigItemCardMiuix(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        cornerRadius = 8.dp
+            .padding(vertical = 2.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1063,7 +748,7 @@ fun KstatConfigItemCardMiuix(
                     IconButton(
                         onClick = onEdit,
                         enabled = !isLoading,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
@@ -1076,7 +761,7 @@ fun KstatConfigItemCardMiuix(
                 IconButton(
                     onClick = onDelete,
                     enabled = !isLoading,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
@@ -1102,8 +787,7 @@ fun AddKstatPathItemCardMiuix(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        cornerRadius = 8.dp
+            .padding(vertical = 2.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1138,7 +822,7 @@ fun AddKstatPathItemCardMiuix(
                     IconButton(
                         onClick = onEdit,
                         enabled = !isLoading,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
@@ -1151,7 +835,7 @@ fun AddKstatPathItemCardMiuix(
                 IconButton(
                     onClick = onUpdate,
                     enabled = !isLoading,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Update,
@@ -1163,7 +847,7 @@ fun AddKstatPathItemCardMiuix(
                 IconButton(
                     onClick = onUpdateFullClone,
                     enabled = !isLoading,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
@@ -1175,7 +859,7 @@ fun AddKstatPathItemCardMiuix(
                 IconButton(
                     onClick = onDelete,
                     enabled = !isLoading,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,

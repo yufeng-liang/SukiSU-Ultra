@@ -148,11 +148,11 @@ private fun ExtensionCardMaterial(
         null
     } else {
         when (pillFor(state).pill) {
-            ExtensionPill.Unsupported -> stringResource(R.string.extension_status_unsupported)
+            ExtensionPill.Unsupported -> stringResource(R.string.config_status_unsupported)
             ExtensionPill.Forced -> stringResource(R.string.extension_status_forced)
             ExtensionPill.Managed -> stringResource(R.string.extension_status_managed)
             ExtensionPill.Supported -> stringResource(R.string.extension_status_supported)
-            ExtensionPill.Enabled -> stringResource(R.string.extension_status_enabled)
+            ExtensionPill.Enabled -> stringResource(R.string.config_status_applied)
             ExtensionPill.Disabled -> stringResource(R.string.extension_status_disabled)
         }
     }

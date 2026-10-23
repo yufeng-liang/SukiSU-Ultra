@@ -2,6 +2,8 @@ package com.sukisu.ultra.ui.screen.settings.tools
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +34,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
@@ -39,7 +44,7 @@ import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.getSELinuxStatusRaw
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
-import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -47,6 +52,7 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -194,11 +200,13 @@ private fun AllowlistBackupSectionMiuix(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SpoofCpuDialogMiuix(
     currentCpuInfo: CpuInfo?,
     onDismiss: () -> Unit,
-    onApply: (SpoofCpuParams) -> Unit
+    onApply: (SpoofCpuParams) -> Unit,
+    onRestore: () -> Unit
 ) {
     var selectedPreset by remember { mutableStateOf("custom") }
     var midrValue by remember { mutableStateOf(currentCpuInfo?.midrHex ?: "0x0") }
@@ -208,22 +216,13 @@ fun SpoofCpuDialogMiuix(
     val coreCount = currentCpuInfo?.coreCount ?: 8
     var selectedCores by remember { mutableStateOf((0 until coreCount).toList()) }
     val showDialogState = remember { mutableStateOf(true) }
+    var advancedExpanded by remember { mutableStateOf(false) }
 
-    val presetList = listOf(
-        "custom" to stringResource(R.string.spoof_cpu_midr_custom),
-        "0x413fd050" to "Cortex-A55",
-        "0x413fd0b1" to "Cortex-A76",
-        "0x413fd0d2" to "Cortex-A78",
-        "0x413fd0d4" to "Cortex-A710",
-        "0x413fd0d5" to "Cortex-A715",
-        "0x413fd0c1" to "Cortex-X1",
-        "0x413fd0e3" to "Cortex-X3",
-        "0x413fd0c0" to "Neoverse N1",
-        "0x511f804d" to "Kryo 4xx Gold",
-        "0x511f805c" to "Kryo 5xx Gold",
-        "0x513f8050" to "Kryo 6xx Gold+",
-        "0x553f1000" to "Exynos M5"
-    )
+    val presetList = spoofCpuPresetList()
+    val presetLabels = presetList.map { preset ->
+        preset.coreTypeRes?.let { stringResource(it, preset.model) }
+            ?: stringResource(R.string.spoof_cpu_midr_custom)
+    }
 
     if (showDialogState.value) {
         OverlayDialog(
@@ -241,23 +240,36 @@ fun SpoofCpuDialogMiuix(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // 警告提示
+                    TextButton(
+                        text = stringResource(R.string.spoof_cpu_restore),
+                        onClick = onRestore,
+                        enabled = currentCpuInfo != null,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                        cornerRadius = 8.dp
+                    )
+
                     Text(
                         text = stringResource(R.string.spoof_cpu_warning),
                         color = colorScheme.error,
                         style = textStyles.body2
                     )
 
-                    // 预设 SoC 选择
+                    Text(
+                        text = stringResource(R.string.spoof_cpu_field_midr),
+                        color = colorScheme.onSurfaceVariantSummary,
+                        style = textStyles.body2
+                    )
+
                     OverlayDropdownPreference(
                         title = stringResource(R.string.spoof_cpu_midr_preset_label),
-                        summary = presetList.find { it.first == selectedPreset }?.second ?: "",
-                        items = presetList.map { it.second },
-                        selectedIndex = presetList.indexOfFirst { it.first == selectedPreset }.coerceAtLeast(0),
+                        summary = presetLabels.getOrElse(presetList.indexOfFirst { it.id == selectedPreset }) { "" },
+                        items = presetLabels,
+                        selectedIndex = presetList.indexOfFirst { it.id == selectedPreset }.coerceAtLeast(0),
                         onSelectedIndexChange = { index ->
-                            val (value, _) = presetList[index]
-                            selectedPreset = value
-                            if (value != "custom") {
-                                midrValue = value
+                            val preset = presetList[index]
+                            selectedPreset = preset.id
+                            if (preset.midrHex != "custom") {
+                                midrValue = preset.midrHex
                             }
                         }
                     )
@@ -274,65 +286,80 @@ fun SpoofCpuDialogMiuix(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // BogoMIPS 输入
-                    TextField(
-                        value = bogomipsValue,
-                        onValueChange = { bogomipsValue = it },
-                        label = stringResource(R.string.spoof_cpu_field_bogomips),
-                        useLabelAsPlaceholder = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // HWCAP 输入
-                    TextField(
-                        value = hwcapValue,
-                        onValueChange = { hwcapValue = it },
-                        label = stringResource(R.string.spoof_cpu_field_hwcap),
-                        useLabelAsPlaceholder = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // HWCAP2 输入
-                    TextField(
-                        value = hwcap2Value,
-                        onValueChange = { hwcap2Value = it },
-                        label = stringResource(R.string.spoof_cpu_field_hwcap2),
-                        useLabelAsPlaceholder = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // CPU 核心选择标题
-                    Text(
-                        text = stringResource(R.string.spoof_cpu_field_cores),
-                        style = textStyles.body1,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-
-                    // 全选复选框
-                    CheckboxPreference(
-                        title = stringResource(R.string.spoof_cpu_cores_all),
-                        checked = selectedCores.size == coreCount,
-                        onCheckedChange = {
-                            selectedCores = if (selectedCores.size == coreCount) {
-                                emptyList()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(stringResource(R.string.spoof_cpu_field_cores), style = textStyles.body1)
+                        TextButton(
+                            text = stringResource(R.string.spoof_cpu_cores_all),
+                            colors = if (selectedCores.size == coreCount) {
+                                ButtonDefaults.textButtonColorsPrimary()
                             } else {
-                                (0 until coreCount).toList()
+                                ButtonDefaults.textButtonColors()
+                            },
+                            onClick = {
+                                selectedCores = if (selectedCores.size == coreCount) emptyList() else (0 until coreCount).toList()
                             }
+                        )
+                    }
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        repeat(coreCount) { index ->
+                            val selected = index in selectedCores
+                            TextButton(
+                                text = stringResource(R.string.spoof_cpu_cores_format, index),
+                                colors = if (selected) {
+                                    ButtonDefaults.textButtonColorsPrimary()
+                                } else {
+                                    ButtonDefaults.textButtonColors()
+                                },
+                                onClick = {
+                                    selectedCores = if (selected) selectedCores - index else selectedCores + index
+                                },
+                                modifier = Modifier
+                                    .heightIn(min = 40.dp)
+                                    .semantics { this.selected = selected },
+                                cornerRadius = 20.dp
+                            )
                         }
+                    }
+
+                    TextButton(
+                        text = stringResource(R.string.spoof_cpu_advanced),
+                        colors = if (advancedExpanded) {
+                            ButtonDefaults.textButtonColorsPrimary()
+                        } else {
+                            ButtonDefaults.textButtonColors()
+                        },
+                        onClick = { advancedExpanded = !advancedExpanded }
                     )
 
-                    // 各个核心的复选框
-                    repeat(coreCount) { index ->
-                        CheckboxPreference(
-                            title = stringResource(R.string.spoof_cpu_cores_format, index),
-                            checked = selectedCores.contains(index),
-                            onCheckedChange = {
-                                selectedCores = if (selectedCores.contains(index)) {
-                                    selectedCores - index
-                                } else {
-                                    selectedCores + index
-                                }
-                            }
+                    if (advancedExpanded) {
+                        TextField(
+                            value = bogomipsValue,
+                            onValueChange = { bogomipsValue = it },
+                            label = stringResource(R.string.spoof_cpu_field_bogomips),
+                            useLabelAsPlaceholder = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        TextField(
+                            value = hwcapValue,
+                            onValueChange = { hwcapValue = it },
+                            label = stringResource(R.string.spoof_cpu_field_hwcap),
+                            useLabelAsPlaceholder = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        TextField(
+                            value = hwcap2Value,
+                            onValueChange = { hwcap2Value = it },
+                            label = stringResource(R.string.spoof_cpu_field_hwcap2),
+                            useLabelAsPlaceholder = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
 
@@ -341,7 +368,8 @@ fun SpoofCpuDialogMiuix(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Button(
+                        TextButton(
+                            text = stringResource(R.string.spoof_cpu_cancel),
                             onClick = {
                                 showDialogState.value = false
                                 onDismiss()
@@ -351,10 +379,10 @@ fun SpoofCpuDialogMiuix(
                                 .heightIn(min = 48.dp)
                                 .padding(vertical = 8.dp),
                             cornerRadius = 8.dp
-                        ) {
-                            Text(text = stringResource(R.string.spoof_cpu_cancel))
-                        }
-                        Button(
+                        )
+                        TextButton(
+                            text = stringResource(R.string.spoof_cpu_apply),
+                            colors = ButtonDefaults.textButtonColorsPrimary(),
                             onClick = {
                                 val params = SpoofCpuParams(
                                     cpuIndices = selectedCores,
@@ -372,9 +400,7 @@ fun SpoofCpuDialogMiuix(
                                 .heightIn(min = 48.dp)
                                 .padding(vertical = 8.dp),
                             cornerRadius = 8.dp
-                        ) {
-                            Text(text = stringResource(R.string.spoof_cpu_apply))
-                        }
+                        )
                     }
                 }
             }

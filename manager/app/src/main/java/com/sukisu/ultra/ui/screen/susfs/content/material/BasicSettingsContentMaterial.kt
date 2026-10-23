@@ -27,19 +27,8 @@ fun BasicSettingsContentMaterial(
     onBuildTimeValueChange: (String) -> Unit,
     executeInPostFsData: Boolean,
     onExecuteInPostFsDataChange: (Boolean) -> Unit,
-    autoStartEnabled: Boolean,
-    canEnableAutoStart: Boolean,
     isLoading: Boolean,
-    onAutoStartToggle: (Boolean) -> Unit,
     onShowSlotInfo: () -> Unit,
-    enableHideBl: Boolean,
-    onEnableHideBlChange: (Boolean) -> Unit,
-    enableCleanupResidue: Boolean,
-    onEnableCleanupResidueChange: (Boolean) -> Unit,
-    enableAvcLogSpoofing: Boolean,
-    onEnableAvcLogSpoofingChange: (Boolean) -> Unit,
-    hideSusMountsForAllProcs: Boolean,
-    onHideSusMountsForAllProcsChange: (Boolean) -> Unit,
     cmdlineOrBootconfigPath: String = "",
     onCmdlineOrBootconfigApply: (String) -> Unit = {},
     onReset: (() -> Unit)? = null,
@@ -64,18 +53,11 @@ fun BasicSettingsContentMaterial(
 
     // 执行位置选择
     Card(
-        modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceBright)
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.susfs_execution_location_label),
                     style = MaterialTheme.typography.titleSmall,
@@ -109,7 +91,7 @@ fun BasicSettingsContentMaterial(
         value = unameValue,
         onValueChange = onUnameValueChange,
         label = { Text(stringResource(R.string.susfs_uname_label)) },
-        modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         enabled = !isLoading,
         singleLine = true
     )
@@ -119,42 +101,41 @@ fun BasicSettingsContentMaterial(
         value = buildTimeValue,
         onValueChange = onBuildTimeValueChange,
         label = { Text(stringResource(R.string.susfs_build_time_label)) },
-        modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         enabled = !isLoading,
         singleLine = true
     )
 
     // 当前值显示
-    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(text = stringResource(R.string.susfs_current_value, unameValue), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(text = stringResource(R.string.susfs_current_build_time, buildTimeValue), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(text = stringResource(R.string.susfs_current_execution_location, if (executeInPostFsData) "Post-FS-Data" else "Service"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-
-    // 应用按钮
     if (onApply != null) {
         Button(
             onClick = { onApply() },
             enabled = !isLoading && (unameValue.isNotBlank() || buildTimeValue.isNotBlank()),
-            modifier = Modifier.padding(top = 12.dp).fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         ) {
             Text(stringResource(R.string.susfs_apply))
         }
     }
 
+
+    if (isAbDevice) {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = stringResource(R.string.susfs_slot_info_title), style = MaterialTheme.typography.titleMedium)
+                }
+                Text(text = stringResource(R.string.susfs_slot_info_description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = onShowSlotInfo, enabled = !isLoading, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.susfs_slot_info_title))
+                }
+            }
+        }
+    }
+
     // Cmdline / Bootconfig 卡片
-    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Code,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.susfs_cmdline_or_bootconfig_title),
                     style = MaterialTheme.typography.titleSmall,
@@ -204,67 +185,8 @@ fun BasicSettingsContentMaterial(
         }
     }
 
-    // 开关设置卡片
-    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-        Column {
-            ListItem(
-                supportingContent = { Text(if (canEnableAutoStart) stringResource(R.string.susfs_autostart_description) else stringResource(R.string.susfs_autostart_requirement)) },
-                leadingContent = { Icon(Icons.Default.AutoMode, contentDescription = null) },
-                trailingContent = { Switch(checked = autoStartEnabled, onCheckedChange = onAutoStartToggle, enabled = !isLoading && canEnableAutoStart) }
-            ) {
-                Text(stringResource(R.string.susfs_autostart_title))
-            }
-            HorizontalDivider()
-            ListItem(
-                supportingContent = { Text(stringResource(R.string.hide_bl_script_description)) },
-                leadingContent = { Icon(Icons.Default.Security, contentDescription = null) },
-                trailingContent = { Switch(checked = enableHideBl, onCheckedChange = onEnableHideBlChange, enabled = !isLoading) }
-            ) {
-                Text(stringResource(R.string.hide_bl_script))
-            }
-            HorizontalDivider()
-            ListItem(
-                supportingContent = { Text(stringResource(R.string.cleanup_residue_description)) },
-                leadingContent = { Icon(Icons.Default.CleaningServices, contentDescription = null) },
-                trailingContent = { Switch(checked = enableCleanupResidue, onCheckedChange = onEnableCleanupResidueChange, enabled = !isLoading) }
-            ) {
-                Text(stringResource(R.string.cleanup_residue))
-            }
-            HorizontalDivider()
-            ListItem(
-                supportingContent = { Text(stringResource(R.string.avc_log_spoofing_description)) },
-                leadingContent = { Icon(Icons.Default.VisibilityOff, contentDescription = null) },
-                trailingContent = { Switch(checked = enableAvcLogSpoofing, onCheckedChange = onEnableAvcLogSpoofingChange, enabled = !isLoading) }
-            ) {
-                Text(stringResource(R.string.avc_log_spoofing))
-            }
-            HorizontalDivider()
-            ListItem(
-                supportingContent = { Text(if (hideSusMountsForAllProcs) stringResource(R.string.susfs_hide_mounts_for_all_procs_enabled_description) else stringResource(R.string.susfs_hide_mounts_for_all_procs_disabled_description)) },
-                leadingContent = { Icon(if (hideSusMountsForAllProcs) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null) },
-                trailingContent = { Switch(checked = hideSusMountsForAllProcs, onCheckedChange = onHideSusMountsForAllProcsChange, enabled = !isLoading) }
-            ) {
-                Text(stringResource(R.string.susfs_hide_mounts_for_all_procs_label))
-            }
-        }
-    }
 
-    // 槽位信息按钮
-    if (isAbDevice) {
-        Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Text(text = stringResource(R.string.susfs_slot_info_title), style = MaterialTheme.typography.titleMedium)
-                }
-                Text(text = stringResource(R.string.susfs_slot_info_description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = onShowSlotInfo, enabled = !isLoading, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.susfs_slot_info_title))
-                }
-            }
-        }
-    }
+
 
     // 备份还原
     BackupRestoreComponentMaterial(
@@ -277,7 +199,8 @@ fun BasicSettingsContentMaterial(
     if (onReset != null) {
         ResetButtonMaterial(
             title = stringResource(R.string.susfs_reset_confirm_title),
-            onClick = onReset
+            onClick = onReset,
+            enabled = !isLoading
         )
     }
 }

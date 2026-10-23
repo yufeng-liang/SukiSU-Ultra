@@ -45,7 +45,7 @@ fun KstatConfigContentMaterial(
                 icon = Icons.Default.Settings,
                 count = kstatConfigs.size
             )
-            kstatConfigs.toList().forEach { config ->
+            kstatConfigs.sorted().forEach { config ->
                 KstatConfigItemCardMaterial(
                     config = config,
                     onDelete = { onRemoveKstatConfig(config) },
@@ -62,7 +62,7 @@ fun KstatConfigContentMaterial(
                 icon = Icons.Default.Folder,
                 count = addKstatPaths.size
             )
-            addKstatPaths.toList().forEach { path ->
+            addKstatPaths.sorted().forEach { path ->
                 AddKstatPathItemCardMaterial(
                     path = path,
                     onDelete = { onRemoveAddKstat(path) },

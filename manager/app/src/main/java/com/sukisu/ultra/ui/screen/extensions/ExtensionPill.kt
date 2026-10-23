@@ -25,7 +25,7 @@ internal data class ExtensionPillSpec(
 internal fun pillFor(state: ExtensionState): ExtensionPillSpec = when {
     !state.supported -> ExtensionPillSpec(
         pill = ExtensionPill.Unsupported,
-        labelRes = R.string.extension_status_unsupported,
+        labelRes = R.string.config_status_unsupported,
         isOnError = true,
     )
     state.forced -> ExtensionPillSpec(
@@ -45,7 +45,7 @@ internal fun pillFor(state: ExtensionState): ExtensionPillSpec = when {
     )
     state.value != 0L -> ExtensionPillSpec(
         pill = ExtensionPill.Enabled,
-        labelRes = R.string.extension_status_enabled,
+        labelRes = R.string.config_status_applied,
         isOnPrimary = true,
     )
     else -> ExtensionPillSpec(

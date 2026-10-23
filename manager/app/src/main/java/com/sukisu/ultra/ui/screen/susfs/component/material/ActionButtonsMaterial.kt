@@ -21,66 +21,18 @@ fun BottomActionButtonsMaterial(
     isLoading: Boolean = false,
     enabled: Boolean = true
 ) {
-    Card(
-        modifier = modifier
-            .padding(top = 12.dp)
-            .fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (secondaryButtonText != null && onSecondaryClick != null) {
-                OutlinedButton(
-                    onClick = onSecondaryClick,
-                    enabled = !isLoading && enabled,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 52.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = secondaryButtonText, maxLines = 1)
-                }
-                Button(
-                    onClick = onPrimaryClick,
-                    enabled = !isLoading && enabled,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 52.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = primaryButtonText)
-                }
-            } else {
-                Button(
-                    onClick = onPrimaryClick,
-                    enabled = !isLoading && enabled,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = primaryButtonText)
-                }
-            }
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = onPrimaryClick,
+            enabled = !isLoading && enabled,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) { Text(primaryButtonText) }
+        if (secondaryButtonText != null && onSecondaryClick != null) {
+            FilledTonalButton(
+                onClick = onSecondaryClick,
+                enabled = !isLoading && enabled,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text(secondaryButtonText) }
         }
     }
 }
@@ -92,32 +44,15 @@ fun ResetButtonMaterial(
     onClick: () -> Unit,
     enabled: Boolean = true
 ) {
-    Card(
-        modifier = modifier
-            .padding(top = 16.dp)
-            .fillMaxWidth(),
-    ) {
-        Button(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 52.dp)
-                .padding(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Refresh,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = title)
-        }
-    }
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        ),
+    ) { Text(title) }
 }
 
 @Composable
@@ -130,7 +65,7 @@ fun SectionHeaderMaterial(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceBright
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
     ) {
         Row(
@@ -181,7 +116,7 @@ fun EmptyStateCardMaterial(
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceBright
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
     ) {
         Box(
@@ -221,7 +156,7 @@ fun DescriptionCardMaterial(
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceBright
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
     ) {
         Column(

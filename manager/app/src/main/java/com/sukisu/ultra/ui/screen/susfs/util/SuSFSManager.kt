@@ -3,7 +3,6 @@ package com.sukisu.ultra.ui.screen.susfs.util
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 object SuSFSManager {
@@ -75,7 +74,7 @@ object SuSFSManager {
     suspend fun updateKstat(context: Context, path: String): Boolean = SuSFSPathManager.updateKstat(context, path)
     suspend fun updateKstatFullClone(context: Context, path: String): Boolean = SuSFSPathManager.updateKstatFullClone(context, path)
 
-    fun createBackup(context: Context, backupFilePath: String): Boolean = runBlocking { SuSFSBackupManager.createBackup(context, backupFilePath) }
+    suspend fun createBackup(context: Context, backupFilePath: String): Boolean = SuSFSBackupManager.createBackup(context, backupFilePath)
     suspend fun restoreFromBackup(context: Context, backupFilePath: String): Boolean = SuSFSBackupManager.restoreFromBackup(context, backupFilePath)
     suspend fun validateBackupFile(backupFilePath: String): BackupData? = SuSFSBackupManager.validateBackupFile(backupFilePath)
     fun getDefaultBackupFileName(): String = SuSFSBackupManager.getDefaultBackupFileName()

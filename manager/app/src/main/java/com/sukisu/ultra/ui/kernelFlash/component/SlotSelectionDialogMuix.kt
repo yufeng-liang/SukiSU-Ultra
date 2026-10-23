@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +27,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -68,9 +67,8 @@ fun SlotSelectionDialogMiuix(
         }
     }
 
-    OverlayDialog(
+    WindowDialog(
         show = showDialog.value,
-        insideMargin = DpSize(0.dp, 0.dp),
         onDismissRequest = {
             showDialog.value = false
             onDismiss()
@@ -187,9 +185,8 @@ fun SlotSelectionDialogMiuix(
                     TextButton(
                         text = stringResource(android.R.string.ok),
                         onClick = {
-                            selectedSlot?.let { onSlotSelected(it) }
                             showDialog.value = false
-                            onDismiss()
+                            selectedSlot?.let { onSlotSelected(it) }
                         },
                         enabled = selectedSlot != null,
                         modifier = Modifier.weight(1f)

@@ -47,7 +47,7 @@ fun SusLoopPathsContentMiuix(
                 count = susLoopPaths.size
             )
 
-            susLoopPaths.toList().forEach { path ->
+            susLoopPaths.sorted().forEach { path ->
                 PathItemCardMiuix(
                     path = path,
                     icon = Icons.Default.Loop,
@@ -70,7 +70,8 @@ fun SusLoopPathsContentMiuix(
     if (onReset != null && susLoopPaths.isNotEmpty()) {
         ResetButtonMiuix(
             title = stringResource(R.string.susfs_reset_loop_paths_title),
-            onClick = onReset
+            onClick = onReset,
+            enabled = !isLoading
         )
     }
 }

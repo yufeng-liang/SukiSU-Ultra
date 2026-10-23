@@ -6,6 +6,7 @@ import com.sukisu.ultra.ui.viewmodel.KpmViewModel
 
 @Immutable
 data class KpmUiState(
+    val operationResults: List<com.sukisu.ultra.ui.component.ConfigResult> = emptyList(),
     val isRefreshing: Boolean = false,
     val moduleList: List<KpmViewModel.ModuleInfo> = emptyList(),
     val searchStatus: SearchStatus = SearchStatus(""),

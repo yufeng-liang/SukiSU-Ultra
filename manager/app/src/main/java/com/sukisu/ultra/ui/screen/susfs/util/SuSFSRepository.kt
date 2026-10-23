@@ -14,6 +14,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 object SuSFSRepository {
+    private const val SAVE_FAILURE = "Failed to save SUSFS configuration"
+
     fun getCurrentModuleConfig(): ModuleConfig = runBlocking(Dispatchers.IO) {
         ModuleConfig(
             unameValue = getUnameValue(),
@@ -50,7 +52,7 @@ object SuSFSRepository {
         runBlocking(Dispatchers.IO) { getBuildTimeValue() }.takeUnless { SuSFSConfig.isDefaultSpoofValue(it) }.orEmpty()
 
     suspend fun setAutoStartEnabled(enabled: Boolean) =
-        SuSFSConfig.set(SuSFSConfig.KEY_AUTO_START_ENABLED, if (enabled) "true" else "false")
+        check(SuSFSConfig.set(SuSFSConfig.KEY_AUTO_START_ENABLED, if (enabled) "true" else "false")) { SAVE_FAILURE }
 
     suspend fun isAutoStartEnabled(): Boolean =
         SuSFSConfig.get(SuSFSConfig.KEY_AUTO_START_ENABLED) == "true"
@@ -92,55 +94,55 @@ object SuSFSRepository {
         SuSFSConfig.getMulti(SuSFSConfig.KEY_ADD_KSTAT_PATHS)
 
     suspend fun saveUnameValue(value: String) {
-        SuSFSConfig.set(SuSFSConfig.KEY_UNAME_VALUE, value)
+        check(SuSFSConfig.set(SuSFSConfig.KEY_UNAME_VALUE, value)) { SAVE_FAILURE }
     }
 
     suspend fun saveBuildTimeValue(value: String) {
-        SuSFSConfig.set(SuSFSConfig.KEY_BUILD_TIME_VALUE, value)
+        check(SuSFSConfig.set(SuSFSConfig.KEY_BUILD_TIME_VALUE, value)) { SAVE_FAILURE }
     }
 
     suspend fun saveEnableLogState(enabled: Boolean) {
-        SuSFSConfig.set(SuSFSConfig.KEY_ENABLE_LOG, if (enabled) "true" else "false")
+        check(SuSFSConfig.set(SuSFSConfig.KEY_ENABLE_LOG, if (enabled) "true" else "false")) { SAVE_FAILURE }
     }
 
     suspend fun saveExecuteInPostFsData(enabled: Boolean) {
-        SuSFSConfig.set(SuSFSConfig.KEY_EXECUTE_IN_POST_FS_DATA, if (enabled) "true" else "false")
+        check(SuSFSConfig.set(SuSFSConfig.KEY_EXECUTE_IN_POST_FS_DATA, if (enabled) "true" else "false")) { SAVE_FAILURE }
     }
 
     suspend fun saveHideSusMountsForAllProcs(hideForAll: Boolean) {
-        SuSFSConfig.set(SuSFSConfig.KEY_HIDE_SUS_MOUNTS_FOR_ALL_PROCS, if (hideForAll) "true" else "false")
+        check(SuSFSConfig.set(SuSFSConfig.KEY_HIDE_SUS_MOUNTS_FOR_ALL_PROCS, if (hideForAll) "true" else "false")) { SAVE_FAILURE }
     }
 
     suspend fun saveEnableHideBl(enabled: Boolean) {
-        SuSFSConfig.set(SuSFSConfig.KEY_ENABLE_HIDE_BL, if (enabled) "true" else "false")
+        check(SuSFSConfig.set(SuSFSConfig.KEY_ENABLE_HIDE_BL, if (enabled) "true" else "false")) { SAVE_FAILURE }
     }
 
     suspend fun saveEnableCleanupResidue(enabled: Boolean) {
-        SuSFSConfig.set(SuSFSConfig.KEY_ENABLE_CLEANUP_RESIDUE, if (enabled) "true" else "false")
+        check(SuSFSConfig.set(SuSFSConfig.KEY_ENABLE_CLEANUP_RESIDUE, if (enabled) "true" else "false")) { SAVE_FAILURE }
     }
 
     suspend fun saveEnableAvcLogSpoofing(enabled: Boolean) {
-        SuSFSConfig.set(SuSFSConfig.KEY_ENABLE_AVC_LOG_SPOOFING, if (enabled) "true" else "false")
+        check(SuSFSConfig.set(SuSFSConfig.KEY_ENABLE_AVC_LOG_SPOOFING, if (enabled) "true" else "false")) { SAVE_FAILURE }
     }
 
     suspend fun saveSusPaths(paths: Set<String>) {
-        SuSFSConfig.setMulti(SuSFSConfig.KEY_SUS_PATHS, paths, ";")
+        check(SuSFSConfig.setMulti(SuSFSConfig.KEY_SUS_PATHS, paths, ";")) { SAVE_FAILURE }
     }
 
     suspend fun saveSusLoopPaths(paths: Set<String>) {
-        SuSFSConfig.setMulti(SuSFSConfig.KEY_SUS_LOOP_PATHS, paths, ";")
+        check(SuSFSConfig.setMulti(SuSFSConfig.KEY_SUS_LOOP_PATHS, paths, ";")) { SAVE_FAILURE }
     }
 
     suspend fun saveSusMaps(maps: Set<String>) {
-        SuSFSConfig.setMulti(SuSFSConfig.KEY_SUS_MAPS, maps, ";")
+        check(SuSFSConfig.setMulti(SuSFSConfig.KEY_SUS_MAPS, maps, ";")) { SAVE_FAILURE }
     }
 
     suspend fun saveKstatConfigs(configs: Set<String>) {
-        SuSFSConfig.setMulti(SuSFSConfig.KEY_KSTAT_CONFIGS, configs, ";;")
+        check(SuSFSConfig.setMulti(SuSFSConfig.KEY_KSTAT_CONFIGS, configs, ";;")) { SAVE_FAILURE }
     }
 
     suspend fun saveAddKstatPaths(paths: Set<String>) {
-        SuSFSConfig.setMulti(SuSFSConfig.KEY_ADD_KSTAT_PATHS, paths, ";")
+        check(SuSFSConfig.setMulti(SuSFSConfig.KEY_ADD_KSTAT_PATHS, paths, ";")) { SAVE_FAILURE }
     }
 
     suspend fun setEnableLog(context: Context, enabled: Boolean): Boolean {
@@ -250,7 +252,7 @@ object SuSFSRepository {
         }
 
         // Persist the chosen path so AutoStart can re-apply it at boot.
-        SuSFSConfig.set(SuSFSConfig.KEY_CMDLINE_OR_BOOTCONFIG_PATH, targetPath)
+        check(SuSFSConfig.set(SuSFSConfig.KEY_CMDLINE_OR_BOOTCONFIG_PATH, targetPath)) { SAVE_FAILURE }
         if (isAutoStartEnabled()) SuSFSCommands.updateMagiskModule()
         return true
     }

@@ -12,8 +12,11 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.screen.susfs.util.BackupData
 import com.sukisu.ultra.ui.screen.susfs.util.SuSFSManager
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.File
 import java.text.SimpleDateFormat
@@ -39,6 +42,17 @@ fun BackupRestoreComponentMiuix(
     var selectedBackupFile by remember { mutableStateOf<String?>(null) }
     var backupInfo by remember { mutableStateOf<BackupData?>(null) }
 
+    DisposableEffect(selectedBackupFile) {
+        val path = selectedBackupFile
+        onDispose {
+            if (path != null) {
+                // Use an independent IO task: leaving this composable cancels its UI scope.
+                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { File(path).delete() }
+            }
+        }
+    }
+
+
     val backupFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -47,23 +61,20 @@ fun BackupRestoreComponentMiuix(
                 try {
                     internalLoading = true
                     onLoadingChange(true)
-                    val fileName = SuSFSManager.getDefaultBackupFileName()
-                    val tempFile = File(context.cacheDir, fileName)
-
-                    val success = SuSFSManager.createBackup(context, tempFile.absolutePath)
-                    if (success) {
+                    withContext(Dispatchers.IO) {
+                        val tempFile = File.createTempFile("susfs_backup_", ".json", context.cacheDir)
                         try {
-                            context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
-                                tempFile.inputStream().use { inputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
+                            if (SuSFSManager.createBackup(context, tempFile.absolutePath)) {
+                                val output = context.contentResolver.openOutputStream(fileUri)
+                                    ?: throw java.io.IOException("Unable to open backup destination")
+                                output.use { stream -> tempFile.inputStream().use { it.copyTo(stream) } }
                             }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
                         } finally {
                             tempFile.delete()
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
@@ -81,24 +92,36 @@ fun BackupRestoreComponentMiuix(
         uri?.let { fileUri ->
             coroutineScope.launch {
                 try {
-                    val tempFile = File(context.cacheDir, "temp_restore.susfs_backup")
-                    context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
-                        tempFile.outputStream().use { outputStream ->
-                            inputStream.copyTo(outputStream)
+                    internalLoading = true
+                    onLoadingChange(true)
+                    val prepared = withContext(Dispatchers.IO) {
+                        val tempFile = File.createTempFile("susfs_restore_", ".json", context.cacheDir)
+                        try {
+                            val input = context.contentResolver.openInputStream(fileUri)
+                                ?: throw java.io.IOException("Unable to open backup file")
+                            input.use { stream -> tempFile.outputStream().use { stream.copyTo(it) } }
+                            val backup = SuSFSManager.validateBackupFile(tempFile.absolutePath)
+                            if (backup == null) {
+                                tempFile.delete()
+                                null
+                            } else tempFile.absolutePath to backup
+                        } catch (e: Exception) {
+                            tempFile.delete()
+                            throw e
                         }
                     }
-
-                    val backup = SuSFSManager.validateBackupFile(tempFile.absolutePath)
-                    if (backup != null) {
-                        selectedBackupFile = tempFile.absolutePath
-                        backupInfo = backup
+                    if (prepared != null) {
+                        selectedBackupFile = prepared.first
+                        backupInfo = prepared.second
                         showRestoreConfirmDialog = true
-                    } else {
-                        tempFile.delete()
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {
+                    internalLoading = false
+                    onLoadingChange(false)
                     showRestoreDialog = false
                 }
             }
@@ -128,9 +151,11 @@ fun BackupRestoreComponentMiuix(
     RestoreConfirmDialogMiuix(
         showDialog = showRestoreConfirmDialog,
         onDismiss = {
+            if (!actualLoading) {
             showRestoreConfirmDialog = false
             selectedBackupFile = null
             backupInfo = null
+            }
         },
         backupInfo = backupInfo,
         isLoading = actualLoading,
@@ -144,13 +169,14 @@ fun BackupRestoreComponentMiuix(
                         if (success) {
                             onConfigReload()
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         e.printStackTrace()
                     } finally {
                         internalLoading = false
                         onLoadingChange(false)
                         showRestoreConfirmDialog = false
-                        kotlinx.coroutines.delay(100.milliseconds)
                         selectedBackupFile = null
                         backupInfo = null
                     }
@@ -212,7 +238,7 @@ private fun BackupDialogMiuix(
     }
 
     if (showDialogState.value) {
-        OverlayDialog(
+        WindowDialog(
             show = showDialogState.value,
             title = stringResource(R.string.susfs_backup_title),
             onDismissRequest = onDismiss,
@@ -232,8 +258,6 @@ private fun BackupDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(stringResource(R.string.cancel))
                         }
@@ -243,8 +267,6 @@ private fun BackupDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(stringResource(R.string.susfs_backup_create))
                         }
@@ -269,7 +291,7 @@ private fun RestoreDialogMiuix(
     }
 
     if (showDialogState.value) {
-        OverlayDialog(
+        WindowDialog(
             show = showDialogState.value,
             title = stringResource(R.string.susfs_restore_title),
             onDismissRequest = onDismiss,
@@ -289,8 +311,6 @@ private fun RestoreDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(stringResource(R.string.cancel))
                         }
@@ -300,8 +320,6 @@ private fun RestoreDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(stringResource(R.string.susfs_restore_select_file))
                         }
@@ -327,7 +345,7 @@ private fun RestoreConfirmDialogMiuix(
     }
 
     if (showDialogState.value && backupInfo != null) {
-        OverlayDialog(
+        WindowDialog(
             show = showDialogState.value,
             title = stringResource(R.string.susfs_restore_confirm_title),
             onDismissRequest = onDismiss,
@@ -375,8 +393,6 @@ private fun RestoreConfirmDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(stringResource(R.string.cancel))
                         }
@@ -386,8 +402,6 @@ private fun RestoreConfirmDialogMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(stringResource(R.string.susfs_restore_confirm))
                         }

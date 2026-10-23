@@ -1,5 +1,6 @@
 package com.sukisu.ultra.ui.screen.settings
 
+import com.sukisu.ultra.ui.component.profile.TemporaryRootPreferences
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -30,11 +31,11 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.SystemUpdateAlt
-import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Icon
@@ -107,27 +108,35 @@ fun SettingPagerMaterial(
             KsuIsValid {
                 SegmentedColumn(
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 13.dp),
-                    content = listOf(
-                        {
-                            SegmentedSwitchItem(
-                                icon = Icons.Filled.SystemUpdate,
-                                title = stringResource(id = R.string.settings_check_update),
-                                summary = stringResource(id = R.string.settings_check_update_summary),
-                                checked = uiState.checkUpdate,
-                                onCheckedChange = actions.onSetCheckUpdate
-                            )
-                        },
-                        {
-                            SegmentedSwitchItem(
-                                icon = Icons.Filled.SystemUpdateAlt,
-                                title = stringResource(id = R.string.settings_module_check_update),
-                                summary = stringResource(id = R.string.settings_check_update_summary),
-                                checked = uiState.checkModuleUpdate,
-                                onCheckedChange = actions.onSetCheckModuleUpdate
-                            )
-                        }
-                    )
-                )
+                ) {
+                    item {
+                        SegmentedSwitchItem(
+                            icon = Icons.Filled.SystemUpdate,
+                            title = stringResource(id = R.string.settings_check_update),
+                            summary = stringResource(id = R.string.settings_check_update_summary),
+                            checked = uiState.checkUpdate,
+                            onCheckedChange = actions.onSetCheckUpdate
+                        )
+                    }
+                    item(visible = uiState.checkUpdate) {
+                        SegmentedSwitchItem(
+                            icon = Icons.Filled.Science,
+                            title = stringResource(id = R.string.settings_check_ci_update),
+                            summary = stringResource(id = R.string.settings_check_ci_update_summary),
+                            checked = uiState.checkCiUpdate,
+                            onCheckedChange = actions.onSetCheckCiUpdate
+                        )
+                    }
+                    item {
+                        SegmentedSwitchItem(
+                            icon = Icons.Filled.SystemUpdateAlt,
+                            title = stringResource(id = R.string.settings_module_check_update),
+                            summary = stringResource(id = R.string.settings_check_update_summary),
+                            checked = uiState.checkModuleUpdate,
+                            onCheckedChange = actions.onSetCheckModuleUpdate
+                        )
+                    }
+                }
             }
 
             // 投稿开关不挂在 KsuIsValid 里：它是"要不要被打扰"的偏好，不是内核能力，
@@ -191,15 +200,7 @@ fun SettingPagerMaterial(
                             }
                         )
                     }
-                    add {
-                        SegmentedSwitchItem(
-                            icon = Icons.Rounded.Android,
-                            title = stringResource(id = R.string.icon_switch_title),
-                            summary = stringResource(id = R.string.icon_switch_summary),
-                            checked = uiState.alternativeIcon,
-                            onCheckedChange = actions.onSetAlternativeIcon
-                        )
-                    }
+
                 }
             )
 
@@ -276,6 +277,7 @@ fun SettingPagerMaterial(
                         )
                     }
                 )
+                TemporaryRootPreferences()
             }
 
             KsuIsValid {

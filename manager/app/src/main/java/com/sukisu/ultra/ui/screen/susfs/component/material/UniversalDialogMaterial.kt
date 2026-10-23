@@ -160,8 +160,12 @@ fun ConfirmDialogMaterial(
                 Text(stringResource(messageRes))
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = onConfirm,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
                     enabled = !isLoading
                 ) {
                     Text(stringResource(R.string.confirm))

@@ -185,7 +185,8 @@ fun SusPathsContentMiuix(
     if (onReset != null && susPaths.isNotEmpty()) {
         ResetButtonMiuix(
             title = stringResource(R.string.susfs_reset_paths_title),
-            onClick = onReset
+            onClick = onReset,
+            enabled = !isLoading
         )
     }
 }

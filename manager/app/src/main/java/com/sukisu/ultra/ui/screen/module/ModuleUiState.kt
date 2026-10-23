@@ -7,6 +7,17 @@ import com.sukisu.ultra.data.model.Module
 import com.sukisu.ultra.data.model.ModuleUpdateInfo
 import com.sukisu.ultra.ui.component.SearchStatus
 
+enum class ModuleNameSort {
+    DEFAULT,
+    ASCENDING,
+    DESCENDING;
+
+    companion object {
+        fun fromStored(name: String?): ModuleNameSort =
+            entries.firstOrNull { it.name == name } ?: DEFAULT
+    }
+}
+
 sealed interface ModuleConfirmRequest {
     data class Update(
         val module: Module,
@@ -55,6 +66,13 @@ data class ModuleUiState(
     val searchResults: List<Module> = emptyList(),
     val sortEnabledFirst: Boolean = false,
     val sortActionFirst: Boolean = false,
+    val sortWebUiFirst: Boolean = false,
+    val sortZygiskFirst: Boolean = false,
+    val sortMetamoduleFirst: Boolean = false,
+    val sortNameOrder: ModuleNameSort = ModuleNameSort.DEFAULT,
+    val sortManual: Boolean = false,
+    /** Module IDs in the user-defined order, used while [sortManual] is active. */
+    val manualOrder: List<String> = emptyList(),
     val checkModuleUpdate: Boolean = true,
     val isSafeMode: Boolean = false,
     val magiskInstalled: Boolean = false,
@@ -77,6 +95,13 @@ data class ModuleActions(
     val onOpenRepo: () -> Unit,
     val onToggleSortActionFirst: () -> Unit,
     val onToggleSortEnabledFirst: () -> Unit,
+    val onToggleSortWebUiFirst: () -> Unit,
+    val onToggleSortZygiskFirst: () -> Unit,
+    val onToggleSortMetamoduleFirst: () -> Unit,
+    val onSetSortNameOrder: (ModuleNameSort) -> Unit,
+    val onToggleSortManual: () -> Unit,
+    val onMoveModule: (Module, Module) -> Unit,
+    val onCommitManualOrder: () -> Unit,
     val onOpenWebUi: (Module) -> Unit,
     val onToggleModule: (Module) -> Unit,
     val onUninstallModule: (Module) -> Unit,

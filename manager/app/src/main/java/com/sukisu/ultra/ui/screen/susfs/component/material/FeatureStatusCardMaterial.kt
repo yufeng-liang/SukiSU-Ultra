@@ -30,9 +30,6 @@ fun FeatureStatusCardMaterial(
 
     var showLogConfigDialog by remember { mutableStateOf(false) }
     var logEnabled by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        logEnabled = SuSFSManager.getEnableLogState()
-    }
 
     val showLogConfigDialogState = remember { mutableStateOf(showLogConfigDialog) }
 

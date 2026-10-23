@@ -47,6 +47,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -60,6 +61,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
@@ -144,6 +146,8 @@ import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.statustag.StatusTag
 import com.sukisu.ultra.ui.theme.LocalModuleDescriptionMaxLines
 import com.sukisu.ultra.ui.util.reboot
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import top.yukonga.miuix.kmp.nav.gesture.WindowNavigationEventBridge
 
 @SuppressLint("StringFormatInvalid")
@@ -324,22 +328,6 @@ fun ModulePagerMaterial(
                         ) {
                             DropdownMenuGroup(shapes = MenuDefaults.groupShapes()) {
                                 CheckableDropdownMenuItem(
-                                    text = { Text(stringResource(R.string.module_sort_action_first)) },
-                                    checked = uiState.sortActionFirst,
-                                    checkedLeadingIcon = {
-                                        Icon(
-                                            Icons.Filled.Check,
-                                            modifier = Modifier.size(MenuDefaults.LeadingIconSize),
-                                            contentDescription = null,
-                                        )
-                                    },
-                                    onCheckedChange = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                                        actions.onToggleSortActionFirst()
-                                    },
-                                    shapes = MenuDefaults.itemShape(index = 0, count = 2),
-                                )
-                                CheckableDropdownMenuItem(
                                     text = { Text(stringResource(R.string.module_sort_enabled_first)) },
                                     checked = uiState.sortEnabledFirst,
                                     checkedLeadingIcon = {
@@ -353,7 +341,119 @@ fun ModulePagerMaterial(
                                         haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
                                         actions.onToggleSortEnabledFirst()
                                     },
-                                    shapes = MenuDefaults.itemShape(index = 1, count = 2),
+                                    shapes = MenuDefaults.itemShape(index = 0, count = 8),
+                                )
+                                CheckableDropdownMenuItem(
+                                    text = { Text(stringResource(R.string.module_sort_metamodule_first)) },
+                                    checked = uiState.sortMetamoduleFirst,
+                                    checkedLeadingIcon = {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onCheckedChange = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                        actions.onToggleSortMetamoduleFirst()
+                                    },
+                                    shapes = MenuDefaults.itemShape(index = 1, count = 8),
+                                )
+                                CheckableDropdownMenuItem(
+                                    text = { Text(stringResource(R.string.module_sort_zygisk_first)) },
+                                    checked = uiState.sortZygiskFirst,
+                                    checkedLeadingIcon = {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onCheckedChange = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                        actions.onToggleSortZygiskFirst()
+                                    },
+                                    shapes = MenuDefaults.itemShape(index = 2, count = 8),
+                                )
+                                CheckableDropdownMenuItem(
+                                    text = { Text(stringResource(R.string.module_sort_webui_first)) },
+                                    checked = uiState.sortWebUiFirst,
+                                    checkedLeadingIcon = {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onCheckedChange = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                        actions.onToggleSortWebUiFirst()
+                                    },
+                                    shapes = MenuDefaults.itemShape(index = 3, count = 8),
+                                )
+                                CheckableDropdownMenuItem(
+                                    text = { Text(stringResource(R.string.module_sort_action_first)) },
+                                    checked = uiState.sortActionFirst,
+                                    checkedLeadingIcon = {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onCheckedChange = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                        actions.onToggleSortActionFirst()
+                                    },
+                                    shapes = MenuDefaults.itemShape(index = 4, count = 8),
+                                )
+                                CheckableDropdownMenuItem(
+                                    text = { Text(stringResource(R.string.module_sort_name_asc)) },
+                                    checked = uiState.sortNameOrder == ModuleNameSort.ASCENDING,
+                                    checkedLeadingIcon = {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onCheckedChange = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                        actions.onSetSortNameOrder(ModuleNameSort.ASCENDING)
+                                    },
+                                    shapes = MenuDefaults.itemShape(index = 5, count = 8),
+                                )
+                                CheckableDropdownMenuItem(
+                                    text = { Text(stringResource(R.string.module_sort_name_desc)) },
+                                    checked = uiState.sortNameOrder == ModuleNameSort.DESCENDING,
+                                    checkedLeadingIcon = {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onCheckedChange = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                        actions.onSetSortNameOrder(ModuleNameSort.DESCENDING)
+                                    },
+                                    shapes = MenuDefaults.itemShape(index = 6, count = 8),
+                                )
+                                CheckableDropdownMenuItem(
+                                    text = { Text(stringResource(R.string.module_sort_manual)) },
+                                    checked = uiState.sortManual,
+                                    checkedLeadingIcon = {
+                                        Icon(
+                                            Icons.Filled.Check,
+                                            modifier = Modifier.size(MenuDefaults.LeadingIconSize),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    onCheckedChange = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                                        actions.onToggleSortManual()
+                                    },
+                                    shapes = MenuDefaults.itemShape(index = 7, count = 8),
                                 )
                             }
                         }
@@ -469,6 +569,11 @@ fun ModulePagerMaterial(
                 listState,
                 uiState.sortEnabledFirst,
                 uiState.sortActionFirst,
+                uiState.sortWebUiFirst,
+                uiState.sortZygiskFirst,
+                uiState.sortMetamoduleFirst,
+                uiState.sortNameOrder,
+                uiState.sortManual,
                 refreshTick.intValue,
                 isBusy = { latestRefreshing.value },
             ) { latestModuleList.value }
@@ -481,6 +586,7 @@ fun ModulePagerMaterial(
                 actions = actions,
                 contribution = contribution,
                 onModuleAddShortcut = { module, type -> onModuleAddShortcut(module, type) },
+                reorderEnabled = uiState.sortManual,
                 header = if (uiState.moduleList.isEmpty()) null else {
                     {
                         Text(
@@ -525,10 +631,19 @@ private fun ModuleList(
     actions: ModuleActions,
     contribution: ModuleContributionController,
     onModuleAddShortcut: (Module, ShortcutType) -> Unit,
+    reorderEnabled: Boolean = false,
     closeSearch: () -> Unit? = {},
     header: (@Composable () -> Unit)? = null,
 ) {
     val loadingDialog = rememberLoadingDialog()
+    val haptic = LocalHapticFeedback.current
+    val reorderableState = rememberReorderableLazyListState(listState) { from, to ->
+        val fromModule = displayModules.firstOrNull { it.id == from.key }
+        val toModule = displayModules.firstOrNull { it.id == to.key }
+        if (fromModule != null && toModule != null) {
+            actions.onMoveModule(fromModule, toModule)
+        }
+    }
     LazyColumn(
         state = listState,
         modifier = modifier,
@@ -546,36 +661,54 @@ private fun ModuleList(
             val scope = rememberCoroutineScope()
             val moduleUpdateInfo = updateInfoMap[module.id] ?: ModuleUpdateInfo.Empty
 
-            ModuleItem(
-                module = module,
-                updateUrl = moduleUpdateInfo.downloadUrl,
-                contribution = contribution,
-                onUninstallClicked = {
-                    if (module.remove) {
-                        actions.onUndoUninstallModule(module)
-                    } else {
-                        actions.onRequestUninstallConfirmation(module)
-                    }
-                },
-                onCheckChanged = {
-                    actions.onToggleModule(module)
-                },
-                onUpdate = {
-                    scope.launch {
-                        loadingDialog.withLoading {
-                            actions.onRequestUpdateConfirmation(module, moduleUpdateInfo)
+            ReorderableItem(
+                state = reorderableState,
+                key = module.id,
+                enabled = reorderEnabled,
+            ) { _ ->
+                ModuleItem(
+                    module = module,
+                    updateUrl = moduleUpdateInfo.downloadUrl,
+                    contribution = contribution,
+                    onUninstallClicked = {
+                        if (module.remove) {
+                            actions.onUndoUninstallModule(module)
+                        } else {
+                            actions.onRequestUninstallConfirmation(module)
                         }
-                    }
-                },
-                onAddShortcut = { type -> onModuleAddShortcut(module, type) },
-                onOpenWebUi = {
-                    if (module.hasWebUi) {
-                        actions.onOpenWebUi(module)
-                    }
-                },
-                onExecuteAction = { actions.onExecuteModuleAction(module) },
-                closeSearch = { closeSearch() }
-            )
+                    },
+                    onCheckChanged = {
+                        actions.onToggleModule(module)
+                    },
+                    onUpdate = {
+                        scope.launch {
+                            loadingDialog.withLoading {
+                                actions.onRequestUpdateConfirmation(module, moduleUpdateInfo)
+                            }
+                        }
+                    },
+                    onAddShortcut = { type -> onModuleAddShortcut(module, type) },
+                    onOpenWebUi = {
+                        if (module.hasWebUi) {
+                            actions.onOpenWebUi(module)
+                        }
+                    },
+                    onExecuteAction = { actions.onExecuteModuleAction(module) },
+                    closeSearch = { closeSearch() },
+                    dragHandleModifier = if (reorderEnabled) {
+                        Modifier.draggableHandle(
+                            onDragStarted = {
+                                haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                            },
+                            onDragStopped = {
+                                actions.onCommitManualOrder()
+                            },
+                        )
+                    } else {
+                        null
+                    },
+                )
+            }
         }
     }
 }
@@ -744,7 +877,8 @@ private fun ModuleItem(
     onAddShortcut: (ShortcutType) -> Unit,
     onOpenWebUi: () -> Unit,
     onExecuteAction: () -> Unit,
-    closeSearch: () -> Unit
+    closeSearch: () -> Unit,
+    dragHandleModifier: Modifier? = null,
 ) {
     val hasDescription = module.description.isNotBlank()
     // 渲染到这一格时才查收录状态：既是唯一能自然限流的时机，也避免一次刷新连发 N 个请求。
@@ -757,6 +891,7 @@ private fun ModuleItem(
     val canOpenWebUi = module.hasWebUi && !module.remove && module.enabled
     val cardInteractionSource = remember { MutableInteractionSource() }
     val descriptionInteractionSource = remember { MutableInteractionSource() }
+    val dragHandleInteractionSource = remember { MutableInteractionSource() }
     val banner = rememberModuleBanner(module.id, module.bannerPath)
 
     TonalCard(
@@ -782,10 +917,10 @@ private fun ModuleItem(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth(0.8f),
+                    modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Row(
@@ -817,20 +952,35 @@ private fun ModuleItem(
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
+                ExpressiveSwitch(
+                    enabled = !module.update,
+                    checked = module.enabled,
+                    onCheckedChange = {
+                        haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                        onCheckChanged(it)
+                    }
+                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    ExpressiveSwitch(
-                        enabled = !module.update,
-                        checked = module.enabled,
-                        onCheckedChange = {
-                            haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                            onCheckChanged(it)
-                        }
-                    )
+                if (dragHandleModifier != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .then(dragHandleModifier)
+                            .clickable(
+                                interactionSource = dragHandleInteractionSource,
+                                indication = null,
+                                onClick = {},
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DragHandle,
+                            contentDescription = stringResource(R.string.module_sort_manual_drag),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
                 }
             }
 

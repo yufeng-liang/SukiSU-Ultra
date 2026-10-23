@@ -5,8 +5,8 @@ import android.os.Build
 import android.widget.Toast
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.util.getSuSFSVersion
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -14,7 +14,7 @@ import java.util.Date
 import java.util.Locale
 
 object SuSFSBackupManager {
-    private fun getAllConfigurations(): Map<String, Any> = runBlocking(Dispatchers.IO) {
+    private suspend fun getAllConfigurations(): Map<String, Any> = withContext(Dispatchers.IO) {
         mapOf(
             SuSFSConfig.KEY_UNAME_VALUE to getUnameValueInternal(),
             SuSFSConfig.KEY_BUILD_TIME_VALUE to getBuildTimeValueInternal(),
@@ -112,6 +112,8 @@ object SuSFSBackupManager {
             f.writeText(backupData.toJson())
             showToast(context, context.getString(R.string.susfs_backup_success, f.name))
             true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             showToast(context, context.getString(R.string.susfs_backup_failed, e.message ?: "Unknown error"))
             false
@@ -150,6 +152,8 @@ object SuSFSBackupManager {
                 obj.getString("deviceInfo")
             ))
             true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             showToast(context, context.getString(R.string.susfs_restore_failed, e.message ?: "Unknown error"))
             false

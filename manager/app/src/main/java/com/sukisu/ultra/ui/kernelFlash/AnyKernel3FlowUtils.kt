@@ -19,6 +19,5 @@ data class AnyKernel3State(
     val onDismissSlotDialog: () -> Unit,
     val onOptionSelected: (KpmPatchOption) -> Unit,
     val onDismissPatchDialog: () -> Unit,
-    val onReopenSlotDialog: (InstallMethod.HorizonKernel) -> Unit,
-    val onReopenKpmDialog: (InstallMethod.HorizonKernel) -> Unit
+    val onReopenSlotDialog: (InstallMethod.HorizonKernel) -> Unit
 )

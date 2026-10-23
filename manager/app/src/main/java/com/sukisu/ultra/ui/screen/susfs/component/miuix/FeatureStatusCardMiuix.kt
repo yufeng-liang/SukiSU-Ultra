@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -36,9 +36,6 @@ fun FeatureStatusCardMiuix(
 
     var showLogConfigDialog by remember { mutableStateOf(false) }
     var logEnabled by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        logEnabled = SuSFSManager.getEnableLogState()
-    }
 
     val showLogConfigDialogState = remember { mutableStateOf(showLogConfigDialog) }
 
@@ -47,7 +44,7 @@ fun FeatureStatusCardMiuix(
     }
 
     if (showLogConfigDialogState.value) {
-        OverlayDialog(
+        WindowDialog(
             show = showLogConfigDialogState.value,
             title = stringResource(R.string.susfs_log_config_title),
             onDismissRequest = {
@@ -85,8 +82,6 @@ fun FeatureStatusCardMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(
                                 text = stringResource(R.string.cancel)
@@ -104,8 +99,6 @@ fun FeatureStatusCardMiuix(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .padding(vertical = 8.dp),
-                            cornerRadius = 8.dp
                         ) {
                             Text(
                                 text = stringResource(R.string.susfs_apply)

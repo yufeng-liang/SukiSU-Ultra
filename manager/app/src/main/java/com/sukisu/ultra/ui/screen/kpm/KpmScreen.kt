@@ -2,6 +2,13 @@ package com.sukisu.ultra.ui.screen.kpm
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
+import com.sukisu.ultra.ui.component.resolveRuntimeStatus
+import com.sukisu.ultra.ui.component.ConfigResult
+import com.sukisu.ultra.ui.component.ConfigRuntimeStatus
+import com.sukisu.ultra.ui.screen.susfs.util.SuSFSConfig
+import kotlinx.coroutines.CancellationException
+import com.sukisu.ultra.ui.util.getKsuDaemonPath
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,12 +47,8 @@ fun KpmScreen(
     val viewModel = viewModel<KpmViewModel>()
     val confirmDialog = rememberConfirmDialog()
 
-    val kpmInstallSuccess = stringResource(R.string.kpm_install_success)
     val kpmInstallFailed = stringResource(R.string.kpm_install_failed)
-    val kpmUninstallSuccess = stringResource(R.string.kpm_uninstall_success)
-    val kpmUninstallFailed = stringResource(R.string.kpm_uninstall_failed)
     val invalidFileTypeMessage = stringResource(R.string.invalid_file_type)
-    val failedToCheckModuleFile = stringResource(R.string.snackbar_failed_to_check_module_file)
 
     val showToast: suspend (String) -> Unit = { msg ->
         scope.launch(Dispatchers.Main) {
@@ -115,11 +118,11 @@ fun KpmScreen(
                 val tempFile = viewModel.getTempFile()
                 tempFile?.let {
                     handleModuleInstall(
+                        context = context,
                         tempFilePath = it.absolutePath,
                         isEmbed = isEmbed,
                         viewModel = viewModel,
                         showToast = showToast,
-                        kpmInstallSuccess = kpmInstallSuccess,
                         kpmInstallFailed = kpmInstallFailed
                     )
                 }
@@ -141,11 +144,9 @@ fun KpmScreen(
 
                 if (confirmResult == ConfirmResult.Confirmed) {
                     handleModuleUninstall(
+                        context = context,
                         moduleId = moduleId,
                         showToast = showToast,
-                        kpmUninstallSuccess = kpmUninstallSuccess,
-                        kpmUninstallFailed = kpmUninstallFailed,
-                        failedToCheckModuleFile = failedToCheckModuleFile,
                         viewModel = viewModel
                     )
                 }
@@ -161,7 +162,7 @@ fun KpmScreen(
                 val result = viewModel.executeControl()
                 val message = when (result) {
                     0 -> context.getString(R.string.kpm_control_success)
-                    else -> context.getString(R.string.kpm_control_failed)
+                    else -> context.getString(R.string.config_exit_code, result)
                 }
                 showToast(message)
             }
@@ -183,11 +184,11 @@ fun KpmScreen(
 }
 
 private suspend fun handleModuleInstall(
+    context: Context,
     tempFilePath: String,
     isEmbed: Boolean,
     viewModel: KpmViewModel,
     showToast: suspend (String) -> Unit,
-    kpmInstallSuccess: String,
     kpmInstallFailed: String
 ) {
     val tempFile = File(tempFilePath)
@@ -200,22 +201,36 @@ private suspend fun handleModuleInstall(
 
     val targetPath = "/data/adb/kpm/$moduleId.kpm"
 
+    var saved = false
     try {
-        if (isEmbed) {
-            val shell = getRootShell()
-            shell.newJob().add("mkdir -p /data/adb/kpm").exec()
-            shell.newJob().add("cp ${tempFile.absolutePath} $targetPath").exec()
+        withContext(Dispatchers.IO) {
+            if (isEmbed) {
+                val result = getRootShell().newJob().add(
+                    "mkdir -p /data/adb/kpm && cp ${SuSFSConfig.shellQuote(tempFile.absolutePath)} ${SuSFSConfig.shellQuote(targetPath)}"
+                ).exec()
+                check(result.isSuccess) {
+                    result.err.joinToString("\n").ifBlank { context.getString(R.string.config_exit_code, result.code) }
+                }
+                saved = true
+            }
+            check(loadKpmModule(tempFile.absolutePath)) {
+                context.getString(R.string.config_command_rejected)
+            }
+            delay(500)
+            val probe = getRootShell().newJob().add("${getKsuDaemonPath()} kpm list").exec()
+            val runtime = resolveRuntimeStatus(null, true,
+                if (probe.isSuccess) probe.out.any { it.trim() == moduleId } else null)
+            viewModel.setOperationResult(ConfigResult(moduleId, saved, runtime))
         }
-
-        val loadResult = loadKpmModule(tempFile.absolutePath)
-        if (!loadResult) {
-            showToast(kpmInstallFailed)
-        } else {
-            delay(500) // Wait for module to be fully loaded
-            viewModel.fetchModuleList()
-            showToast(kpmInstallSuccess)
+        viewModel.fetchModuleList()
+        viewModel.uiState.value.operationResults.lastOrNull()?.let {
+            showToast(it.description(context))
         }
-    } catch (_: Exception) {
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        viewModel.setOperationResult(ConfigResult(moduleId, saved, ConfigRuntimeStatus.FAILED,
+            e.localizedMessage ?: context.getString(R.string.config_command_rejected)))
         showToast(kpmInstallFailed)
     }
     tempFile.delete()
@@ -224,40 +239,37 @@ private suspend fun handleModuleInstall(
 }
 
 private suspend fun handleModuleUninstall(
+    context: Context,
     moduleId: String,
     showToast: suspend (String) -> Unit,
-    kpmUninstallSuccess: String,
-    kpmUninstallFailed: String,
-    failedToCheckModuleFile: String,
     viewModel: KpmViewModel
 ) {
-    val moduleFileName = "$moduleId.kpm"
-    val moduleFilePath = "/data/adb/kpm/$moduleFileName"
-
-    val fileExists = try {
-        val shell = getRootShell()
-        val result = shell.newJob().add("ls /data/adb/kpm/$moduleFileName").exec()
-        result.isSuccess
-    } catch (_: Exception) {
-        showToast(failedToCheckModuleFile)
-        false
-    }
-
+    val moduleFilePath = "/data/adb/kpm/$moduleId.kpm"
     try {
-        val unloadResult = unloadKpmModule(moduleId)
-        if (!unloadResult) {
-            showToast(kpmUninstallFailed)
-            return
+        withContext(Dispatchers.IO) {
+            check(unloadKpmModule(moduleId)) {
+                context.getString(R.string.config_command_rejected)
+            }
+            val removal = getRootShell().newJob().add(
+                "rm -f -- ${SuSFSConfig.shellQuote(moduleFilePath)}"
+            ).exec()
+            val probe = getRootShell().newJob().add("${getKsuDaemonPath()} kpm list").exec()
+            val runtime = resolveRuntimeStatus(null, false,
+                if (probe.isSuccess) probe.out.any { it.trim() == moduleId } else null)
+            viewModel.setOperationResult(ConfigResult(moduleId,
+                if (removal.isSuccess) false else null, runtime,
+                if (removal.isSuccess) null else removal.err.joinToString("\n").ifBlank {
+                    context.getString(R.string.config_exit_code, removal.code)
+                }))
         }
-
-        if (fileExists) {
-            val shell = getRootShell()
-            shell.newJob().add("rm $moduleFilePath").exec()
-        }
-
         viewModel.fetchModuleList()
-        showToast(kpmUninstallSuccess)
-    } catch (_: Exception) {
-        showToast(kpmUninstallFailed)
+        viewModel.uiState.value.operationResults.lastOrNull()?.let { showToast(it.description(context)) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        val result = ConfigResult(moduleId, null, ConfigRuntimeStatus.FAILED,
+            e.localizedMessage ?: context.getString(R.string.config_command_rejected))
+        viewModel.setOperationResult(result)
+        showToast(result.description(context))
     }
 }

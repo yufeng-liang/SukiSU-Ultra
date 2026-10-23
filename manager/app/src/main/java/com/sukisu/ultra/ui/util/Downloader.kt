@@ -100,37 +100,39 @@ internal fun matchSelfUpdateApk(name: String): Long? {
     return match.groupValues[1].toLongOrNull()
 }
 
-fun checkNewVersion(): LatestVersionInfo {
+/**
+ * 检查管理器更新。上游新增了 CI 通道（manager-ci 滚动 release）与 `checkNewCiVersion`，
+ * 但本 fork 不发布 manager-ci：两个入口都落到同一次 fork release 查询上，CI 开关打开时
+ * 只是再查一遍同一个 latest，不会把用户引向签名不同的官方 APK。
+ */
+fun checkNewVersion(): LatestVersionInfo = checkLatestRelease()
+
+fun checkNewCiVersion(): LatestVersionInfo = checkLatestRelease()
+
+private fun checkLatestRelease(): LatestVersionInfo {
     if (!isNetworkAvailable(ksuApp)) return LatestVersionInfo()
     val url = "https://api.github.com/repos/$SELF_UPDATE_REPO/releases/latest"
-    // default null value if failed
-    val defaultValue = LatestVersionInfo()
-    runCatching {
-        ksuApp.okhttpClient.newCall(Request.Builder().url(url).build()).execute()
-            .use { response ->
-                if (!response.isSuccessful) {
-                    return defaultValue
-                }
-                val body = response.body.string()
-                val json = org.json.JSONObject(body)
-                val changelog = json.optString("body")
-
-                val assets = json.getJSONArray("assets")
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.getString("name")
-
-                    val versionCode = matchSelfUpdateApk(name) ?: continue
-                    val downloadUrl = asset.getString("browser_download_url")
-
-                    return LatestVersionInfo(
-                        versionCode,
-                        downloadUrl,
-                        changelog
-                    )
-                }
-
+    return runCatching {
+        ksuApp.okhttpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) {
+                Log.w("UpdateCheck", "latest: HTTP ${response.code}")
+                return@use LatestVersionInfo()
             }
-    }
-    return defaultValue
+            val json = org.json.JSONObject(response.body.string())
+            val changelog = json.optString("body")
+            val assets = json.getJSONArray("assets")
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val versionCode = matchSelfUpdateApk(asset.getString("name")) ?: continue
+                return@use LatestVersionInfo(
+                    versionCode,
+                    asset.getString("browser_download_url"),
+                    changelog,
+                )
+            }
+            LatestVersionInfo()
+        }
+    }.onFailure {
+        Log.w("UpdateCheck", "latest: update check failed", it)
+    }.getOrDefault(LatestVersionInfo())
 }

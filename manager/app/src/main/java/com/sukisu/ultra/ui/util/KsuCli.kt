@@ -983,6 +983,16 @@ fun getSuSFSVersion(): String {
     return result
 }
 
+fun getSuSFSVariant(): String {
+    val shell = getRootShell()
+    return ShellUtils.fastCmd(shell, "${getKsuDaemonPath()} susfs variant").trim()
+}
+
+fun getSuSFSImplementation(): String {
+    val shell = getRootShell()
+    return ShellUtils.fastCmd(shell, "${getKsuDaemonPath()} susfs implementation").trim()
+}
+
 fun getSuSFSFeatures(): String {
     val shell = getRootShell()
     val cmd = "${getKsuDaemonPath()} susfs features"

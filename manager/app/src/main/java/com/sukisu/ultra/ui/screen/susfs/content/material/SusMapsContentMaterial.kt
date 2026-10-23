@@ -41,7 +41,7 @@ fun SusMapsContentMaterial(
                 icon = Icons.Default.Security,
                 count = susMaps.size
             )
-            susMaps.toList().forEach { map ->
+            susMaps.sorted().forEach { map ->
                 PathItemCardMaterial(
                     path = map,
                     icon = Icons.Default.Security,
@@ -62,7 +62,8 @@ fun SusMapsContentMaterial(
     if (susMaps.isNotEmpty()) {
         ResetButtonMaterial(
             title = stringResource(R.string.susfs_reset_sus_maps_title),
-            onClick = onReset
+            onClick = onReset,
+            enabled = !isLoading
         )
     }
 }
