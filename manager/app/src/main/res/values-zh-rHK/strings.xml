@@ -305,4 +305,6 @@
     <string name="module_shortcut_scheme_copied">已複製 URL scheme</string>
     <string name="settings_navigation_badge">底部欄標記</string>
     <string name="settings_navigation_badge_summary">在底部欄顯示已授權 App 及已啟用模組數量</string>
+    <string name="settings_check_ci_update">檢查 CI 版本更新</string>
+    <string name="settings_check_ci_update_summary">在主頁檢查 main 分支的 CI 構建，有新版本時提示更新</string>
 </resources>

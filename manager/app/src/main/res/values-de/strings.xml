@@ -152,4 +152,6 @@
     <string name="profile_flags_desc_no_new_privs">Verhindert eine weitere Rechteausweitung über SukiSU innerhalb dieses Root-Profils.</string>
     <string name="install_force_backup">Als Original-Image sichern</string>
     <string name="install_force_backup_summary">Bitte stelle sicher, dass das ausgewählte Boot-Image das Original-Image ist</string>
+    <string name="settings_check_ci_update">Auf CI-Aktualisierungen prüfen</string>
+    <string name="settings_check_ci_update_summary">Suche auf der Startseite nach CI-Builds des main-Branches und benachrichtige, wenn ein Update verfügbar ist.</string>
 </resources>

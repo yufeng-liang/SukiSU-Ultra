@@ -8,17 +8,26 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -52,20 +61,35 @@ fun HomePager(
     val loadingDialog = rememberLoadingDialog()
     val scope = rememberCoroutineScope()
     val latestIsCurrentPage by rememberUpdatedState(isCurrentPage)
-    val initialResumeHandled = rememberSaveable { mutableStateOf(false) }
 
+    // The ViewModel starts the first probe; only later foreground resumes need another one.
+    LifecycleResumeEffect(viewModel) {
+        viewModel.onResume(latestIsCurrentPage)
+        onPauseOrDispose { }
+    }
+
+    // Switching back to this tab must still refresh counts changed elsewhere; the ViewModel
+    // already probed once on creation, so skip the selection that coincides with it.
+    val skipInitialSelection = remember { mutableStateOf(isCurrentPage) }
     LaunchedEffect(isCurrentPage) {
-        if (isCurrentPage) {
-            viewModel.refresh()
+        if (!isCurrentPage) return@LaunchedEffect
+        if (skipInitialSelection.value) skipInitialSelection.value = false else viewModel.refresh()
+    }
+
+    LaunchedEffect(uiState.error, isCurrentPage) {
+        if (isCurrentPage && uiState.content != null && uiState.error != null) {
+            Toast.makeText(
+                context,
+                "${context.getString(R.string.operation_failed)}: ${uiState.error}",
+                Toast.LENGTH_LONG,
+            ).show()
         }
     }
 
-    LifecycleResumeEffect(Unit) {
-        if (initialResumeHandled.value && latestIsCurrentPage) {
-            viewModel.refresh()
-        }
-        initialResumeHandled.value = true
-        onPauseOrDispose { }
+    val state = uiState.content
+    if (state == null) {
+        HomeLoadingContent(uiState, bottomInnerPadding, viewModel::refresh)
+        return
     }
 
     var pendingCiInstall by rememberSaveable { mutableStateOf(false) }
@@ -118,15 +142,51 @@ fun HomePager(
 
     when (LocalUiMode.current) {
         UiMode.Miuix -> HomePagerMiuix(
-            state = uiState,
+            state = state,
             actions = actions,
             bottomInnerPadding = bottomInnerPadding,
         )
 
         UiMode.Material -> HomePagerMaterial(
-            state = uiState,
+            state = state,
             actions = actions,
             bottomInnerPadding = bottomInnerPadding,
         )
+    }
+}
+
+@Composable
+private fun HomeLoadingContent(
+    state: HomeLoadState,
+    bottomInnerPadding: Dp,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(bottom = bottomInnerPadding).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        when (LocalUiMode.current) {
+            UiMode.Material -> if (state.isRefreshing) {
+                androidx.compose.material3.LoadingIndicator()
+            } else {
+                androidx.compose.material3.Text(stringResource(R.string.operation_failed))
+                state.error?.let { androidx.compose.material3.Text(it) }
+                androidx.compose.material3.TextButton(onClick = onRetry) {
+                    androidx.compose.material3.Text(stringResource(R.string.network_retry))
+                }
+            }
+
+            UiMode.Miuix -> if (state.isRefreshing) {
+                top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator()
+            } else {
+                top.yukonga.miuix.kmp.basic.Text(stringResource(R.string.operation_failed))
+                state.error?.let { top.yukonga.miuix.kmp.basic.Text(it) }
+                top.yukonga.miuix.kmp.basic.TextButton(
+                    text = stringResource(R.string.network_retry),
+                    onClick = onRetry,
+                )
+            }
+        }
     }
 }

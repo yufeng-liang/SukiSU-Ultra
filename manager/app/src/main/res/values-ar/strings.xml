@@ -144,4 +144,7 @@
     <string name="profile_flags_desc_no_new_privs">يمنع المزيد من تصعيد الصلاحيات عبر SukiSU من داخل سياق ملف تعريف الروت هذا.</string>
     <string name="install_force_backup">نسخ احتياطي كصورة أصلية</string>
     <string name="install_force_backup_summary">يرجى التأكد من أن صورة boot التي اخترتها هي الصورة الأصلية</string>
+    <string name="settings_check_ci_update">التحقق من تحديثات CI</string>
+    <string name="settings_check_ci_update_summary">التحقق من إصدارات CI لفرع main على الصفحة الرئيسية والإشعار عند توفر تحديث.</string>
+    <string name="settings_module_check_update">التحقق من تحديثات الوحدات</string>
 </resources>

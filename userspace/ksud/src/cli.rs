@@ -519,7 +519,7 @@ enum TemporaryRoot {
 enum Feature {
     /// Get feature value and support status
     Get {
-        /// Feature ID or name (su_compat, kernel_umount, sulog, adb_root, selinux_hide,
+        /// Feature ID or name (su_compat, kernel_umount, sulog, adb_root, selinux_hide, avc_spoof,
         /// shell_su_adb_only, mount_hide)
         id: String,
         /// Read from config file
@@ -540,7 +540,7 @@ enum Feature {
 
     /// Check feature status (supported/unsupported/managed/forced)
     Check {
-        /// Feature ID or name (su_compat, kernel_umount, sulog, adb_root, selinux_hide,
+        /// Feature ID or name (su_compat, kernel_umount, sulog, adb_root, selinux_hide, avc_spoof,
         /// shell_su_adb_only, mount_hide)
         id: String,
     },
@@ -883,7 +883,10 @@ pub enum SusfsConfigCmd {
     /// Reset all config keys to defaults
     Reset,
     /// List all config key=value pairs (one per line)
-    List,
+    List {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub fn run() -> Result<()> {
@@ -1458,8 +1461,13 @@ pub fn run() -> Result<()> {
                             susfs_config::reset_to_defaults()?;
                             println!("ok");
                         }
-                        SusfsConfigCmd::List => {
-                            println!("{}", susfs_config::export_json()?);
+                        SusfsConfigCmd::List { json } => {
+                            let output = if json {
+                                serde_json::to_string(&susfs_config::store::load_config()?)?
+                            } else {
+                                susfs_config::export_json()?
+                            };
+                            println!("{output}");
                         }
                     }
                     Ok(())

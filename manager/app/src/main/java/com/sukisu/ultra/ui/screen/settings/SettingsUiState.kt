@@ -43,6 +43,10 @@ data class SettingsUiState(
     val selinuxHideStatus: String = "",
     val isSelinuxHideEnabled: Boolean = false,
 
+    // AVC log spoofing
+    val avcSpoofStatus: String = "",
+    val isAvcSpoofEnabled: Boolean = false,
+
     // Mount Hide
     val mountHideStatus: String = "",
     val isMountHideEnabled: Boolean = false,
@@ -91,6 +95,7 @@ data class SettingsScreenActions(
     val onSetSuCompatMode: (Int) -> Unit,
     val onSetKernelUmountEnabled: (Boolean) -> Unit,
     val onSetSelinuxHideEnabled: (Boolean) -> Unit,
+    val onSetAvcSpoofEnabled: (Boolean) -> Unit,
     val onSetMountHideEnabled: (Boolean) -> Unit,
     val onSetSulogEnabled: (Boolean) -> Unit,
     val onSetAdbRootEnabled: (Boolean) -> Unit,

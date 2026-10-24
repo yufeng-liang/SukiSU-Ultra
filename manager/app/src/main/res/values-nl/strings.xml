@@ -164,4 +164,6 @@
     <string name="profile_flags_desc_no_new_privs">Voorkomt verdere bevoegdheidsescalatie via SukiSU binnen de context van dit root-profiel.</string>
     <string name="install_force_backup">Back-up maken als origineel image</string>
     <string name="install_force_backup_summary">Zorg ervoor dat de geselecteerde boot-image het originele image is</string>
+    <string name="settings_check_ci_update">Controleren op CI-updates</string>
+    <string name="settings_check_ci_update_summary">Controleer main branch CI builds op de startpagina en meld wanneer een update beschikbaar is.</string>
 </resources>
