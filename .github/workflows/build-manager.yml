@@ -13,6 +13,7 @@ on:
       - '.github/workflows/ksuinit.yml'
       - '.github/scripts/setup-rust-build.sh'
       - '.github/riscv64-cargo.toml'
+      - 'scripts/upload-telegram.sh'
       - 'repack_apk.py'
       - 'split_apk_by_arch.py'
       - 'manager/**'
@@ -32,6 +33,7 @@ on:
       - '.github/workflows/ksuinit.yml'
       - '.github/scripts/setup-rust-build.sh'
       - '.github/riscv64-cargo.toml'
+      - 'scripts/upload-telegram.sh'
       - 'repack_apk.py'
       - 'split_apk_by_arch.py'
       - 'manager/**'
@@ -41,6 +43,17 @@ on:
       - 'Cargo.toml'
 
   workflow_call:
+    inputs:
+      release_upload:
+        description: 'Upload to the releases Telegram thread'
+        required: false
+        default: false
+        type: boolean
+      release_build:
+        description: 'Mark version metadata as a release build'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
 
@@ -126,8 +139,31 @@ jobs:
           echo "Certificate hash: $HASH"
 
 
+  determine-version:
+    runs-on: ubuntu-latest
+
+    outputs:
+      version_code: ${{ steps.version.outputs.version_code }}
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Calculate version code
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          COMMIT_COUNT=$(git rev-list --count refs/remotes/origin/main)
+          VERSION_CODE=$((40000 + COMMIT_COUNT - 2815))
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "KernelSU version code: $VERSION_CODE (main commits: $COMMIT_COUNT)"
+
   build-lkm:
-    needs: generate-key
+    needs: [generate-key, determine-version]
     uses: ./.github/workflows/build-lkm.yml
     with:
       # Slot 1 is left empty on purpose: Kbuild then falls back to the default
@@ -138,6 +174,8 @@ jobs:
       # so the forked APK is accepted as a manager too.
       expected_size2: ${{ needs.generate-key.outputs.expected_size || '' }}
       expected_hash2: ${{ needs.generate-key.outputs.expected_hash || '' }}
+      version_code: ${{ needs.determine-version.outputs.version_code }}
+      release_build: ${{ inputs.release_build || github.ref_type == 'tag' }}
     secrets: inherit
 
   build-ksuinit:
@@ -148,6 +186,7 @@ jobs:
     needs: [build-lkm, build-ksuinit]
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: aarch64-linux-android
@@ -938,7 +977,7 @@ jobs:
         env:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          MESSAGE_THREAD_ID: ${{ secrets.MESSAGE_THREAD_ID }}
+          MESSAGE_THREAD_ID: ${{ inputs.release_upload && secrets.MESSAGE_RELEASES_THREAD_ID || secrets.MESSAGE_THREAD_ID }}
           GITHUB_EVENT: ${{ toJson(github.event) }}
 
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -946,18 +985,13 @@ jobs:
           TITLE: Manager
           BRANCH: ${{ github.ref_name }}
 
+        shell: bash
         run: |
-          if [ ! -z "${{ secrets.BOT_TOKEN }}" ]; then
-
-            export VERSION=$(git rev-list --count HEAD)
-
-            APKS=$(find ./apks/split-manager -type f -name "*.apk" | sort)
-
-            pip3 install telethon
-
-            python3 scripts/ksubot.py $APKS
-
-          fi
+          set -euo pipefail
+          export VERSION="$(git rev-list --count HEAD)"
+          mapfile -d '' APKS < <(find ./apks/split-manager -type f -name '*.apk' -print0 | sort -z)
+          test "${#APKS[@]}" -gt 0
+          bash scripts/upload-telegram.sh "${APKS[@]}"
 
 
       # --------------------------------------------------------
@@ -969,7 +1003,7 @@ jobs:
         env:
           CHAT_ID: ${{ secrets.CHAT_ID }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          MESSAGE_THREAD_ID: ${{ secrets.MESSAGE_SPOOFED_THREAD_ID }}
+          MESSAGE_THREAD_ID: ${{ inputs.release_upload && secrets.MESSAGE_RELEASES_THREAD_ID || secrets.MESSAGE_SPOOFED_THREAD_ID }}
           GITHUB_EVENT: ${{ toJson(github.event) }}
 
           COMMIT_URL: ${{ github.event.head_commit.url }}
@@ -978,15 +1012,10 @@ jobs:
           TITLE: Manager-spoofed
           BRANCH: ${{ github.ref_name }}
 
+        shell: bash
         run: |
-          if [ ! -z "${{ secrets.BOT_TOKEN }}" ]; then
-
-            export VERSION=$(git rev-list --count HEAD)
-
-            APKS=$(find ./apks/split-manager-spoofed -type f -name "*.apk" | sort)
-
-            pip3 install telethon
-
-            python3 scripts/ksubot.py $APKS
-
-          fi
+          set -euo pipefail
+          export VERSION="$(git rev-list --count HEAD)"
+          mapfile -d '' APKS < <(find ./apks/split-manager-spoofed -type f -name '*.apk' -print0 | sort -z)
+          test "${#APKS[@]}" -gt 0
+          bash scripts/upload-telegram.sh "${APKS[@]}"

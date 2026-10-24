@@ -183,4 +183,6 @@
     <string name="profile_flags_desc_no_new_privs">이 루트 프로필의 컨텍스트 내에서 SukiSU를 통한 추가 권한 상승을 방지합니다.</string>
     <string name="install_force_backup">순정 이미지로 백업</string>
     <string name="install_force_backup_summary">선택한 boot 이미지가 순정 이미지인지 확인하세요</string>
+    <string name="settings_check_ci_update">CI 업데이트 확인</string>
+    <string name="settings_check_ci_update_summary">홈 화면에서 main 브랜치의 CI 빌드를 확인하고 업데이트가 있을 때 알립니다.</string>
 </resources>

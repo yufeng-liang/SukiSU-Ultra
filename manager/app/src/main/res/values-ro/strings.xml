@@ -137,4 +137,7 @@
     <string name="profile_flags_desc_no_new_privs">Împiedică escaladarea suplimentară a privilegiilor prin SukiSU în contextul acestui profil root.</string>
     <string name="install_force_backup">Salvează ca imagine originală</string>
     <string name="install_force_backup_summary">Asigură-te că imaginea boot selectată este imaginea originală</string>
+    <string name="settings_check_ci_update">Verifică actualizările CI</string>
+    <string name="settings_check_ci_update_summary">Verifică versiunile CI ale ramurii main pe pagina principală și notifică atunci când este disponibilă o actualizare.</string>
+    <string name="settings_module_check_update">Verifică actualizările modulelor</string>
 </resources>

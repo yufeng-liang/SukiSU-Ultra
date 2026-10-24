@@ -150,4 +150,6 @@
     <string name="profile_flags_desc_no_new_privs">Forhindrer yderligere priviligeringseskalering via SukiSU inden for konteksten af denne root-profil.</string>
     <string name="install_force_backup">Sikkerhedskopiér som originalt image</string>
     <string name="install_force_backup_summary">Sørg for, at det valgte boot-image er det originale image</string>
+    <string name="settings_check_ci_update">Søg efter CI-opdateringer</string>
+    <string name="settings_check_ci_update_summary">Tjek main-grenens CI-builds på forsiden og giv besked, når en opdatering er tilgængelig.</string>
 </resources>

@@ -211,4 +211,6 @@
     <string name="profile_flags_desc_no_new_privs">ป้องกันการยกระดับสิทธิ์เพิ่มเติมผ่าน SukiSU ภายในบริบทของโปรไฟล์รูทนี้</string>
     <string name="install_force_backup">สำรองเป็นอิมเมจเดิม</string>
     <string name="install_force_backup_summary">โปรดตรวจสอบให้แน่ใจว่า boot image ที่คุณเลือกเป็นอิมเมจเดิม</string>
+    <string name="settings_check_ci_update">ตรวจสอบการอัปเดต CI</string>
+    <string name="settings_check_ci_update_summary">ตรวจสอบบิลด์ CI ของสาขา main ในหน้าแรกและแจ้งเตือนเมื่อมีการอัปเดต</string>
 </resources>

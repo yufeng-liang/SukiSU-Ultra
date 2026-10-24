@@ -136,4 +136,7 @@ Liitu meie %2$si kanaliga</string>
     <string name="profile_flags_desc_no_new_privs">Takistab õiguste edasist tõstmist SukiSU kaudu selle root-profiili kontekstis.</string>
     <string name="install_force_backup">Varunda kui tehasepilt</string>
     <string name="install_force_backup_summary">Veendu, et valitud boot-tõmmis on tehasepilt</string>
+    <string name="settings_check_ci_update">Kontrolli CI uuendusi</string>
+    <string name="settings_check_ci_update_summary">Kontrolli pealehel main haru CI ehitusi ja teavita, kui uuendus on saadaval.</string>
+    <string name="settings_module_check_update">Kontrolli moodulite uuendusi</string>
 </resources>

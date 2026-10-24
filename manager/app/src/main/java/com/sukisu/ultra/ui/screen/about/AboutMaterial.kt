@@ -20,6 +20,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,11 +43,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.sukisu.ultra.Natives
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.ModuleEcoBadge
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
+import com.sukisu.ultra.ui.component.material.SegmentedSwitchItem
 import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.TopBarBackButton
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
@@ -54,6 +61,7 @@ fun AboutScreenMaterial(
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val contributors = rememberContributors()
+    val isKsuValid = remember { Natives.isManager }
 
     ExpressiveScaffold(
         topBar = {
@@ -115,6 +123,39 @@ fun AboutScreenMaterial(
                             )
                             ModuleEcoBadge()
                         }
+                    }
+                }
+            }
+            item {
+                SegmentedColumn(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    item {
+                        SegmentedSwitchItem(
+                            icon = Icons.Filled.SystemUpdate,
+                            title = stringResource(id = R.string.settings_check_update),
+                            summary = stringResource(id = R.string.settings_check_update_summary),
+                            checked = state.checkUpdate,
+                            onCheckedChange = actions.onSetCheckUpdate,
+                        )
+                    }
+                    item(visible = state.checkUpdate) {
+                        SegmentedSwitchItem(
+                            icon = Icons.Filled.Science,
+                            title = stringResource(id = R.string.settings_check_ci_update),
+                            summary = stringResource(id = R.string.settings_check_ci_update_summary),
+                            checked = state.checkCiUpdate,
+                            onCheckedChange = actions.onSetCheckCiUpdate,
+                        )
+                    }
+                    item(visible = isKsuValid) {
+                        SegmentedSwitchItem(
+                            icon = Icons.Filled.SystemUpdateAlt,
+                            title = stringResource(id = R.string.settings_module_check_update),
+                            summary = stringResource(id = R.string.settings_check_update_summary),
+                            checked = state.checkModuleUpdate,
+                            onCheckedChange = actions.onSetCheckModuleUpdate,
+                        )
                     }
                 }
             }
@@ -186,8 +227,8 @@ fun AboutScreenMaterial(
             item {
                 Spacer(
                     Modifier.height(
-                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
-                                WindowInsets.captionBar.asPaddingValues().calculateBottomPadding()
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+                            WindowInsets.captionBar.asPaddingValues().calculateBottomPadding()
                     )
                 )
             }

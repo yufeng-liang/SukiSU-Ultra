@@ -253,4 +253,6 @@
     <string name="profile_flags_desc_no_new_privs">Empêche toute élévation de privilèges supplémentaire via SukiSU dans le contexte de ce profil root.</string>
     <string name="install_force_backup">Sauvegarder comme image d\'origine</string>
     <string name="install_force_backup_summary">Veuillez vous assurer que l\'image boot sélectionnée est l\'image d\'origine</string>
+    <string name="settings_check_ci_update">Rechercher les mises à jour CI</string>
+    <string name="settings_check_ci_update_summary">Vérifier les versions CI de la branche main sur la page d\'accueil et avertir lorsqu\'une mise à jour est disponible.</string>
 </resources>

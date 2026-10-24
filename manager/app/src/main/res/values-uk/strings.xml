@@ -186,4 +186,6 @@
     <string name="profile_flags_desc_no_new_privs">Запобігає подальшому підвищенню привілеїв через SukiSU у контексті цього root-профілю.</string>
     <string name="install_force_backup">Зберегти резервну копію як оригінальний образ</string>
     <string name="install_force_backup_summary">Будь ласка, переконайтеся, що вибраний образ boot є оригінальним образом</string>
+    <string name="settings_check_ci_update">Перевіряти оновлення CI</string>
+    <string name="settings_check_ci_update_summary">Перевіряти збірки CI гілки main на головній сторінці та сповіщати про наявність оновлення.</string>
 </resources>

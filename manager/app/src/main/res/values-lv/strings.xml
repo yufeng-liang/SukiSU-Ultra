@@ -140,4 +140,7 @@
     <string name="profile_flags_desc_no_new_privs">Novērš turpmāku privilēģiju paaugstināšanu, izmantojot SukiSU, šī root profila kontekstā.</string>
     <string name="install_force_backup">Dublēt kā sākotnējo attēlu</string>
     <string name="install_force_backup_summary">Lūdzu, pārliecinieties, ka izvēlētais boot attēls ir sākotnējais attēls</string>
+    <string name="settings_check_ci_update">Pārbaudīt CI atjauninājumus</string>
+    <string name="settings_check_ci_update_summary">Galvenajā lapā pārbaudīt main zara CI būvējumus un paziņot, kad ir pieejams atjauninājums.</string>
+    <string name="settings_module_check_update">Pārbaudīt moduļu atjauninājumus</string>
 </resources>

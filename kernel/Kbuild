@@ -65,6 +65,7 @@ kernelsu-objs += feature/selinux_hide.o
 kernelsu-objs += feature/shell_su_adb_only.o
 
 kernelsu-objs += feature/uts_spoof.o
+kernelsu-objs += feature/avc_spoof.o
 
 ifdef KBUILD_EXTMOD
 ifeq ($(CONFIG_KSU_DISABLE_MANAGER),y)
@@ -161,7 +162,11 @@ KSU_SRC := $(if $(filter $(srctree),$(src)),$(src),$(srctree)/$(src))
 KSU_SRC := $(if $(wildcard $(KSU_SRC)/../.git),$(KSU_SRC),$(MDIR))
 
 git_short_sha    = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null)
-git_branch       = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --abbrev-ref HEAD 2>/dev/null)
+# 分支名允许 KSU_BUILD_REF 覆盖：发布构建是 detached HEAD，rev-parse 只会得到
+# "HEAD"，上游 workflow 因此在 release 构建里显式传 KSU_BUILD_REF=release。
+git_branch       = $(if $(strip $(KSU_BUILD_REF)),$(KSU_BUILD_REF),$(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --abbrev-ref HEAD 2>/dev/null))
+# 提交数固定数本地 HEAD（上游数 $(REPO_BRANCH)=main）：本仓库发版 tag 打在 ci 分支上，
+# 数 main 会得到偏小且与管理器不一致的版本号。
 git_commit_count = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-list --count HEAD 2>/dev/null)
 git_latest_tag   = $(shell cd $(KSU_SRC) && $(GIT_BIN) describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
 
@@ -174,7 +179,7 @@ GITHUB_COMMITS   := $(shell $(CURL_BIN) -sI "$(GITHUB_API_BASE)/commits?sha=$(RE
 # 同源同式，同一 commit 编出的内核与管理器版本号必然一致）；仅在无 .git 的
 # tarball 构建下才回退到 GitHub API 查上游 main。
 LOCAL_COUNT     := $(if $(git_commit_count),$(git_commit_count),$(GITHUB_COMMITS))
-KSU_VERSION     := $(if $(LOCAL_COUNT),$(shell expr $(VERSION_BASE) + $(LOCAL_COUNT) - $(VERSION_OFFSET)),41000)
+KSU_VERSION     := $(if $(LOCAL_COUNT),$(shell expr $(VERSION_BASE) + $(LOCAL_COUNT) - $(VERSION_OFFSET)),$(VERSION_BASE))
 VERSION_TAG     := $(or $(KSU_GITHUB_VER),$(git_latest_tag),4.2.1)
 KSU_VERSION_FULL := $(if $(call git_short_sha),v$(VERSION_TAG)-$(call git_short_sha)@$(call git_branch),v$(VERSION_TAG)-$(REPO_NAME)-unknown@unknown)
 $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])

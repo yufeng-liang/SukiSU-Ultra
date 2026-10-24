@@ -145,4 +145,7 @@
     <string name="profile_flags_desc_no_new_privs">Impede uma escalada adicional de privilégios via SukiSU no contexto deste perfil root.</string>
     <string name="install_force_backup">Fazer backup como imagem original</string>
     <string name="install_force_backup_summary">Certifique-se de que a imagem de boot selecionada seja a imagem original</string>
+    <string name="settings_check_ci_update">Verificar atualizações de CI</string>
+    <string name="settings_check_ci_update_summary">Verificar compilações de CI da branch main na página inicial e notificar quando houver uma atualização disponível.</string>
+    <string name="settings_module_check_update">Verificar atualizações de módulos</string>
 </resources>

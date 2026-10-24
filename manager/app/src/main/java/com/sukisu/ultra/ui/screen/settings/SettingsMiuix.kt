@@ -1,10 +1,5 @@
 package com.sukisu.ultra.ui.screen.settings
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import com.sukisu.ultra.ui.component.profile.TemporaryRootPreferences
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
@@ -39,12 +34,8 @@ import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Policy
-import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.SystemUpdate
-import androidx.compose.material.icons.rounded.SystemUpdateAlt
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -129,67 +120,11 @@ fun SettingPagerMiuix(
                             .padding(top = 12.dp)
                             .fillMaxWidth(),
                     ) {
-                        SwitchPreference(
-                            title = stringResource(id = R.string.settings_check_update),
-                            summary = stringResource(id = R.string.settings_check_update_summary),
-                            startAction = {
-                                Icon(
-                                    Icons.Rounded.SystemUpdate,
-                                    modifier = Modifier.padding(end = 6.dp),
-                                    contentDescription = stringResource(id = R.string.settings_check_update),
-                                    tint = colorScheme.onBackground
-                                )
-                            },
-                            checked = uiState.checkUpdate,
-                            onCheckedChange = actions.onSetCheckUpdate
-                        )
-                        AnimatedVisibility(
-                            visible = uiState.checkUpdate,
-                            enter = fadeIn() + expandVertically(),
-                            exit = shrinkVertically() + fadeOut(),
-                        ) {
-                            SwitchPreference(
-                                title = stringResource(R.string.settings_check_ci_update),
-                                summary = stringResource(R.string.settings_check_ci_update_summary),
-                                startAction = {
-                                    Icon(
-                                        Icons.Rounded.Science,
-                                        modifier = Modifier.padding(end = 6.dp),
-                                        contentDescription = stringResource(R.string.settings_check_ci_update),
-                                        tint = colorScheme.onBackground
-                                    )
-                                },
-                                checked = uiState.checkCiUpdate,
-                                onCheckedChange = actions.onSetCheckCiUpdate,
-                            )
-                        }
-                        KsuIsValid {
-                            SwitchPreference(
-                                title = stringResource(id = R.string.settings_module_check_update),
-                                summary = stringResource(id = R.string.settings_check_update_summary),
-                                startAction = {
-                                    Icon(
-                                        Icons.Rounded.SystemUpdateAlt,
-                                        modifier = Modifier.padding(end = 6.dp),
-                                        contentDescription = stringResource(id = R.string.settings_check_update),
-                                        tint = colorScheme.onBackground
-                                    )
-                                },
-                                checked = uiState.checkModuleUpdate,
-                                onCheckedChange = actions.onSetCheckModuleUpdate
-                            )
-                        }
-                    }
-
-                    // 模块上传的入口与「安装后提示分享」开关放在同一张卡里：
-                    // 前者是主动上传，后者只控制装完本地模块后的提示，两件事都不受 root 影响。
-                    // 投稿功能风险未解决暂时下线（ModuleContributionPrefs.SUSPENDED），整张卡一起隐藏。
-                    if (!ModuleContributionPrefs.SUSPENDED) {
-                        Card(
-                            modifier = Modifier
-                                .padding(top = 12.dp)
-                                .fillMaxWidth(),
-                        ) {
+                        // 更新检查的三个开关已随上游挪到「关于」页，设置页不再重复展示。
+                        // 模块上传的入口与「安装后提示分享」开关放在同一张卡里：
+                        // 前者是主动上传，后者只控制装完本地模块后的提示，两件事都不受 root 影响。
+                        // 投稿功能风险未解决暂时下线（ModuleContributionPrefs.SUSPENDED），整块一起隐藏。
+                        if (!ModuleContributionPrefs.SUSPENDED) {
                             val uploadTitle = stringResource(R.string.module_upload_entry_title)
                             ArrowPreference(
                                 title = uploadTitle,
@@ -219,13 +154,6 @@ fun SettingPagerMiuix(
                                 onCheckedChange = actions.onSetModuleContributionEnabled
                             )
                         }
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .padding(top = 12.dp)
-                            .fillMaxWidth(),
-                    ) {
                         OverlayDropdownPreference(
                             title = stringResource(id = R.string.settings_ui_mode),
                             summary = stringResource(id = R.string.settings_ui_mode_summary),
@@ -438,6 +366,28 @@ fun SettingPagerMiuix(
                                 enabled = uiState.selinuxHideStatus == "supported",
                                 checked = uiState.isSelinuxHideEnabled,
                                 onCheckedChange = actions.onSetSelinuxHideEnabled
+                            )
+
+                            val avcSummary = when (uiState.avcSpoofStatus) {
+                                "unsupported" -> stringResource(R.string.feature_status_unsupported_summary)
+                                "managed" -> stringResource(R.string.feature_status_managed_summary)
+                                "forced" -> stringResource(R.string.feature_status_forced_summary)
+                                else -> stringResource(R.string.settings_avc_spoof_summary)
+                            }
+                            SwitchPreference(
+                                title = stringResource(R.string.settings_avc_spoof),
+                                summary = avcSummary,
+                                startAction = {
+                                    Icon(
+                                        Icons.Rounded.Security,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        contentDescription = stringResource(R.string.settings_avc_spoof),
+                                        tint = colorScheme.onBackground
+                                    )
+                                },
+                                enabled = uiState.avcSpoofStatus == "supported",
+                                checked = uiState.isAvcSpoofEnabled,
+                                onCheckedChange = actions.onSetAvcSpoofEnabled
                             )
 
                             val mountHideSummary = when (uiState.mountHideStatus) {

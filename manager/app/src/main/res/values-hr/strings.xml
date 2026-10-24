@@ -183,4 +183,6 @@
     <string name="profile_flags_desc_no_new_privs">Sprječava daljnju eskalaciju privilegija putem SukiSU-a unutar konteksta ovog root profila.</string>
     <string name="install_force_backup">Sigurnosno kopiraj kao izvornu sliku</string>
     <string name="install_force_backup_summary">Provjerite je li odabrana boot slika izvorna slika</string>
+    <string name="settings_check_ci_update">Provjeri ažuriranja za CI</string>
+    <string name="settings_check_ci_update_summary">Provjeri međuverzije CI-ja glavne grane na početnoj stranici i obavijesti kada je ažuriranje dostupno.</string>
 </resources>
