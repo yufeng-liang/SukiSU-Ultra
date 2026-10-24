@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.UploadSession
 import com.sukisu.ultra.ui.util.makeNonce
 
 /**
@@ -107,6 +108,22 @@ data class ModuleUploadFormState(
      */
     val confirmedSetKey: String? = null,
     val nonce: String = makeNonce(),
+    /**
+     * 图标墙上「正在编辑的那一枚」。
+     *
+     * 只在界面上用：墙把这一枚放大、描边，下面只画这一枚的详情卡。为 null 时
+     * （比如刚删掉当前枚）由界面回落到第一枚。空值不影响任何提交判据。
+     */
+    val selectedPath: String? = null,
+    /**
+     * 本地存的那一张长期令牌（九十天免改签名）。
+     *
+     * 只放**已核实过且未到期**的那一份；到期、被吊销、形状坏掉的一律是 null，
+     * 界面按「没有令牌」渲染（回到改签名那条路）。
+     */
+    val session: UploadSession? = null,
+    /** 正在问服务端「这张令牌还在不在」（进页面时那一次）。 */
+    val sessionChecking: Boolean = false,
     val submitting: Boolean = false,
     /** 本次要上传的总字节数，提交中显示（契约没有字节回调，见 ViewModel 注释）。 */
     val totalBytes: Long = 0L,
@@ -114,6 +131,20 @@ data class ModuleUploadFormState(
     /** 人机校验没完成 / 超时之类的一次性提示。 */
     val notice: String? = null,
 ) {
+    /**
+     * 手里这张令牌此刻能不能顶掉「改签名」那一步。
+     *
+     * 判据是**形状 + 到期**，不看服务端是否确认过：本地改 `expiresAt` 延长不了任何东西
+     * （服务端那一份才是作数的），所以这里宽一点只影响「App 让不让你点提交」，
+     * 不影响任何安全边界 —— 令牌真失效时服务端会拒，界面再回落签名路。
+     */
+    val sessionActive: Boolean
+        get() = session?.validAt(System.currentTimeMillis()) == true
+
+    /** 令牌绑的 UID 与当前输入框里的 UID 是同一个 —— 换了号就不认这张令牌。 */
+    val sessionMatchesUid: Boolean
+        get() = sessionActive && session?.uid == uid.trim()
+
     /** 当前集合 + nonce 算出来的口令；sha 没齐时 text 为空。 */
     val proof: ModuleUploadRules.ProofSnapshot?
         get() = if (ModuleUploadRules.proofReady(items)) {
@@ -141,5 +172,6 @@ data class ModuleUploadFormState(
             signatureValid = signatureValid,
             submitting = submitting,
             limitProblem = ModuleUploadRules.limitProblem(items.size, items.map { it.sizeBytes }, limits),
+            sessionActive = sessionMatchesUid,
         )
 }

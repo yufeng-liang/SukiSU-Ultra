@@ -3,6 +3,7 @@ package com.sukisu.ultra.ui.screen.upload
 import android.content.Context
 import androidx.core.content.edit
 import com.sukisu.ultra.ksuApp
+import com.sukisu.ultra.ui.util.UploadSession
 
 /**
  * 上传表单记住的「上次用的酷安 UID」。
@@ -16,6 +17,17 @@ import com.sukisu.ultra.ksuApp
 object ModuleUploadPrefs {
 
     const val KEY_LAST_UID = "module_upload_last_uid"
+
+    // ---- 长期会话令牌（一次改签名，九十天免改）----
+    //
+    // 四个值分开存、都带类型：JSON 里塞一个对象在 SharedPreferences 上不可读，
+    // 出问题时（比如令牌串被手改成 63 位）也没法只坏一处。分开存之后
+    // `readSession()` 能逐项判定，坏哪一项就整份当没有。
+    const val KEY_SESSION_TOKEN = "module_upload_session_token"
+    const val KEY_SESSION_UID = "module_upload_session_uid"
+    const val KEY_SESSION_NICK = "module_upload_session_nickname"
+    const val KEY_SESSION_AVATAR = "module_upload_session_avatar"
+    const val KEY_SESSION_EXPIRES_AT = "module_upload_session_expires_at"
 
     /** 与 [com.sukisu.ultra.ui.util.ModuleContribution.isValidUid] 的 `\d{4,12}` 同一条形状。 */
     private const val UID_MAX_LEN = 12
@@ -33,6 +45,52 @@ object ModuleUploadPrefs {
         val cleaned = sanitizeUid(uid)
         if (cleaned.isEmpty()) return
         runCatching { prefs()?.edit { putString(KEY_LAST_UID, cleaned) } }
+    }
+
+    /**
+     * 读本地存的那一份长期令牌；没存过、存坏了、或者已经到期，都返回 null。
+     *
+     * 到期判定放在这一层而不是界面：界面每次重组都会问一次，判据只有一处才不会
+     * 出现「一个界面说过期、另一个说没过期」。真正的作数方仍是服务端 ——
+     * 本地改 `expiresAt` 不会延长任何东西，只会让 App 更早/更晚去问一次。
+     */
+    fun readSession(now: Long = System.currentTimeMillis()): UploadSession? = runCatching {
+        val p = prefs() ?: return null
+        val session = UploadSession(
+            token = p.getString(KEY_SESSION_TOKEN, null).orEmpty(),
+            uid = p.getString(KEY_SESSION_UID, null).orEmpty(),
+            nickname = p.getString(KEY_SESSION_NICK, null).orEmpty(),
+            avatar = p.getString(KEY_SESSION_AVATAR, null).orEmpty(),
+            expiresAt = p.getLong(KEY_SESSION_EXPIRES_AT, 0L),
+        )
+        session.takeIf { it.validAt(now) }
+    }.getOrNull()
+
+    /** 存下一张令牌。形状不对的一律不存（脏数据不许落到盘上）。 */
+    fun writeSession(session: UploadSession) {
+        if (!session.wellFormed) return
+        runCatching {
+            prefs()?.edit {
+                putString(KEY_SESSION_TOKEN, session.token)
+                putString(KEY_SESSION_UID, session.uid)
+                putString(KEY_SESSION_NICK, session.nickname)
+                putString(KEY_SESSION_AVATAR, session.avatar)
+                putLong(KEY_SESSION_EXPIRES_AT, session.expiresAt)
+            }
+        }
+    }
+
+    /** 「退出验证」：把本地这一份抹掉。服务端那张另外吊销（见 ViewModel）。 */
+    fun clearSession() {
+        runCatching {
+            prefs()?.edit {
+                remove(KEY_SESSION_TOKEN)
+                remove(KEY_SESSION_UID)
+                remove(KEY_SESSION_NICK)
+                remove(KEY_SESSION_AVATAR)
+                remove(KEY_SESSION_EXPIRES_AT)
+            }
+        }
     }
 
     private fun prefs() = runCatching {

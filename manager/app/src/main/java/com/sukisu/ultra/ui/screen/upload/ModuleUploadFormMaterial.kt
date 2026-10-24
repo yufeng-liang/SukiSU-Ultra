@@ -72,6 +72,9 @@ fun ModuleUploadFormMaterial(
     onApplySourceToAll: (String) -> Unit,
     onUidChange: (String) -> Unit,
     onRetryUid: () -> Unit,
+    onSelectItem: (String) -> Unit,
+    onPickMore: () -> Unit,
+    onSignOut: () -> Unit,
     onConsentChange: (Boolean) -> Unit,
     onSignatureConfirmedChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
@@ -105,22 +108,43 @@ fun ModuleUploadFormMaterial(
             contentPadding = innerPadding,
         ) {
             item {
-                Text(
-                    modifier = Modifier.padding(top = 12.dp),
-                    text = stringResource(R.string.module_upload_form_items_title, state.items.size),
-                    style = MaterialTheme.typography.titleSmall,
-                )
+                // 墙：这一批每一枚一张 zip 图标卡，横向滑、点哪张编辑哪张。
+                Column(modifier = Modifier.padding(top = 12.dp)) {
+                    UploadZipWallMaterial(
+                        items = state.items,
+                        selectedPath = state.selectedPath,
+                        enabled = !state.submitting,
+                        onSelect = onSelectItem,
+                        onPickMore = onPickMore,
+                    )
+                    val index = state.items.indexOfFirst { it.path == state.selectedPath }
+                    if (state.items.size > 1) {
+                        Text(
+                            modifier = Modifier.padding(top = 8.dp),
+                            text = stringResource(
+                                R.string.module_upload_wall_editing,
+                                if (index >= 0) index + 1 else 1,
+                                state.items.size,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
-            items(state.items.size, key = { state.items[it].path }) { index ->
-                val item = state.items[index]
-                UploadZipCardMaterial(
-                    item = item,
-                    enabled = !state.submitting,
-                    onRemove = { onRemove(item.path) },
-                    onSourceChange = { onSourceChange(item.path, it) },
-                    onApplyToAll = { onApplySourceToAll(item.source) },
-                )
+            val current = state.items.firstOrNull { it.path == state.selectedPath }
+                ?: state.items.firstOrNull()
+            if (current != null) {
+                item(key = "detail-" + current.path) {
+                    UploadZipCardMaterial(
+                        item = current,
+                        enabled = !state.submitting,
+                        onRemove = { onRemove(current.path) },
+                        onSourceChange = { onSourceChange(current.path, it) },
+                        onApplyToAll = { onApplySourceToAll(current.source) },
+                    )
+                }
             }
 
             item {
@@ -143,7 +167,18 @@ fun ModuleUploadFormMaterial(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        UidStatusRowMaterial(state = state, onRetry = onRetryUid)
+                        UidStatusRowMaterial(
+                            state = state,
+                            onRetry = onRetryUid,
+                            onSignOut = onSignOut,
+                        )
+                        if (state.sessionMatchesUid) {
+                            Text(
+                                text = stringResource(R.string.module_upload_session_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         Text(
                             text = stringResource(R.string.module_upload_uid_public),
                             style = MaterialTheme.typography.bodySmall,
@@ -190,7 +225,7 @@ fun ModuleUploadFormMaterial(
                             )
                         }
                         // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
-                        if (state.uidVerified && state.signatureValid && !state.consent) {
+                        if (state.uidVerified && (state.signatureValid || state.sessionMatchesUid) && !state.consent) {
                             Text(
                                 text = stringResource(R.string.module_upload_consent_required),
                                 style = MaterialTheme.typography.bodySmall,
@@ -369,6 +404,8 @@ private fun ProofSectionMaterial(
     enabled: Boolean,
     onSignatureConfirmedChange: (Boolean) -> Unit,
 ) {
+    // 走长期令牌的这一次上传不需要改签名 —— 整段收起，别让人白抄一次。
+    if (state.sessionMatchesUid) return
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val proof = state.proof
@@ -523,17 +560,43 @@ private fun SubmitSectionMaterial(
 }
 
 @Composable
-private fun UidStatusRowMaterial(state: ModuleUploadFormState, onRetry: () -> Unit) {
+private fun UidStatusRowMaterial(
+    state: ModuleUploadFormState,
+    onRetry: () -> Unit,
+    onSignOut: () -> Unit,
+) {
     when (val uidState = state.uidState) {
-        is CoolapkUidState.Verified -> Text(
-            text = stringResource(R.string.module_upload_uid_verified, uidState.nickname),
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        // 已验证：头像 + 勾选描边动画 + 昵称，右侧给「退出验证」（只有真握着令牌时才给）。
+        is CoolapkUidState.Verified -> Row(verticalAlignment = Alignment.CenterVertically) {
+            VerifiedAvatar(
+                avatarUrl = uidState.avatar.ifBlank { state.session?.avatar.orEmpty() },
+                tint = MaterialTheme.colorScheme.primary,
+                placeholder = MaterialTheme.colorScheme.surfaceContainerHighest,
+            )
+            Text(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 10.dp),
+                text = stringResource(R.string.module_upload_uid_verified, uidState.nickname),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (state.sessionActive) {
+                TextButton(onClick = onSignOut, enabled = !state.submitting) {
+                    Text(stringResource(R.string.module_upload_session_signout))
+                }
+            }
+        }
 
         CoolapkUidState.Checking -> Text(
-            text = stringResource(R.string.module_upload_uid_checking),
+            text = stringResource(
+                if (state.sessionChecking) {
+                    R.string.module_upload_session_checking
+                } else {
+                    R.string.module_upload_uid_checking
+                },
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

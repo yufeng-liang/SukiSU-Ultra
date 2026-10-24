@@ -49,6 +49,67 @@ data class SubmittedModule(
 )
 
 /**
+ * 服务端在这一次提交里签发的那一张令牌（只有服务端知道的两个值）。
+ *
+ * 昵称、头像、UID 不在这里 —— 应答里没有它们，App 用的是自己刚刚核实过的那一份
+ * （见 [UploadSession.renewed]）。把「服务端给的」与「本地已有的」分开，是为了让
+ * 这一层不依赖任何界面状态。
+ */
+data class SessionGrant(
+    val token: String,
+    val expiresAt: Long,
+)
+
+/**
+ * 长期会话令牌：**一次改签名，九十天免改**。
+ *
+ * 服务端只在「这一次真的过了一遍签名核对」之后才签发它（走令牌来的提交不重签，
+ * 否则一张令牌可以无限自我续期）。令牌本身是一个 64 位小写十六进制串，
+ * 服务端 KV 里只存它的 sha256，所以泄了 KV 也拿不到能用的令牌。
+ *
+ * [uid] 是签发时核实过的酷安 UID。[expiresAt] 是**服务端的**到期时刻（毫秒），
+ * 本地只拿来显示「还有多久」并提前判定失效；真正作数的是服务端那一份 ——
+ * 本地改这个数不会延长任何东西。
+ */
+data class UploadSession(
+    val token: String,
+    val uid: String,
+    val nickname: String,
+    val avatar: String,
+    val expiresAt: Long,
+) {
+    /** 形状与服务端 `SESSION_TOKEN_RE`（`/^[0-9a-f]{64}$/`）同一条。 */
+    val wellFormed: Boolean
+        get() = SESSION_TOKEN_RE.matches(token) && uid.isNotEmpty() && expiresAt > 0L
+
+    /**
+     * 这一份令牌此刻还算不算数。
+     *
+     * 留 60 秒余量：界面在到期前一秒还显示「已验证」、提交时服务端却说失效，
+     * 那种错位比提前一分钟让用户重新验证更糟。
+     */
+    fun validAt(now: Long): Boolean = wellFormed && expiresAt - VALIDITY_SKEW_MS > now
+
+    /**
+     * 服务端续签了一张：换上新的 token 与到期时刻，身份沿用本地这份。
+     *
+     * 续签只可能发生在「这次真过了一遍签名核对」之后，所以身份（uid/昵称/头像）
+     * 用的就是这一趟刚核实到的那一份 —— 不取应答里的（应答里本来也没有）。
+     */
+    fun renewed(grant: SessionGrant): UploadSession = copy(
+        token = grant.token,
+        expiresAt = grant.expiresAt,
+    )
+
+    private companion object {
+        val SESSION_TOKEN_RE = Regex("^[0-9a-f]{64}$")
+
+        /** 到期前的余量：宁可早一分钟失效，也不要「界面说有效、服务端说没有」。 */
+        const val VALIDITY_SKEW_MS = 60_000L
+    }
+}
+
+/**
  * 批量提交结果。
  *
  * [message] 在成功时留空：成功文案由界面按 locale 取，不在这里写死中文；
@@ -60,6 +121,15 @@ data class BatchSubmitResult(
     val modules: List<SubmittedModule>,
     val message: String,
     val code: String? = null,
+    /**
+     * 服务端在这一次真的过了一遍签名核对之后签发的长期令牌。
+     *
+     * 三态，不要合并：
+     * - `null`：没签（走令牌来的这一笔不重签 / 服务端没配 KV）——**保持手里那张不变**；
+     * - 非 null 且形状合法：换上新的一张；
+     * - 非 null 但形状不合法：服务端回了脏数据，当作没签（同上，别把好令牌顶掉）。
+     */
+    val session: SessionGrant? = null,
 )
 
 object ContributionBatch {

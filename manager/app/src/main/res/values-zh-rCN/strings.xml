@@ -938,7 +938,7 @@
     <string name="module_contribution_uid_required">核实酷安 UID 后才能分享</string>
     <string name="module_contribution_section_info">模块信息</string>
     <string name="module_contribution_section_identity">出处与身份</string>
-    <string name="module_contribution_proof_title">投稿口令</string>
+    <string name="module_contribution_proof_title">酷安签名</string>
     <string name="module_contribution_proof_copy">复制</string>
     <string name="module_contribution_proof_hint">打开酷安「我的 → 编辑资料 → 签名」，填入这串后保存，再回来提交。这是为了证明账号归你，且它只绑你此刻要上传的这个包：换模块 ID、换包或重新发起投稿都会换一串——签名里对不上就照当前这串再填一次。</string>
     <string name="module_contribution_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载。请勿上传包含个人隐私、密钥等敏感信息的内容。</string>
@@ -1080,6 +1080,8 @@
 
     <string name="module_upload_form_title">上传模块</string>
     <string name="module_upload_form_items_title">待上传 %1$d 个模块</string>
+    <string name="module_upload_wall_add">添加</string>
+    <string name="module_upload_wall_editing">正在编辑第 %1$d / %2$d 枚</string>
     <string name="module_upload_section_info">模块信息</string>
     <string name="module_upload_section_source">出处</string>
     <string name="module_upload_section_identity">上传者</string>
@@ -1094,7 +1096,10 @@
     <string name="module_upload_uid">酷安 UID</string>
     <string name="module_upload_uid_hint">个人主页链接末尾那串数字（coolapk.com/u/…）</string>
     <string name="module_upload_uid_checking">正在核实…</string>
-    <string name="module_upload_uid_verified">将以 %1$s 署名</string>
+    <string name="module_upload_uid_verified">已验证：%1$s</string>
+    <string name="module_upload_session_checking">正在确认上次的验证…</string>
+    <string name="module_upload_session_hint">90 天内再投稿不用改签名。换账号请点右边。</string>
+    <string name="module_upload_session_signout">退出验证</string>
     <string name="module_upload_uid_not_found">酷安查无此人，请核对 UID</string>
     <string name="module_upload_uid_invalid">需要 4~12 位数字</string>
     <string name="module_upload_uid_unavailable">暂时无法核实（酷安不可达）</string>
@@ -1103,17 +1108,17 @@
     <string name="module_upload_uid_level_hint">酷安账号等级需达到 Lv2 及以上</string>
     <string name="module_upload_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载；文件不含个人隐私与密钥；我是这些模块的作者或已获得授权。</string>
     <string name="module_upload_consent_required">请先勾选确认</string>
-    <string name="module_upload_proof_title">上传口令（整批只用这一串）</string>
+    <string name="module_upload_proof_title">酷安签名（整批只用这一串）</string>
     <string name="module_upload_proof_copy">复制</string>
-    <string name="module_upload_proof_hint">打开酷安「我的 &gt; 编辑资料 &gt; 签名」，填入这串后保存，再回来勾选下面的确认。它覆盖这一批里的每个模块：换一批、换包或换模块 ID 都会得到另一串。</string>
+    <string name="module_upload_proof_hint">打开酷安「我的 &gt; 编辑资料 &gt; 签名」，填入这串后保存，再回来勾选下面的确认。我们读取你的签名，只有对上了才认定这次投稿是你本人提交的。它覆盖这一批里的每个模块：换一批、换包或换模块 ID 都会得到另一串。</string>
     <string name="module_upload_proof_pending">正在读取选中的 zip…</string>
-    <string name="module_upload_proof_confirm">我已写进签名</string>
-    <string name="module_upload_proof_changed">集合变了，口令要重抄</string>
-    <string name="module_upload_proof_rotated">这串口令已经用过，已换新。请把新的一串重新写进签名。</string>
+    <string name="module_upload_proof_confirm">我已写进酷安签名</string>
+    <string name="module_upload_proof_changed">集合变了，签名要重抄</string>
+    <string name="module_upload_proof_rotated">这串已经用过，已换新。请把新的一串重新写进酷安签名。</string>
     <string name="module_upload_submit">上传</string>
     <string name="module_upload_submitting">正在上传…</string>
     <string name="module_upload_submitting_bytes">正在上传 %1$d 个模块，共 %2$s</string>
-    <string name="module_upload_submit_timeout">上传超时。口令没有消耗，可以用同一串重试；若提示口令已用过，App 会换一串。</string>
+    <string name="module_upload_submit_timeout">上传超时。这串签名没有消耗，可以用同一串重试；若提示已经用过，App 会换一串。</string>
     <string name="module_upload_submit_success">已上传，等待审核</string>
     <string name="module_upload_submit_success_count">已上传 %1$d 枚，等待审核</string>
     <string name="module_upload_result_pr">PR：%1$s</string>

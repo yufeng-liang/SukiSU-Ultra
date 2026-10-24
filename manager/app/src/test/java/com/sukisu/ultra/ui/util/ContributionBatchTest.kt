@@ -104,16 +104,32 @@ class ContributionBatchTest {
         val dispositions = body.parts.map { part ->
             part.headers?.get("Content-Disposition").orEmpty()
         }
-        assertEquals(7, dispositions.size)
+        // 共享字段恒在顶层，形状不随登录状态变：manifest 必须第一，session 恒发
+        // （空串也发），zip 按 manifest 顺序排在最后。
+        assertEquals(8, dispositions.size)
         assertTrue(dispositions[0].contains("name=\"manifest\""))
         assertTrue(dispositions[1].contains("name=\"uploader\""))
         assertTrue(dispositions[2].contains("name=\"coolapkUid\""))
         assertTrue(dispositions[3].contains("name=\"pledge\""))
         assertTrue(dispositions[4].contains("name=\"nonce\""))
-        assertTrue(dispositions[5].contains("name=\"zip\""))
-        assertTrue(dispositions[5].contains("filename=\"a.zip\""))
+        assertTrue(dispositions[5].contains("name=\"session\""))
         assertTrue(dispositions[6].contains("name=\"zip\""))
-        assertTrue(dispositions[6].contains("filename=\"b.zip\""))
+        assertTrue(dispositions[6].contains("filename=\"a.zip\""))
+        assertTrue(dispositions[7].contains("name=\"zip\""))
+        assertTrue(dispositions[7].contains("filename=\"b.zip\""))
+    }
+
+    @Test
+    fun `multipart carries the session token when one is given`() {
+        val modules = listOf(
+            batchZip("demo", "a.zip", shaA, "https://www.coolapk.com/feed/1"),
+        )
+        val token = "a".repeat(64)
+        val body = ModuleContribution.buildBatchBody(modules, "nick", "1000", "abc123", token)
+        val session = body.parts[5].body?.let { okio.Buffer().also { buf -> it.writeTo(buf) }.readUtf8() }.orEmpty()
+        assertEquals(token, session)
+        // manifest 仍是第一个 part —— 令牌在场也不能把它挤到后面。
+        assertTrue(body.parts[0].headers?.get("Content-Disposition").orEmpty().contains("name=\"manifest\""))
     }
 
     @Test

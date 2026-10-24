@@ -83,6 +83,9 @@ fun ModuleUploadFormMiuix(
     onApplySourceToAll: (String) -> Unit,
     onUidChange: (String) -> Unit,
     onRetryUid: () -> Unit,
+    onSelectItem: (String) -> Unit,
+    onPickMore: () -> Unit,
+    onSignOut: () -> Unit,
     onConsentChange: (Boolean) -> Unit,
     onSignatureConfirmedChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
@@ -134,23 +137,45 @@ fun ModuleUploadFormMiuix(
             overscrollEffect = null,
         ) {
             item {
-                Text(
-                    modifier = Modifier.padding(top = 12.dp),
-                    text = stringResource(R.string.module_upload_form_items_title, state.items.size),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                )
+                // 墙：这一批每一枚一张 zip 图标卡，横向滑、点哪张编辑哪张。
+                // 只占一行高度 —— 十枚包也不会把表单撑成十几屏。
+                Column(modifier = Modifier.padding(top = 12.dp)) {
+                    UploadZipWallMiuix(
+                        items = state.items,
+                        selectedPath = state.selectedPath,
+                        enabled = !state.submitting,
+                        onSelect = onSelectItem,
+                        onPickMore = onPickMore,
+                    )
+                    val index = state.items.indexOfFirst { it.path == state.selectedPath }
+                    if (state.items.size > 1) {
+                        Text(
+                            modifier = Modifier.padding(top = 8.dp),
+                            text = stringResource(
+                                R.string.module_upload_wall_editing,
+                                if (index >= 0) index + 1 else 1,
+                                state.items.size,
+                            ),
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
             }
 
-            items(state.items.size, key = { state.items[it].path }) { index ->
-                val item = state.items[index]
-                UploadZipCardMiuix(
-                    item = item,
-                    enabled = !state.submitting,
-                    onRemove = { onRemove(item.path) },
-                    onSourceChange = { onSourceChange(item.path, it) },
-                    onApplyToAll = { onApplySourceToAll(item.source) },
-                )
+            // 舞台上只有当前这一枚：改出处只可能改它，所以不给「应用到全部」以外的批处理动作。
+            val current = state.items.firstOrNull { it.path == state.selectedPath }
+                ?: state.items.firstOrNull()
+            if (current != null) {
+                item(key = "detail-" + current.path) {
+                    UploadZipCardMiuix(
+                        item = current,
+                        enabled = !state.submitting,
+                        onRemove = { onRemove(current.path) },
+                        onSourceChange = { onSourceChange(current.path, it) },
+                        onApplyToAll = { onApplySourceToAll(current.source) },
+                    )
+                }
             }
 
             item {
@@ -173,7 +198,18 @@ fun ModuleUploadFormMiuix(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        UidStatusRowMiuix(state = state, onRetry = onRetryUid)
+                        UidStatusRowMiuix(
+                            state = state,
+                            onRetry = onRetryUid,
+                            onSignOut = onSignOut,
+                        )
+                        if (state.sessionMatchesUid) {
+                            Text(
+                                text = stringResource(R.string.module_upload_session_hint),
+                                fontSize = 12.sp,
+                                color = colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
                         Text(
                             text = stringResource(R.string.module_upload_uid_public),
                             fontSize = 12.sp,
@@ -224,7 +260,7 @@ fun ModuleUploadFormMiuix(
                             )
                         }
                         // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
-                        if (state.uidVerified && state.signatureValid && !state.consent) {
+                        if (state.uidVerified && (state.signatureValid || state.sessionMatchesUid) && !state.consent) {
                             Text(
                                 text = stringResource(R.string.module_upload_consent_required),
                                 fontSize = 12.sp,
@@ -407,6 +443,9 @@ private fun ProofSectionMiuix(
     enabled: Boolean,
     onSignatureConfirmedChange: (Boolean) -> Unit,
 ) {
+    // 走长期令牌的这一次上传不需要改签名 —— 这一整段收起（连同「去酷安改签名」那句）。
+    // 判据与提交那一步同一份：令牌绑的就是输入框里这个 UID，就别让人白抄一次签名。
+    if (state.sessionMatchesUid) return
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val proof = state.proof
@@ -566,17 +605,49 @@ private fun SubmitSectionMiuix(
 }
 
 @Composable
-private fun UidStatusRowMiuix(state: ModuleUploadFormState, onRetry: () -> Unit) {
+private fun UidStatusRowMiuix(
+    state: ModuleUploadFormState,
+    onRetry: () -> Unit,
+    onSignOut: () -> Unit,
+) {
     when (val uidState = state.uidState) {
-        is CoolapkUidState.Verified -> Text(
-            text = stringResource(R.string.module_upload_uid_verified, uidState.nickname),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = colorScheme.primary,
-        )
+        // 已验证：头像（有就画、没有就一个底圈）+ 勾选描边动画 + 昵称，右侧给「退出验证」。
+        // 这里不用「一行小字」是因为「这个人是谁」比「这个字段填对了」更重要 ——
+        // 用户要一眼认出「现在是我」，而不是读一行灰字。
+        is CoolapkUidState.Verified -> Row(verticalAlignment = Alignment.CenterVertically) {
+            VerifiedAvatar(
+                avatarUrl = uidState.avatar.ifBlank { state.session?.avatar.orEmpty() },
+                tint = colorScheme.primary,
+                placeholder = colorScheme.surfaceContainer,
+            )
+            Text(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 10.dp),
+                text = stringResource(R.string.module_upload_uid_verified, uidState.nickname),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = colorScheme.primary,
+            )
+            // 只有手里真有一张长期令牌时才给「退出验证」：没有令牌的话这个按钮点了
+            // 只是把 UID 清空，用户会以为「验证被取消了」，而其实什么都没发生。
+            if (state.sessionActive) {
+                TextButton(
+                    text = stringResource(R.string.module_upload_session_signout),
+                    onClick = onSignOut,
+                    enabled = !state.submitting,
+                )
+            }
+        }
 
         CoolapkUidState.Checking -> Text(
-            text = stringResource(R.string.module_upload_uid_checking),
+            text = stringResource(
+                if (state.sessionChecking) {
+                    R.string.module_upload_session_checking
+                } else {
+                    R.string.module_upload_uid_checking
+                },
+            ),
             fontSize = 13.sp,
             color = colorScheme.onSurfaceVariantSummary,
         )

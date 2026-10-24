@@ -19,6 +19,8 @@ import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ContributionBatch
 import com.sukisu.ultra.ui.util.CoolapkUidLookup
 import com.sukisu.ultra.ui.util.ModuleContribution
+import com.sukisu.ultra.ui.util.SessionGrant
+import com.sukisu.ultra.ui.util.UploadSession
 import com.sukisu.ultra.ui.util.makeNonce
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -79,6 +81,8 @@ class ModuleUploadViewModel(
     fun onEnter() {
         if (entered) return
         entered = true
+        // 令牌先读出来：用户一进表单就该看到「已验证」，不该等网络。
+        refreshSession()
         loadModules(thenCheck = true)
     }
 
@@ -368,15 +372,40 @@ class ModuleUploadViewModel(
                 // 上一批已经烧掉的那枚 nonce 不能带进新一批：带过去第一次提交必得
                 // `proof_used`，用户还得再抄一次串。
                 nonce = if (startingNewBatch) makeNonce() else state.nonce,
+                // 墙上高亮的那一枚：开新批就跳到第一枚；追加时不抢用户的视线，
+                // 只有原来那枚不在了（被同 id 顶掉）才回落到第一枚。
+                selectedPath = if (startingNewBatch) {
+                    merged.firstOrNull()?.path
+                } else {
+                    state.selectedPath?.takeIf { path -> merged.any { it.path == path } }
+                        ?: merged.firstOrNull()?.path
+                },
                 outcome = null,
                 notice = null,
             )
         }
         // 第一次进表单时把上次核实通过的 UID 填回来并重新核实：
         // 记的是"上次用过的那串数字"，不是"上次核实通过的结论"——昵称仍以这次反查为准。
+        //
+        // 有长期令牌且令牌绑的就是这个 UID 时**跳过反查**：那一次问服务端已经拿回了
+        // 昵称与头像（见 refreshSession），再打一次 `/user` 只是白耗一次配额；
+        // 而且 `/user` 走酷安反查、可能因风控失败，那会把「已验证」降级成「没核实成」，
+        // 让用户明明有令牌却提交不了。令牌失效时 refreshSession 会把它清掉，这里自然回到反查。
         if (before.items.isEmpty() && before.uid.isBlank()) {
             val remembered = ModuleUploadPrefs.lastUid()
-            if (remembered.isNotBlank()) updateUid(remembered)
+            val session = before.session?.takeIf { it.validAt(System.currentTimeMillis()) }
+            when {
+                session != null && session.uid == remembered && remembered.isNotBlank() -> {
+                    _formState.update {
+                        it.copy(
+                            uid = remembered,
+                            uidState = CoolapkUidState.Verified(session.nickname),
+                        )
+                    }
+                }
+
+                remembered.isNotBlank() -> updateUid(remembered)
+            }
         }
         _step.value = UploadStep.FORM
         checkManual(unique.values.toList())
@@ -451,8 +480,18 @@ class ModuleUploadViewModel(
             state.copy(
                 items = remaining,
                 totalBytes = remaining.sumOf { it.sizeBytes },
+                // 删掉的正是墙上那一枚：回落到剩下的第一枚，否则墙会停在不存在的那一枚上。
+                selectedPath = state.selectedPath?.takeIf { it != path && remaining.any { item -> item.path == it } }
+                    ?: remaining.firstOrNull()?.path,
                 outcome = state.outcome.keepUnlessSuccess(),
             )
+        }
+    }
+
+    /** 图标墙上点了另一枚：只换「正在编辑的是谁」，不动任何字段。 */
+    fun selectItem(path: String) {
+        _formState.update { state ->
+            if (state.items.none { it.path == path }) state else state.copy(selectedPath = path)
         }
     }
 
@@ -489,6 +528,21 @@ class ModuleUploadViewModel(
         lookupJob?.cancel()
         if (!ModuleContribution.isValidUid(cleaned)) {
             _formState.update { it.copy(uid = cleaned, uidState = CoolapkUidState.Empty) }
+            return
+        }
+        // 手里那张令牌绑的就是这个 UID：直接用令牌里那份身份，不再打一次 `/user`。
+        // 这一条不只是省一次请求 —— `/user` 走酷安反查，风控一抖就会把「已验证」
+        // 降级成「没核实成」，而令牌本身是服务端签发并仍有效的，比反查更可信。
+        val session = _formState.value.session?.takeIf {
+            it.validAt(System.currentTimeMillis()) && it.uid == cleaned
+        }
+        if (session != null) {
+            _formState.update {
+                it.copy(
+                    uid = cleaned,
+                    uidState = CoolapkUidState.Verified(session.nickname),
+                )
+            }
             return
         }
         _formState.update { it.copy(uid = cleaned, uidState = CoolapkUidState.Checking) }
@@ -541,6 +595,90 @@ class ModuleUploadViewModel(
     fun consumeNotice() {
         _formState.update { it.copy(notice = null) }
     }
+
+    // ── 长期令牌（九十天免改签名）────────────────────────────────────────────
+
+    /**
+     * 进页面时读本地那一张令牌，并顺手问一次服务端它还在不在。
+     *
+     * 两步都是「只升不降」：
+     * - 本地读到就直接放进状态（`validAt` 已经滤掉到期/坏掉的），界面立刻是「已验证」；
+     * - 服务端那一次问出结果、且拿回的 uid 与本地一致，就用服务端那份（昵称/头像/到期时刻
+     *   都可能是九十天里改过的）；**问不出来什么都不改** —— 网络抖一次不该把用户的便利抹掉。
+     */
+    fun refreshSession() {
+        val stored = ModuleUploadPrefs.readSession()
+        if (stored == null) {
+            _formState.update { it.copy(session = null, sessionChecking = false) }
+            return
+        }
+        _formState.update { it.copy(session = stored, sessionChecking = true) }
+        sessionJob?.cancel()
+        sessionJob = viewModelScope.launch {
+            val fresh = try {
+                ModuleContribution.checkSession(stored.token)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                null
+            }
+            if (fresh == null) {
+                // 没问出来：保留本地那份（它自己会按 expiresAt 到期），只是不再显示「核实中」。
+                _formState.update { it.copy(sessionChecking = false) }
+                return@launch
+            }
+            // 服务端换了身份（同一张令牌绑的 uid 变了，理论上不会发生）：以服务端为准。
+            ModuleUploadPrefs.writeSession(fresh)
+            _formState.update { it.copy(session = fresh, sessionChecking = false) }
+        }
+    }
+
+    /**
+     * 「退出验证」：本地抹掉 + 吊销服务端那一张。
+     *
+     * 本地先抹、再发吊销（顺序不能反）：吊销请求可能因为网络挂很久，而用户的意图是
+     * 「这台设备立刻不再记住我」—— 界面必须马上回到「要改签名」那条路。
+     */
+    fun signOut() {
+        val current = _formState.value
+        val token = current.session?.token
+        ModuleUploadPrefs.clearSession()
+        _formState.update { it.copy(session = null, sessionChecking = false, confirmedSetKey = null) }
+        // 令牌没了，「已验证」这个结论也就没有依据了：那条捷径（updateUid 里跳过 /user 的分支）
+        // 是照着会话写的，会话一没就必须回到「重新核实」。否则界面会一直显示「已验证」，
+        // 而提交判据其实已经要求改签名 —— 说的人和做的人对不上。
+        if (current.uid.isNotBlank()) updateUid(current.uid)
+        if (token.isNullOrBlank()) return
+        viewModelScope.launch {
+            runCatching { ModuleContribution.revokeSession(token) }
+        }
+    }
+
+    /**
+     * 把服务端这一趟签发的令牌收进状态与磁盘。
+     *
+     * 三态（见 [BatchSubmitResult.session]）：null = 没签，保持原样；合法 = 换上新的
+     * （有旧的就在旧的基础上续，身份沿用）；脏数据已经在网络层被滤成 null。
+     */
+    private fun adoptGrant(grant: SessionGrant?) {
+        if (grant == null) return
+        val current = _formState.value
+        val uid = current.uid.trim()
+        val base = current.session?.takeIf { it.uid == uid }
+            ?: UploadSession(
+                token = grant.token,
+                uid = uid,
+                nickname = current.nickname,
+                avatar = "",
+                expiresAt = grant.expiresAt,
+            )
+        val next = base.renewed(grant)
+        if (!next.wellFormed) return
+        ModuleUploadPrefs.writeSession(next)
+        _formState.update { it.copy(session = next) }
+    }
+
+    private var sessionJob: Job? = null
 
     /**
      * 回到列表；表单内容保留，用户再挑一个包时接着上一批。
@@ -617,6 +755,9 @@ class ModuleUploadViewModel(
                 nonce = snapshot.nonce,
                 turnstileToken = token,
                 limits = limits,
+                // 只有「令牌绑的 UID 就是这次提交的 UID」才带上：换了号还带着旧令牌，
+                // 服务端会按「签名里没有本次口令」拒，而用户完全看不出为什么。
+                sessionToken = snapshot.session?.takeIf { snapshot.sessionMatchesUid }?.token,
             )
 
             applySubmitResult(result, snapshot.nonce, generation)
@@ -631,6 +772,9 @@ class ModuleUploadViewModel(
         if (generation != submitGeneration) return
         if (result.ok) {
             val count = result.modules.size
+            // 服务端这一次可能签了一张新令牌（只有真过了一遍签名核对才会签）。
+            // 手里已经有一张就换上新的（续期），没有就按这一次核实到的身份建一张。
+            adoptGrant(result.session)
             // 成功这一批留在屏幕上（用户要能对照自己投了哪几枚），但 outcome 是 Success
             // 之后 canSubmit 恒为 false：改出处、改 UID 都不会再放出一次提交。
             // 文件等「下一批」或离开路由时再删（见 addToForm / onCleared）。
@@ -685,6 +829,7 @@ class ModuleUploadViewModel(
      * 不在这里删，就只能等 6 小时后的 `cleanupStale()`。
      */
     override fun onCleared() {
+        sessionJob?.cancel()
         _formState.value.items.forEach { item -> File(item.path).delete() }
         super.onCleared()
     }

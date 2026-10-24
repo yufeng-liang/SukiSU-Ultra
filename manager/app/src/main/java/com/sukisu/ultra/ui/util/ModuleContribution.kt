@@ -111,8 +111,13 @@ data class SubmitResult(
  * 也就没有可提交的署名 —— 与"没查成"一样不放行，但原因不同。
  */
 sealed interface CoolapkUidLookup {
-    /** 酷安返回了这个 UID 的昵称。唯一允许提交的状态。 */
-    data class Verified(val nickname: String) : CoolapkUidLookup
+    /**
+     * 酷安返回了这个 UID 的昵称。唯一允许提交的状态。
+     *
+     * [avatar] 是酷安头像的 http(s) 地址，可能为空（酷安没给、或不是 http(s)）。
+     * 它只是界面装饰：为空时界面不画头像，任何判据都不看它。
+     */
+    data class Verified(val nickname: String, val avatar: String = "") : CoolapkUidLookup
 
     /** 酷安明确说没有这个用户。 */
     object NotFound : CoolapkUidLookup
@@ -205,6 +210,13 @@ object ModuleContribution {
     const val CLIENT_TIMEOUT_CODE = "client_timeout"
 
     private val PROOF_NONCE_RE = Regex("^[a-z0-9]{6}$")
+
+    /**
+     * 长期令牌的形状：64 位小写十六进制，与 Worker `newSessionToken()` 生成的同一形状。
+     *
+     * 形状不对的一串**不发出去**（服务端会当没带、回落签名路），也不往本地存。
+     */
+    internal val SESSION_TOKEN_RE = Regex("^[0-9a-f]{64}$")
 
     /**
      * 合法模块 id 的形状：字母开头，之后只允许字母、数字、点、下划线、连字符。
@@ -359,23 +371,30 @@ object ModuleContribution {
         nonce: String,
         turnstileToken: String?,
         limits: BatchLimits?,
+        sessionToken: String? = null,
     ): BatchSubmitResult {
         val safeUid = uid.trim()
         val safeNickname = nickname.trim()
         val safeNonce = nonce.trim()
+        // 令牌只在形状对时才发出去：形状不对的一串服务端会当没带（回落签名路），
+        // 白白让用户以为「我已经验证过了」，而界面那一侧已经按令牌把签名格收起来了。
+        val safeSession = sessionToken?.trim()?.takeIf { SESSION_TOKEN_RE.matches(it) }.orEmpty()
         if (!isValidUid(safeUid)) {
             return BatchSubmitResult(false, null, emptyList(), "酷安 UID 必须是 4~12 位数字")
         }
         if (safeNickname.isEmpty()) {
             return BatchSubmitResult(false, null, emptyList(), "酷安 UID 未核实，拿不到署名")
         }
-        if (!PROOF_NONCE_RE.matches(safeNonce)) {
+        // 带令牌时 nonce 可以不在形状内：服务端同一处判据是
+        // `if (!PROOF_NONCE_RE.test(nonce) && sessionToken === '')` —— 令牌这条路不比对签名，
+        // 也就没有 nonce 可比。空串仍然要过形状（那是签名路的判据）。
+        if (safeSession.isEmpty() && !PROOF_NONCE_RE.matches(safeNonce)) {
             return BatchSubmitResult(false, null, emptyList(), "口令随机段格式不对（应为 6 位小写字母数字）")
         }
         // 本地四闸与形状检查只留一份实现：界面上的 canSubmit 只是提前拦，
         // 真正发请求前再用同一条规则核对一次（文件可能在这期间被删/被改）。
         // 这一步要 stat N 个文件，放在 IO 上做。
-        val body = buildBatchBody(modules, safeNickname, safeUid, safeNonce)
+        val body = buildBatchBody(modules, safeNickname, safeUid, safeNonce, safeSession)
         val url = BASE_URL.trimEnd('/') + "/submit"
         val builder = Request.Builder().url(url).post(body)
         val token = turnstileToken?.trim().orEmpty()
@@ -434,6 +453,7 @@ object ModuleContribution {
         uploader: String,
         uid: String,
         nonce: String,
+        sessionToken: String = "",
     ): MultipartBody = MultipartBody.Builder()
         .setType(MultipartBody.FORM)
         .addFormDataPart("manifest", ContributionBatch.buildManifestJson(modules))
@@ -441,6 +461,10 @@ object ModuleContribution {
         .addFormDataPart("coolapkUid", uid)
         .addFormDataPart("pledge", PLEDGE_VERSION)
         .addFormDataPart("nonce", nonce)
+        // 令牌恒发一个 part（空串也要发）：服务端读的是 `fields.session`，
+        // 「字段不在」与「字段是空串」在它那里是同一件事，但少发一个 part 会让
+        // multipart 的形状随登录状态变化 —— 契约上共享字段恒在顶层更省事。
+        .addFormDataPart("session", sessionToken)
         .apply {
             for (module in modules) {
                 addFormDataPart(
@@ -500,7 +524,23 @@ object ModuleContribution {
             prUrl = json.optString("pr").takeIf { it.isNotBlank() },
             modules = submitted,
             message = "",
+            session = readSessionGrant(json.optJSONObject("session")),
         )
+    }
+
+    /**
+     * 应答里的 `session` 三态：没有键 / 是 null ⇒ `null`（没签）；
+     * 有键且形状合法 ⇒ [SessionGrant]；有键但形状不对 ⇒ 也回 `null`。
+     *
+     * 「形状不对就当没签」是故意的：脏数据不能顶掉本地那张好令牌。
+     * 服务端那一侧 `expiresAt` 是毫秒时间戳；不是正数就当没签。
+     */
+    private fun readSessionGrant(json: JSONObject?): SessionGrant? {
+        if (json == null) return null
+        val token = json.optString("token").trim()
+        val expiresAt = json.optLong("expiresAt", 0L)
+        if (!SESSION_TOKEN_RE.matches(token) || expiresAt <= 0L) return null
+        return SessionGrant(token = token, expiresAt = expiresAt)
     }
 
     private fun describeUpload(error: Throwable): String = when (error) {
@@ -629,6 +669,87 @@ object ModuleContribution {
         runCatching { ksuApp.okhttpClient }.getOrElse { OkHttpClient() }
 
     /**
+     * 问服务端「这张长期令牌还在不在」，并拿回它绑的那份身份。
+     *
+     * 服务端承诺**恒 HTTP 200**（`{ok:true, uid, nickname, avatar, level, expiresAt}` 或
+     * `{ok:false, error}`）：一个「查自己的令牌还在不在」的请求回 401 只会让界面弹
+     * 「登录已过期」，而真正的语义是「这张失效了，去重新验证一次」。
+     *
+     * 任何失败（网络、超时、非 JSON、形状不对）都返回 null，**不抛异常**：调用点在
+     * 界面初始化里，抛出去就是一次崩溃。返回 null 的语义是「这一趟没问出来」——
+     * 调用方**不要**因此抹掉本地那张令牌，它可能只是这次没连上。
+     */
+    suspend fun checkSession(token: String): UploadSession? {
+        val safeToken = token.trim()
+        if (!SESSION_TOKEN_RE.matches(safeToken)) return null
+        val body = JSONObject().put("token", safeToken).toString().toRequestBody(JSON_MEDIA_TYPE)
+        val url = BASE_URL.trimEnd('/') + "/session/check"
+        return withContext(Dispatchers.IO) {
+            val call = runCatching {
+                client().newCall(Request.Builder().url(url).post(body).build())
+            }.getOrNull() ?: return@withContext null
+            try {
+                withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response ->
+                    readSessionCheck(response, safeToken)
+                }
+            } catch (e: CancellationException) {
+                if (e is TimeoutCancellationException) null else throw e
+            } catch (e: Throwable) {
+                null
+            }
+        }
+    }
+
+    /**
+     * 吊销服务端那一张令牌（「退出验证」用）。
+     *
+     * 服务端是**幂等**的：形状不对、压根没有这张、已经吊销过 —— 全都回 `{ok:true}`，
+     * 所以这个端点不会变成一个「猜中即证实」的探测器。因此这里也不区分成败：
+     * 网络不通时本地那份照样抹掉（用户的意图是「这台设备不再记住我」，服务端那张
+     * 九十天后自己过期，留着它不会让本地重新变成已验证）。
+     */
+    suspend fun revokeSession(token: String) {
+        val safeToken = token.trim()
+        if (!SESSION_TOKEN_RE.matches(safeToken)) return
+        val body = JSONObject().put("token", safeToken).toString().toRequestBody(JSON_MEDIA_TYPE)
+        val url = BASE_URL.trimEnd('/') + "/session/revoke"
+        withContext(Dispatchers.IO) {
+            val call = runCatching {
+                client().newCall(Request.Builder().url(url).post(body).build())
+            }.getOrNull() ?: return@withContext
+            runCatching {
+                withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { it.body.string() }
+            }
+            Unit
+        }
+    }
+
+    /**
+     * `/session/check` 的应答解析。
+     *
+     * `ok:false` 与「形状不对」都回 null，但两者的含义不同：前者是服务端**明确**说这张
+     * 令牌失效了（界面该抹掉本地那份、请用户重新验证），后者是应答脏了（当成「没问出来」）。
+     * 这个区别由调用方按 `null` 统一处理为「不抹」，宁可在服务端真失效时多走一次签名路，
+     * 也不要因为一次脏应答把用户九十天的便利抹掉。
+     */
+    private fun readSessionCheck(response: Response, token: String): UploadSession? {
+        if (!response.isSuccessful) return null
+        val text = runCatching { response.body.string() }.getOrNull() ?: return null
+        val json = runCatching { JSONObject(text) }.getOrNull() ?: return null
+        if (!json.optBoolean("ok", false)) return null
+        val uid = json.optString("uid").trim()
+        val expiresAt = json.optLong("expiresAt", 0L)
+        if (uid.isEmpty() || expiresAt <= 0L) return null
+        return UploadSession(
+            token = token,
+            uid = uid,
+            nickname = json.optString("nickname").trim(),
+            avatar = json.optString("avatar").trim(),
+            expiresAt = expiresAt,
+        ).takeIf { it.wellFormed }
+    }
+
+    /**
      * 阻塞式执行；不能是 `suspend`，否则 [withTimeout] 打断不掉已经开始读响应的请求。
      *
      * 两层超时：OkHttp 的 [okhttp3.Call.timeout] 负责掐断 socket（连接上了但服务端不回话，
@@ -671,7 +792,17 @@ object ModuleContribution {
         return when (json.optString("status").trim().lowercase(Locale.ROOT)) {
             "verified" -> json.optString("nickname").trim()
                 .takeIf { it.isNotEmpty() }
-                ?.let { CoolapkUidLookup.Verified(it) }
+                ?.let { nickname ->
+                    // 头像只在 http(s) 时才收（与 Worker 侧 `classifyCoolapkUser` 同一条）：
+                    // 把 `javascript:` 之类塞进图片加载器没有任何好处。
+                    val avatar = json.optString("avatar").trim()
+                    CoolapkUidLookup.Verified(
+                        nickname = nickname,
+                        avatar = avatar.takeIf {
+                            it.startsWith("http://", true) || it.startsWith("https://", true)
+                        }.orEmpty(),
+                    )
+                }
                 ?: CoolapkUidLookup.Unavailable
 
             "not_found" -> CoolapkUidLookup.NotFound

@@ -122,8 +122,12 @@ sealed interface CoolapkUidState {
     /** 正在核实（输入停止后的防抖已结束，请求在路上）。 */
     object Checking : CoolapkUidState
 
-    /** 核实通过：酷安返回了这个 UID 的昵称。**唯一允许提交的状态**。 */
-    data class Verified(val nickname: String) : CoolapkUidState
+    /**
+     * 核实通过：酷安返回了这个 UID 的昵称。**唯一允许提交的状态**。
+     *
+     * [avatar] 只是界面装饰（酷安头像地址，可能为空），不参与任何判据。
+     */
+    data class Verified(val nickname: String, val avatar: String = "") : CoolapkUidState
 
     /** 酷安明确说没有这个用户。 */
     object NotFound : CoolapkUidState
@@ -137,7 +141,7 @@ sealed interface CoolapkUidState {
 
 /** 网络层结果 → 界面状态。 */
 fun CoolapkUidLookup.toState(): CoolapkUidState = when (this) {
-    is CoolapkUidLookup.Verified -> CoolapkUidState.Verified(nickname)
+    is CoolapkUidLookup.Verified -> CoolapkUidState.Verified(nickname, avatar)
     CoolapkUidLookup.NotFound -> CoolapkUidState.NotFound
     CoolapkUidLookup.SelfReported -> CoolapkUidState.SelfReported
     CoolapkUidLookup.Unavailable -> CoolapkUidState.Unavailable

@@ -235,10 +235,18 @@ object ModuleUploadRules {
      * 提交按钮的唯一判据。
      *
      * 六道门缺一不可：每个包都有 sha、UID 核实通过、每个包都有合法出处、勾了确认、
-     * 签名里的口令与当前集合一致、当前不在提交中。
+     * 「身份这一关」过了、当前不在提交中。
      *
-     * 最后一条用「签名与当前集合一致」而不是「用户勾过复选框」：集合在勾选之后又变了的话，
+     * 第五条是 `signatureValid || sessionActive` 二选一，不是两道都要：
+     * - 手里有**有效的长期令牌**（[sessionActive]）：服务端认这张令牌，这一次不用改签名，
+     *   所以 `signatureValid` 恒为假也不影响放行；
+     * - 没有令牌：只能走「改签名 + 勾选确认」那条路，判据回到「签名与当前集合一致」。
+     *
+     * 为什么签名那条用「与当前集合一致」而不是「用户勾过复选框」：集合在勾选之后又变了的话，
      * 酷安签名里那串已经不匹配，放行只会换来一次 403 和一次白上传。
+     *
+     * 令牌这条路也**不是免检**：它只是把「每次改签名」换成「九十天一次」，令牌本身仍由
+     * 服务端每次提交时核对（KV 里只存它的 sha256，且可以被吊销）。
      */
     fun canSubmit(
         items: List<UploadZip>,
@@ -247,12 +255,13 @@ object ModuleUploadRules {
         signatureValid: Boolean,
         submitting: Boolean,
         limitProblem: LimitProblem,
+        sessionActive: Boolean = false,
     ): Boolean = items.isNotEmpty() &&
         !submitting &&
         limitProblem == LimitProblem.NONE &&
         uidVerified &&
         consent &&
-        signatureValid &&
+        (signatureValid || sessionActive) &&
         proofReady(items) &&
         // 手选包的收录状态查完再放行：正在查时别让用户抢在结果前面提交；
         // 已经收录的那一版不再重复投（要换内容走下架/更新那条路，不在本屏）。
