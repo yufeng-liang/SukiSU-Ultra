@@ -204,8 +204,11 @@ class ContributionBatchTest {
 
     @Test
     fun `error copy maps stable codes and falls back to status`() {
+        // 用户可见文案里不再有「口令」这个词：它对用户没有意义（用户改的是酷安签名），
+        // 而同一屏里其它文案（module_upload_proof_*）一律说「签名」，两种叫法并存会让
+        // 用户以为要改的是两个地方。断言跟着改，语义（哪个 code 映射到哪句）不变。
         assertEquals(
-            "这串口令已经被用过；已换了一串新的，请把新口令重新写进签名后提交。",
+            "这串酷安签名已经被用过；已换了一串新的，请把新的写进酷安签名后提交。",
             ContributionBatch.errorCopy(403, "proof_used", null),
         )
         assertTrue(ContributionBatch.errorCopy(413, "zip_too_large", null).contains("单枚上限"))

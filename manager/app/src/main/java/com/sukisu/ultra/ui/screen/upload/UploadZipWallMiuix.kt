@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -35,18 +36,26 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.util.CheckStatus
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import kotlin.math.roundToInt
 
 /** 一枚 zip 在墙上占的宽度。72dp 是「一眼认得出图标、又能在窄屏上并排看到三枚」的折中。 */
 private val TILE_WIDTH = 72.dp
+
+/** 墙的宽度：正好三枚 + 两段 10dp 间距 + 两侧 4dp 内边距再留点余量。 */
+private val WALL_WIDTH = TILE_WIDTH * 3 + 40.dp
 
 /**
  * Miuix 风格的 zip 图标墙：这一批里每一枚一张图标卡，横向可滑、点哪张编辑哪张。
  *
  * 舞台感由三件事给出来 —— 选中的那张不缩放、不透明、描一圈主色边；两侧的缩到 0.9、
- * 压到六成不透明；选中变化时自动把这枚滚到中间。这样「中间放大、两边缩小」不需要
- * 嵌套一个 Pager，也就没有横滑手势和外面 LazyColumn 竖滑打架的问题。
+ * 压到六成不透明；选中变化时自动把这枚尽量滚到中间（列表两端没那么多余量时只能贴边）。
+ * 这样「中间放大、两边缩小」不需要嵌套一个 Pager，也就没有横滑手势和外面 LazyColumn
+ * 竖滑打架的问题。
  *
  * 墙上不给「移除」：那是对当前枚的动作，放在下面详情卡上，避免小图标上再挤一个按钮。
+ *
+ * 一枚都没有时照样画墙，只画末尾那个「添加」空位 —— 它是全页唯一的加包入口，
+ * 墙一旦整体不渲染，删掉最后一枚就把自己关在了外面。
  */
 @Composable
 fun UploadZipWallMiuix(
@@ -56,16 +65,21 @@ fun UploadZipWallMiuix(
     onSelect: (String) -> Unit,
     onPickMore: () -> Unit,
 ) {
-    if (items.isEmpty()) return
     val listState = rememberLazyListState()
-    // 选中变化（点别的、或删掉当前这枚）时把那一枚滚到中间，不然「放大的那张」可能在屏幕外。
-    LaunchedEffect(selectedPath, items.size) {
+    // 居中所需的像素偏移：把选中那枚的左边推到 (墙宽 - 枚宽) / 2 处，它自己就落在墙心。
+    // 写成绝对值而不是读 layoutInfo，是因为墙宽由下面的 modifier 钉死了，不依赖首帧布局。
+    val centerOffsetPx = with(LocalDensity.current) { ((WALL_WIDTH - TILE_WIDTH) / 2).toPx() }
+    // 只在换选中项时滚：追加新包（items 变了但选中的还是那一枚）不该把正在浏览的人拽回来。
+    LaunchedEffect(selectedPath) {
         val index = items.indexOfFirst { it.path == selectedPath }
-        if (index >= 0) listState.animateScrollToItem(index)
+        if (index < 0) return@LaunchedEffect
+        // scrollOffset 为负 = 该枚左边落在视口起点右侧，即留出居中所需的空白。
+        // 靠近两端时列表没那么多余量，系统会贴边停下，不会抛。
+        listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx.roundToInt())
     }
     LazyRow(
         state = listState,
-        modifier = Modifier.width(TILE_WIDTH * 3 + 20.dp + 20.dp),
+        modifier = Modifier.width(WALL_WIDTH),
         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {

@@ -130,6 +130,31 @@ sealed interface CoolapkUidLookup {
 }
 
 /**
+ * 「这张长期令牌还在不在」的三态。
+ *
+ * 三态必须分开，不能压成 `UploadSession?`：
+ * - [Valid]：服务端确认这张还能用，并回了一份身份 —— 换上它、写回磁盘；
+ * - [Invalid]：服务端**明确**说这张失效了（`{ok:false}`），或者本地这串形状就不对
+ *   （形状不对的令牌永远不可能有效，问服务端只会变成一次「猜中即证实」的探测）——
+ *   本地必须抹掉。压成 null 的话 `sessionActive` 仍为真、签名区整段收起，
+ *   提交必被服务端 403 拒，而错误文案要求用户去改的那个口令界面根本没显示；
+ * - [Unavailable]：网络失败、超时、非 2xx、脏应答 —— **什么都不该改**：
+ *   网络抖一次不该把用户九十天的便利抹掉，宁可下次再问。
+ *
+ * 这三个取值的差别就是旧实现（`ok:false` 与网络失败同一个 null 出口）的 P0。
+ */
+sealed interface SessionCheck {
+    /** 服务端确认有效，并回了一份可以直接写进本地与界面的身份。 */
+    data class Valid(val session: UploadSession) : SessionCheck
+
+    /** 服务端明确否认（或本地形状已坏）：本地那一份必须抹掉。 */
+    data object Invalid : SessionCheck
+
+    /** 这一趟没问出来：网络/超时/脏应答。什么都不改。 */
+    data object Unavailable : SessionCheck
+}
+
+/**
  * 模块投稿的网络层。
  *
  * 这个文件里的每个公开方法都**不抛异常**：网络不可达、超时、HTTP 非 2xx、
@@ -675,27 +700,30 @@ object ModuleContribution {
      * `{ok:false, error}`）：一个「查自己的令牌还在不在」的请求回 401 只会让界面弹
      * 「登录已过期」，而真正的语义是「这张失效了，去重新验证一次」。
      *
-     * 任何失败（网络、超时、非 JSON、形状不对）都返回 null，**不抛异常**：调用点在
-     * 界面初始化里，抛出去就是一次崩溃。返回 null 的语义是「这一趟没问出来」——
-     * 调用方**不要**因此抹掉本地那张令牌，它可能只是这次没连上。
+     * 返回值是 [SessionCheck] 三态，**不抛异常**：调用点在界面初始化里，抛出去就是一次崩溃。
+     * 「服务端说失效」（[SessionCheck.Invalid]）与「这一趟没问出来」
+     * （[SessionCheck.Unavailable]）必须分开 —— 前者要抹掉本地那份、请用户重新验证，
+     * 后者什么都不许改。旧实现把两者压成同一个 null，就是这一处 P0。
      */
-    suspend fun checkSession(token: String): UploadSession? {
+    suspend fun checkSession(token: String): SessionCheck {
         val safeToken = token.trim()
-        if (!SESSION_TOKEN_RE.matches(safeToken)) return null
+        // 形状不对的一串不发出去：它永远不可能有效，问一次只会把服务端变成一个
+        // 「猜中即证实」的探测器。本地这串已经坏了，按「明确失效」处理。
+        if (!SESSION_TOKEN_RE.matches(safeToken)) return SessionCheck.Invalid
         val body = JSONObject().put("token", safeToken).toString().toRequestBody(JSON_MEDIA_TYPE)
         val url = BASE_URL.trimEnd('/') + "/session/check"
         return withContext(Dispatchers.IO) {
             val call = runCatching {
                 client().newCall(Request.Builder().url(url).post(body).build())
-            }.getOrNull() ?: return@withContext null
+            }.getOrNull() ?: return@withContext SessionCheck.Unavailable
             try {
                 withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response ->
                     readSessionCheck(response, safeToken)
                 }
             } catch (e: CancellationException) {
-                if (e is TimeoutCancellationException) null else throw e
+                if (e is TimeoutCancellationException) SessionCheck.Unavailable else throw e
             } catch (e: Throwable) {
-                null
+                SessionCheck.Unavailable
             }
         }
     }
@@ -725,28 +753,36 @@ object ModuleContribution {
     }
 
     /**
-     * `/session/check` 的应答解析。
+     * `/session/check` 的应答解析：三种出口，一种都不许省。
      *
-     * `ok:false` 与「形状不对」都回 null，但两者的含义不同：前者是服务端**明确**说这张
-     * 令牌失效了（界面该抹掉本地那份、请用户重新验证），后者是应答脏了（当成「没问出来」）。
-     * 这个区别由调用方按 `null` 统一处理为「不抹」，宁可在服务端真失效时多走一次签名路，
-     * 也不要因为一次脏应答把用户九十天的便利抹掉。
+     * - `{ok:false}` ⇒ [SessionCheck.Invalid]：服务端**明确**说这张失效了，界面该抹掉本地
+     *   那份、请用户重新验证。这是唯一允许抹本地令牌的应答。
+     * - 非 2xx / 不是 JSON / `ok:true` 但字段缺失 ⇒ [SessionCheck.Unavailable]：服务端承诺
+     *   恒 200，走到这里说明部署版本不对或中间有劫持；字段缺失则是脏应答。两者都只能算
+     *   「这一趟没问出来」，绝不能借它抹掉用户九十天的便利。
+     * - 昵称为空 ⇒ 也按 [SessionCheck.Unavailable]：没有昵称就没有可署名的东西，
+     *   这种令牌顶掉「改签名」那一步之后，提交只会回一句「拿不到署名」，
+     *   用户完全看不出为什么（`canSubmit` 那条路只看 `uidVerified`）。
      */
-    private fun readSessionCheck(response: Response, token: String): UploadSession? {
-        if (!response.isSuccessful) return null
-        val text = runCatching { response.body.string() }.getOrNull() ?: return null
-        val json = runCatching { JSONObject(text) }.getOrNull() ?: return null
-        if (!json.optBoolean("ok", false)) return null
+    private fun readSessionCheck(response: Response, token: String): SessionCheck {
+        if (!response.isSuccessful) return SessionCheck.Unavailable
+        val text = runCatching { response.body.string() }.getOrNull()
+            ?: return SessionCheck.Unavailable
+        val json = runCatching { JSONObject(text) }.getOrNull() ?: return SessionCheck.Unavailable
+        if (!json.optBoolean("ok", false)) return SessionCheck.Invalid
         val uid = json.optString("uid").trim()
         val expiresAt = json.optLong("expiresAt", 0L)
-        if (uid.isEmpty() || expiresAt <= 0L) return null
-        return UploadSession(
+        if (uid.isEmpty() || expiresAt <= 0L) return SessionCheck.Unavailable
+        val nickname = json.optString("nickname").trim()
+        if (nickname.isEmpty()) return SessionCheck.Unavailable
+        val session = UploadSession(
             token = token,
             uid = uid,
-            nickname = json.optString("nickname").trim(),
+            nickname = nickname,
             avatar = json.optString("avatar").trim(),
             expiresAt = expiresAt,
-        ).takeIf { it.wellFormed }
+        )
+        return if (session.wellFormed) SessionCheck.Valid(session) else SessionCheck.Unavailable
     }
 
     /**

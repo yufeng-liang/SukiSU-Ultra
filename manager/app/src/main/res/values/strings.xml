@@ -1093,7 +1093,6 @@
     <string name="module_upload_checking">Checking…</string>
 
     <string name="module_upload_form_title">Upload modules</string>
-    <string name="module_upload_form_items_title">%1$d module(s) to upload</string>
     <string name="module_upload_wall_add">Add</string>
     <string name="module_upload_wall_editing">Editing %1$d / %2$d</string>
     <string name="module_upload_section_info">Module info</string>

@@ -1079,7 +1079,6 @@
     <string name="module_upload_checking">正在查询…</string>
 
     <string name="module_upload_form_title">上传模块</string>
-    <string name="module_upload_form_items_title">待上传 %1$d 个模块</string>
     <string name="module_upload_wall_add">添加</string>
     <string name="module_upload_wall_editing">正在编辑第 %1$d / %2$d 枚</string>
     <string name="module_upload_section_info">模块信息</string>

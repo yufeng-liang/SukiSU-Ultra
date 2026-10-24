@@ -19,12 +19,14 @@ import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ContributionBatch
 import com.sukisu.ultra.ui.util.CoolapkUidLookup
 import com.sukisu.ultra.ui.util.ModuleContribution
+import com.sukisu.ultra.ui.util.SessionCheck
 import com.sukisu.ultra.ui.util.SessionGrant
 import com.sukisu.ultra.ui.util.UploadSession
 import com.sukisu.ultra.ui.util.makeNonce
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -83,6 +85,7 @@ class ModuleUploadViewModel(
         entered = true
         // 令牌先读出来：用户一进表单就该看到「已验证」，不该等网络。
         refreshSession()
+        startSessionTicker()
         loadModules(thenCheck = true)
     }
 
@@ -614,22 +617,76 @@ class ModuleUploadViewModel(
         }
         _formState.update { it.copy(session = stored, sessionChecking = true) }
         sessionJob?.cancel()
+        // 这一趟的身份：退出/重开之后回来的旧结果一律不许落地（见 [signOut]）。
+        val epoch = ++sessionEpoch
         sessionJob = viewModelScope.launch {
-            val fresh = try {
+            val result = try {
                 ModuleContribution.checkSession(stored.token)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                null
+                SessionCheck.Unavailable
             }
-            if (fresh == null) {
-                // 没问出来：保留本地那份（它自己会按 expiresAt 到期），只是不再显示「核实中」。
-                _formState.update { it.copy(sessionChecking = false) }
-                return@launch
+            if (epoch != sessionEpoch) return@launch
+            when (result) {
+                is SessionCheck.Valid -> {
+                    // 服务端换了身份（同一张令牌绑的 uid 变了，理论上不会发生）：以服务端为准。
+                    ModuleUploadPrefs.writeSession(result.session)
+                    _formState.update {
+                        it.copy(session = result.session, sessionChecking = false)
+                    }
+                }
+
+                // 服务端**明确**说这张失效了（或本地这串形状已坏）：必须抹掉。
+                // 留着它就是这条链上的 P0 —— sessionActive 仍为真，签名区整段收起，
+                // 用户拿不到「要改签名」的界面，提交必被 403 拒。
+                SessionCheck.Invalid -> {
+                    ModuleUploadPrefs.clearSession()
+                    _formState.update {
+                        it.copy(
+                            session = null,
+                            sessionChecking = false,
+                            // 令牌没了，那串口令也没有依据了：勾选必须重新来。
+                            confirmedSetKey = null,
+                            // 「已验证」这个结论本来是照着令牌写的（见 updateUid 的会话捷径），
+                            // 令牌一没就必须回到「未核实」。这里**不**调 updateUid：那是用户
+                            // 主动改号才会走的路，它会白打一次 /user 反查，而这次是服务端
+                            // 说失效 —— 反查成功也救不回令牌，失败还会盖上一层「没查成」。
+                            uidState = if (it.uid.isBlank()) {
+                                it.uidState
+                            } else {
+                                CoolapkUidState.Empty
+                            },
+                            notice = res.getString(R.string.module_upload_session_expired),
+                        )
+                    }
+                }
+
+                // 没问出来（网络/超时/脏应答）：保留本地那份（它自己会按 expiresAt 到期），
+                // 只是不再显示「核实中」。网络抖一次不该把用户九十天的便利抹掉。
+                SessionCheck.Unavailable -> {
+                    _formState.update { it.copy(sessionChecking = false) }
+                }
             }
-            // 服务端换了身份（同一张令牌绑的 uid 变了，理论上不会发生）：以服务端为准。
-            ModuleUploadPrefs.writeSession(fresh)
-            _formState.update { it.copy(session = fresh, sessionChecking = false) }
+        }
+    }
+
+    /**
+     * 心跳：每 [SESSION_TICK_MS] 把 [ModuleUploadFormState.nowTick] 往前推一次。
+     *
+     * 存在的唯一理由见 `nowTick` 的注释：`sessionActive` 依赖「现在几点」，而时间流逝
+     * 本身不会触发重组。手里没有令牌时不动状态（不让整张表单每 30 秒白重组一次）。
+     */
+    private fun startSessionTicker() {
+        if (tickerJob?.isActive == true) return
+        tickerJob = viewModelScope.launch {
+            while (isActive) {
+                delay(SESSION_TICK_MS)
+                val now = System.currentTimeMillis()
+                _formState.update { state ->
+                    if (state.session == null) state else state.copy(nowTick = now)
+                }
+            }
         }
     }
 
@@ -642,15 +699,37 @@ class ModuleUploadViewModel(
     fun signOut() {
         val current = _formState.value
         val token = current.session?.token
+        // 在飞的那一次 /session/check 必须先掐掉，并把 epoch 推一格：它八秒后回来时
+        // 会无条件 writeSession + 把界面改回「已验证」，而服务端那张刚刚被吊销 ——
+        // 用户点的是「退出验证」，看到的却是自己又被验证了一遍。
+        sessionJob?.cancel()
+        sessionJob = null
+        sessionEpoch++
         ModuleUploadPrefs.clearSession()
-        _formState.update { it.copy(session = null, sessionChecking = false, confirmedSetKey = null) }
-        // 令牌没了，「已验证」这个结论也就没有依据了：那条捷径（updateUid 里跳过 /user 的分支）
-        // 是照着会话写的，会话一没就必须回到「重新核实」。否则界面会一直显示「已验证」，
-        // 而提交判据其实已经要求改签名 —— 说的人和做的人对不上。
-        if (current.uid.isNotBlank()) updateUid(current.uid)
+        _formState.update {
+            it.copy(
+                session = null,
+                sessionChecking = false,
+                confirmedSetKey = null,
+                // 令牌没了，「已验证」这个结论也就没有依据了：那条捷径（updateUid 里跳过
+                // /user 的分支）是照着会话写的，会话一没就必须回到「未核实」。否则界面会
+                // 一直显示「已验证」，而提交判据其实已经要求改签名 —— 说的人和做的人对不上。
+                //
+                // 这里**不**调 updateUid：那是「用户改了号」才会走的路，它会白打一次
+                // /user 反查（烧酷安风控配额），失败还会在「我主动退出」之后盖一层
+                // 「没查成」——语义完全对不上。UID 那串数字留在输入框里，用户想回来时
+                // 自己点重试即可。
+                uidState = if (it.uid.isBlank()) it.uidState else CoolapkUidState.Empty,
+            )
+        }
         if (token.isNullOrBlank()) return
+        // 吊销必须挂在 NonCancellable 上：这个协程原本属于 viewModelScope，用户点完
+        // 「退出验证」随手一返回，路由销毁 → 作用域取消 → 请求根本没发出去，而服务端
+        // 那张令牌会继续有效九十天。本地抹掉只解决这台设备，不解决那张令牌。
         viewModelScope.launch {
-            runCatching { ModuleContribution.revokeSession(token) }
+            withContext(NonCancellable) {
+                runCatching { ModuleContribution.revokeSession(token) }
+            }
         }
     }
 
@@ -679,6 +758,17 @@ class ModuleUploadViewModel(
     }
 
     private var sessionJob: Job? = null
+
+    /**
+     * 会话代次：每次 [refreshSession] 领一个号，[signOut] 把它推一格。
+     *
+     * 协程回来时号对不上就丢弃 —— 与 [submitGeneration] 同一个套路。没有它，
+     * 「进页面 → 八秒内点退出验证」就会让在飞的那次核实把令牌写回磁盘与界面。
+     */
+    private var sessionEpoch = 0
+
+    /** 心跳协程（见 [startSessionTicker]）。 */
+    private var tickerJob: Job? = null
 
     /**
      * 回到列表；表单内容保留，用户再挑一个包时接着上一批。
@@ -711,6 +801,15 @@ class ModuleUploadViewModel(
     fun submit(turnstile: TurnstileTokenProvider) {
         val snapshot = _formState.value
         val limits = _listState.value.limits
+        // 手里还攥着一张**已过期**的令牌：canSubmit 恒为 false（它只认 sessionMatchesUid），
+        // 静默 return 会让用户对着一个灰掉的按钮猜原因。这里明说一句。
+        // 正常情况下按钮本来就是禁用的，这条只在「点下去那一刻刚好跨过到期」时命中。
+        if (snapshot.session != null && !snapshot.sessionActive) {
+            _formState.update {
+                it.copy(notice = res.getString(R.string.module_upload_session_expired_submit))
+            }
+            return
+        }
         if (!snapshot.canSubmit(limits) || snapshot.submitting) return
         // 每次提交领一个号：结果回来时如果这一批已经不是当时那一批，就不许写进界面。
         val generation = ++submitGeneration
@@ -830,6 +929,7 @@ class ModuleUploadViewModel(
      */
     override fun onCleared() {
         sessionJob?.cancel()
+        tickerJob?.cancel()
         _formState.value.items.forEach { item -> File(item.path).delete() }
         super.onCleared()
     }
@@ -839,6 +939,15 @@ class ModuleUploadViewModel(
     private companion object {
         /** 与旧投稿对话框一致：输入停止 500ms 后再核实 UID。 */
         const val UID_DEBOUNCE_MS = 500L
+
+        /**
+         * 会话心跳间隔：30 秒。
+         *
+         * 令牌余量是 60 秒（`UploadSession.VALIDITY_SKEW_MS`），所以最坏情况下界面比
+         * 真实到期时刻晚 30 秒才翻成「要改签名」—— 而余量本来就留了一分钟，这个滞后
+         * 不会让任何一次提交越过服务端判据。再密一点只是白白重组。
+         */
+        const val SESSION_TICK_MS = 30_000L
 
         /** Worker used-nonce 分支的机器可读码（与旧入口同一条约定）。 */
         const val PROOF_USED_CODE = "proof_used"

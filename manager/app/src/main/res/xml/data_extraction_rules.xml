@@ -4,16 +4,18 @@
    for details.
 -->
 <data-extraction-rules>
-    <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
-    </cloud-backup>
     <!--
+   SukiSU：云备份与换机传输**两者都要**排除会话令牌那一份 sharedpref。
+   Android 12+ 只认本文件（backup_rules.xml 在这台版本上被忽略），所以两条规则
+   少写一条就等于少堵一个出口：云备份堵了、换机传输照样把凭据拷到新设备。
+
+   path 用相对 sharedpref 目录的文件名，与 ModuleUploadPrefs.PREFS_NAME 对应：
+   "module_upload_session" → module_upload_session.xml。
+-->
+    <cloud-backup>
+        <exclude domain="sharedpref" path="module_upload_session.xml"/>
+    </cloud-backup>
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="module_upload_session.xml"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

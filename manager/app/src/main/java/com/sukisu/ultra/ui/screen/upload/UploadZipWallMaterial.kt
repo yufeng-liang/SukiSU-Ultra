@@ -28,21 +28,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.util.CheckStatus
+import kotlin.math.roundToInt
 
 /** 与 Miuix 版同一个尺度，两套主题下墙的宽度和观感一致。 */
 private val TILE_WIDTH = 72.dp
 
+/** 墙的宽度：正好三枚 + 两段 10dp 间距 + 两侧 4dp 内边距再留点余量。 */
+private val WALL_WIDTH = TILE_WIDTH * 3 + 40.dp
+
 /**
  * Material 3 风格的 zip 图标墙，行为与 [UploadZipWallMiuix] 完全一致。
  *
- * 选中那张放大、描主色边、满不透明，两侧缩到 0.9 并压暗；选中变化自动滚到可见处。
- * 只在 LazyRow 里横向滑，不嵌套 Pager —— 外面是竖滑的 LazyColumn，两层手势不会打架。
+ * 选中那张放大、描主色边、满不透明，两侧缩到 0.9 并压暗；选中变化时自动把这枚
+ * 尽量滚到中间（列表两端没那么多余量时只能贴边）。只在 LazyRow 里横向滑，不嵌套
+ * Pager —— 外面是竖滑的 LazyColumn，两层手势不会打架。
+ *
+ * 一枚都没有时照样画墙，只画末尾那个「添加」空位 —— 它是全页唯一的加包入口。
  */
 @Composable
 fun UploadZipWallMaterial(
@@ -52,15 +60,16 @@ fun UploadZipWallMaterial(
     onSelect: (String) -> Unit,
     onPickMore: () -> Unit,
 ) {
-    if (items.isEmpty()) return
     val listState = rememberLazyListState()
-    LaunchedEffect(selectedPath, items.size) {
+    val centerOffsetPx = with(LocalDensity.current) { ((WALL_WIDTH - TILE_WIDTH) / 2).toPx() }
+    LaunchedEffect(selectedPath) {
         val index = items.indexOfFirst { it.path == selectedPath }
-        if (index >= 0) listState.animateScrollToItem(index)
+        if (index < 0) return@LaunchedEffect
+        listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx.roundToInt())
     }
     LazyRow(
         state = listState,
-        modifier = Modifier.width(TILE_WIDTH * 3 + 20.dp + 20.dp),
+        modifier = Modifier.width(WALL_WIDTH),
         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {

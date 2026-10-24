@@ -102,7 +102,15 @@ data class UploadSession(
     )
 
     private companion object {
-        val SESSION_TOKEN_RE = Regex("^[0-9a-f]{64}$")
+        /**
+         * 令牌形状只留一份实现：[com.sukisu.ultra.ui.util.ModuleContribution.SESSION_TOKEN_RE]。
+         *
+         * 这里曾经抄了第二条 `Regex("^[0-9a-f]{64}$")`。两条一模一样的正则不会立刻出错，
+         * 但它们的**用途**不同（这条判本地这份能不能用，那条判发不发给服务端），
+         * 服务端改形状时只改一处就会造出「本地认为合法、网络层认为该丢弃」的静默错位：
+         * 界面上写着「已验证」，请求里却没带令牌，用户拿到一次莫名的 403。
+         */
+        val SESSION_TOKEN_RE = ModuleContribution.SESSION_TOKEN_RE
 
         /** 到期前的余量：宁可早一分钟失效，也不要「界面说有效、服务端说没有」。 */
         const val VALIDITY_SKEW_MS = 60_000L
@@ -261,7 +269,8 @@ object ContributionBatch {
         "manifest_late" -> "上传清单没有排在最前面（客户端问题）；请更新 App 后重试。"
         "batch_incomplete" -> "服务端收到的包与清单对不上（少递、多递或重复）；请重新选择 zip 后重试。"
         "sha_mismatch" -> "有一个包在读取后变了，声明哈希与实算不一致；请重新选择这个包再提交。"
-        "proof_used" -> "这串口令已经被用过；已换了一串新的，请把新口令重新写进签名后提交。"
+        "proof_used" ->
+            "这串酷安签名已经被用过；已换了一串新的，请把新的写进酷安签名后提交。"
         else -> when {
             status == 429 -> "上传太频繁了，请稍后再试。"
             status >= 500 -> "服务端没能处理这次上传，可能是批量太大或临时故障；请拆小后重试。"

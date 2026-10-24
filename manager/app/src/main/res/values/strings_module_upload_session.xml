@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  模块上传：长期会话令牌（九十天免改签名）的两条失效文案。
+
+  单独成文件而不是塞进 strings.xml，是为了让这条链的文案与判据改动一起走、
+  也避免与 strings.xml 那条主干（翻译批量导入）互相冲突。
+  key 前缀 module_upload_session_ 与 strings.xml 里已有的三条同族。
+
+  注意：这两个 key 只许在这里出现一次。若 strings.xml 里也加了同名 key，
+  AAPT 会直接报重复资源、整个构建失败。
+-->
+<resources>
+    <!-- 服务端明确说令牌失效时的一次性提示（ViewModel.refreshSession 的 Invalid 分支）。
+         必须说清「要再改一次签名」：用户下一步唯一能做的事就是重走签名那条路。 -->
+    <string name="module_upload_session_expired">The saved verification is no longer valid. Update your Coolapk signature once more.</string>
+    <!-- 手里还攥着一张已过期令牌时点提交的提示（ViewModel.submit 的拦截）。
+         与上一条的差别是「已经过期」而非「服务端说失效」——都不带 error 细节，只说下一步。 -->
+    <string name="module_upload_session_expired_submit">The saved verification has expired. Update your Coolapk signature once more, then upload.</string>
+</resources>

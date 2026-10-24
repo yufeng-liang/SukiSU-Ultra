@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 模块上传：长期会话令牌的两条失效文案（中文）。key 与 values/ 同名，只此一处。 -->
+<resources>
+    <!-- 服务端明确说令牌失效时的一次性提示。 -->
+    <string name="module_upload_session_expired">上次的验证已失效，请重新改一次酷安签名</string>
+    <!-- 手里还攥着一张已过期令牌时点提交的提示。 -->
+    <string name="module_upload_session_expired_submit">上次的验证已经过期，请重新改一次酷安签名后再提交</string>
+</resources>

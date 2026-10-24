@@ -11,8 +11,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,13 +101,27 @@ fun VerifiedMark(
     modifier: Modifier = Modifier,
     size: Dp = 20.dp,
 ) {
+    // 为什么不能直接 targetValue = 1f：animateFloatAsState 没有 initialValue 参数
+    // （那是 animateValueAsState 的），它的初值恒等于首帧的 targetValue。所以写死 1f
+    // 时首帧就是终态，420ms/280ms 全白写。这里用「第一帧先给 0、下一帧才抬到 1」：
+    // 组合时 started = false ⇒ 目标 0 ⇒ Animatable 以 0 起步、什么都不画；LaunchedEffect
+    // 在首帧之后把 started 置 true ⇒ 目标变 1 ⇒ 从当前值 0 逐帧推到 1。
+    //
+    // 重播不用另加机制：VerifiedMark 只在 CoolapkUidState.Verified 那个 when 分支里被组合，
+    // 从别的状态切进 Verified 是另一处调用点 ⇒ 全新组合 ⇒ remember 重来 ⇒ 再从 0 播一遍。
+    //
+    // 系统关掉动画（ANIMATOR_DURATION_SCALE = 0）时，Compose 的 MotionDurationScale 会把
+    // 每帧 playTime 直接顶到动画总时长（已核对 doAnimationFrameWithScale 的字节码），
+    // 于是第一次推进就 isFinished ⇒ 直接落终态，不需要额外判断。
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { started = true }
     val ring by animateFloatAsState(
-        targetValue = 1f,
+        targetValue = if (started) 1f else 0f,
         animationSpec = tween(durationMillis = 420, easing = LinearEasing),
         label = "verifiedRing",
     )
     val tick by animateFloatAsState(
-        targetValue = 1f,
+        targetValue = if (started) 1f else 0f,
         animationSpec = tween(durationMillis = 280, delayMillis = 140, easing = LinearEasing),
         label = "verifiedTick",
     )

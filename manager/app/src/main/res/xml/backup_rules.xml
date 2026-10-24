@@ -7,6 +7,19 @@
 -->
 <full-backup-content>
     <!--
+   SukiSU：只排除**会话令牌**那一份 sharedpref（ModuleUploadPrefs.PREFS_NAME =
+   "module_upload_session"）。它存的是九十天有效的凭据 —— 服务端 KV 里只有它的
+   sha256，拿到原文就能冒充这个酷安 UID 投稿；而自动备份会把它拷进云端/换机传输，
+   等于让「这台设备已验证」变成「任何恢复过这份备份的设备都验证过」。
+
+   备份规则只能按文件粒度排除（Android 不支持按 key 排除），所以令牌被单独放进
+   一份 prefs 文件（见 ModuleUploadPrefs 文件头）。这里**不能**整份排除 settings.xml：
+   里面还有 WebDAV 配置、主题、各种开关，一起丢会让用户换机后重新配置一切。
+
+   下面两条注释是模板示例，留着只是方便以后加别的规则时对照格式。
+-->
+    <exclude domain="sharedpref" path="module_upload_session.xml"/>
+    <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>
 -->

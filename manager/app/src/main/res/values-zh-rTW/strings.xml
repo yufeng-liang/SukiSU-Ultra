@@ -741,7 +741,8 @@
     <string name="module_upload_checking">正在查詢…</string>
 
     <string name="module_upload_form_title">上傳模組</string>
-    <string name="module_upload_form_items_title">待上傳 %1$d 個模組</string>
+    <string name="module_upload_wall_add">新增</string>
+    <string name="module_upload_wall_editing">正在編輯第 %1$d / %2$d 枚</string>
     <string name="module_upload_section_info">模組資訊</string>
     <string name="module_upload_section_source">出處</string>
     <string name="module_upload_section_identity">上傳者</string>
@@ -757,6 +758,9 @@
     <string name="module_upload_uid_hint">個人主頁連結末尾那串數字（coolapk.com/u/…）</string>
     <string name="module_upload_uid_checking">正在核實…</string>
     <string name="module_upload_uid_verified">將以 %1$s 署名</string>
+    <string name="module_upload_session_checking">正在確認上次的驗證…</string>
+    <string name="module_upload_session_hint">90 天內再投稿不用改簽名。換帳號請點右邊。</string>
+    <string name="module_upload_session_signout">退出驗證</string>
     <string name="module_upload_uid_not_found">酷安查無此人，請核對 UID</string>
     <string name="module_upload_uid_invalid">需要 4~12 位數字</string>
     <string name="module_upload_uid_unavailable">暫時無法核實（酷安不可達）</string>
@@ -765,17 +769,17 @@
     <string name="module_upload_uid_level_hint">酷安帳號等級需達到 Lv2 或以上</string>
     <string name="module_upload_consent">我已知曉：上傳的檔案會被公開儲存，任何人都可以下載；檔案不含個人隱私與金鑰；我是這些模組的作者或已獲得授權。</string>
     <string name="module_upload_consent_required">請先勾選確認</string>
-    <string name="module_upload_proof_title">上傳口令（整批只用這一串）</string>
+    <string name="module_upload_proof_title">酷安簽名（整批只用這一串）</string>
     <string name="module_upload_proof_copy">複製</string>
     <string name="module_upload_proof_hint">開啟酷安「我的 &gt; 編輯資料 &gt; 簽名」，填入這串後儲存，再回來勾選下面的確認。它涵蓋這一批裡的每個模組：換一批、換包或換模組 ID 都會得到另一串。</string>
     <string name="module_upload_proof_pending">正在讀取選中的 zip…</string>
     <string name="module_upload_proof_confirm">我已寫進簽名</string>
-    <string name="module_upload_proof_changed">集合變了，口令要重抄</string>
-    <string name="module_upload_proof_rotated">這串口令已經用過，已換新。請把新的一串重新寫進簽名。</string>
+    <string name="module_upload_proof_changed">集合變了，簽名要重抄</string>
+    <string name="module_upload_proof_rotated">這串已經用過，已換新。請把新的一串重新寫進酷安簽名。</string>
     <string name="module_upload_submit">上傳</string>
     <string name="module_upload_submitting">正在上傳…</string>
     <string name="module_upload_submitting_bytes">正在上傳 %1$d 個模組，共 %2$s</string>
-    <string name="module_upload_submit_timeout">上傳逾時。口令沒有消耗，可以用同一串重試；若提示口令已用過，App 會換一串。</string>
+    <string name="module_upload_submit_timeout">上傳逾時。這串簽名沒有消耗，可以用同一串重試；若提示已經用過，App 會換一串。</string>
     <string name="module_upload_submit_success">已上傳，等待審核</string>
     <string name="module_upload_submit_success_count">已上傳 %1$d 枚，等待審核</string>
     <string name="module_upload_result_pr">PR：%1$s</string>

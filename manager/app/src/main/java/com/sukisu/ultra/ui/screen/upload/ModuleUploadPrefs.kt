@@ -13,8 +13,34 @@ import com.sukisu.ultra.ui.util.UploadSession
  *
  * key 与读写单独放出来，和 [com.sukisu.ultra.data.repository.ModuleContributionPrefs]
  * 同一个理由：key 一改名，老用户会静默回到空输入，而这不是一个能被察觉的错误。
+ *
+ * ── 为什么令牌单独一个 prefs 文件 ──────────────────────────────────────────────
+ *
+ * 令牌是**九十天有效的凭据**（服务端 KV 里只存它的 sha256，拿到原文就能冒充这个 UID
+ * 提交）。而 Android 的自动备份会把 sharedpref 整份拷进 Google Drive / 换机传输 ——
+ * 凭据离开这台设备，等于把「这台设备已验证」变成「任何恢复过这份备份的设备都验证过」。
+ *
+ * 备份规则只能按**文件**粒度排除，不能按 key 粒度：所以要么把令牌挪进独立文件
+ * （`res/xml/backup_rules.xml` 与 `res/xml/data_extraction_rules.xml` 排除它），
+ * 要么整份 `settings.xml` 不备份 —— 后者会把 WebDAV 配置、主题、各种开关一起丢掉。
+ * 前者的代价写在下面 [PREFS_NAME] 的注释里。
+ *
+ * 没有选「加密后仍存原 prefs」（复用 `data/backup/CredentialCipher.kt`）：那需要一个
+ * 密钥管理的故事（密钥存哪、丢了怎么办、Keystore 不可用时怎么降级），而这条链的收益
+ * 只是「备份里那一串不可读」—— 排除整份文件是更小、更可验证的改动。
  */
 object ModuleUploadPrefs {
+
+    /**
+     * 独立 prefs 文件名。**只放会话令牌那五个键**，不放 UID。
+     *
+     * 改名（从 `settings` 到这个名字）意味着老用户盘上那一张令牌读不到了 ——
+     * 一次性的代价：他们下次投稿要再改一次签名，之后又是九十天。这是刻意的取舍：
+     * 把一张九十天凭据留在「会被云备份拷走」的文件里，比让老用户重验一次更贵。
+     * 读不到就是读不到，没有迁移代码：`readSession()` 见到空串就返回 null，
+     * 界面回到「要改签名」那条路，不需要任何特殊分支。
+     */
+    private const val PREFS_NAME = "module_upload_session"
 
     const val KEY_LAST_UID = "module_upload_last_uid"
 
@@ -55,7 +81,7 @@ object ModuleUploadPrefs {
      * 本地改 `expiresAt` 不会延长任何东西，只会让 App 更早/更晚去问一次。
      */
     fun readSession(now: Long = System.currentTimeMillis()): UploadSession? = runCatching {
-        val p = prefs() ?: return null
+        val p = sessionPrefs() ?: return null
         val session = UploadSession(
             token = p.getString(KEY_SESSION_TOKEN, null).orEmpty(),
             uid = p.getString(KEY_SESSION_UID, null).orEmpty(),
@@ -70,7 +96,7 @@ object ModuleUploadPrefs {
     fun writeSession(session: UploadSession) {
         if (!session.wellFormed) return
         runCatching {
-            prefs()?.edit {
+            sessionPrefs()?.edit {
                 putString(KEY_SESSION_TOKEN, session.token)
                 putString(KEY_SESSION_UID, session.uid)
                 putString(KEY_SESSION_NICK, session.nickname)
@@ -83,7 +109,7 @@ object ModuleUploadPrefs {
     /** 「退出验证」：把本地这一份抹掉。服务端那张另外吊销（见 ViewModel）。 */
     fun clearSession() {
         runCatching {
-            prefs()?.edit {
+            sessionPrefs()?.edit {
                 remove(KEY_SESSION_TOKEN)
                 remove(KEY_SESSION_UID)
                 remove(KEY_SESSION_NICK)
@@ -93,7 +119,18 @@ object ModuleUploadPrefs {
         }
     }
 
+    /**
+     * 「上次用的 UID」仍然在 `settings` 里：它不是凭据，不需要跟着令牌搬家。
+     *
+     * 两套 prefs 分开取，是为了让「哪个键在哪一份文件里」只在这一处体现 ——
+     * 备份规则排除的是 [PREFS_NAME] 那一份，UID 不受影响。
+     */
     private fun prefs() = runCatching {
         ksuApp.getSharedPreferences("settings", Context.MODE_PRIVATE)
+    }.getOrNull()
+
+    /** 令牌专用的那一份 prefs（被备份规则排除，见文件头）。 */
+    private fun sessionPrefs() = runCatching {
+        ksuApp.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }.getOrNull()
 }

@@ -124,6 +124,19 @@ data class ModuleUploadFormState(
     val session: UploadSession? = null,
     /** 正在问服务端「这张令牌还在不在」（进页面时那一次）。 */
     val sessionChecking: Boolean = false,
+    /**
+     * 心跳时刻（毫秒），由 ViewModel 的 ticker 每 [TICK] 刷新一次；0 表示还没跳过。
+     *
+     * 它存在只为一件事：[sessionActive] 能「自己」变成 false。没有它的话，判据里读的是
+     * `System.currentTimeMillis()`，而那个值变了**不会**触发重组：用户停在表单上跨过到期
+     * 时刻，界面照样写着「已验证」、提交按钮照样亮着，点下去 `submit()` 才发现判据已假、
+     * 静默 return —— 屏幕上什么都不会发生。反过来，时钟比服务端快的设备一进页面就判失效，
+     * 而「退出验证」按钮只在 `sessionActive` 为真时才显示，令牌连清都清不掉。
+     *
+     * 为 0 时 [sessionActive] 回落到 `System.currentTimeMillis()`：状态刚建、ticker 还没跳
+     * 第一下（或这个状态是测试里手搓的）时判据必须照常工作。
+     */
+    val nowTick: Long = 0L,
     val submitting: Boolean = false,
     /** 本次要上传的总字节数，提交中显示（契约没有字节回调，见 ViewModel 注释）。 */
     val totalBytes: Long = 0L,
@@ -139,7 +152,7 @@ data class ModuleUploadFormState(
      * 不影响任何安全边界 —— 令牌真失效时服务端会拒，界面再回落签名路。
      */
     val sessionActive: Boolean
-        get() = session?.validAt(System.currentTimeMillis()) == true
+        get() = session?.validAt(if (nowTick > 0L) nowTick else System.currentTimeMillis()) == true
 
     /** 令牌绑的 UID 与当前输入框里的 UID 是同一个 —— 换了号就不认这张令牌。 */
     val sessionMatchesUid: Boolean
