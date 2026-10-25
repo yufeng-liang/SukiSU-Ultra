@@ -211,6 +211,4 @@
     <string name="profile_flags_desc_no_new_privs">この root プロファイルのコンテキスト内で、SukiSU を介したさらなる権限昇格を防止します。</string>
     <string name="install_force_backup">純正イメージとしてバックアップ</string>
     <string name="install_force_backup_summary">選択した boot イメージが純正イメージであることを確認してください</string>
-    <string name="settings_check_ci_update">CI バージョンの更新を確認する</string>
-    <string name="settings_check_ci_update_summary">ホーム画面で main ブランチの CI ビルドを確認し、新しいバージョンがある場合に通知します。</string>
 </resources>

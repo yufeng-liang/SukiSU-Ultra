@@ -92,13 +92,14 @@ fun HomePager(
         return
     }
 
-    var pendingCiInstall by rememberSaveable { mutableStateOf(false) }
+    var pendingInstall by rememberSaveable { mutableStateOf(false) }
     val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            if (pendingCiInstall) viewModel.installCiUpdate() else viewModel.installReleaseUpdate()
+            pendingInstall = false
+            viewModel.installReleaseUpdate()
         }
     }
-    val startUpdate: (Boolean) -> Unit = { isCi ->
+    val startUpdate: () -> Unit = {
         scope.launch {
             val hasRoot = withContext(Dispatchers.IO) { rootAvailable() }
             when {
@@ -109,10 +110,10 @@ fun HomePager(
                 }
                 Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED -> {
-                    pendingCiInstall = isCi
+                    pendingInstall = true
                     storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 }
-                else -> if (isCi) viewModel.installCiUpdate() else viewModel.installReleaseUpdate()
+                else -> viewModel.installReleaseUpdate()
             }
         }
     }
@@ -123,8 +124,7 @@ fun HomePager(
         onSuperuserClick = { mainPagerState.animateToPage(BottomBarDestination.SuperUser.ordinal) },
         onModuleClick = { mainPagerState.animateToPage(BottomBarDestination.Module.ordinal) },
         onOpenUrl = uriHandler::openUri,
-        onCiUpdateClick = { startUpdate(true) },
-        onReleaseUpdateClick = { startUpdate(false) },
+        onReleaseUpdateClick = { startUpdate() },
         onJailbreakClick = {
             loadingDialog.showLoading()
             context.startService(Intent(context, MagicaService::class.java))

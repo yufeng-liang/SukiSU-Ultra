@@ -1170,9 +1170,6 @@
     <string name="temporary_root_custom_duration">自定义时长</string>
     <string name="temporary_root_custom_minutes">时长（分钟）</string>
     <string name="temporary_root_custom_range">请输入 1～10080 分钟（最多 7 天）</string>
-    <string name="settings_check_ci_update">检查 CI 版本更新</string>
-    <string name="settings_check_ci_update_summary">在主页检查 main 分支的 CI 构建，有新版本时提示更新</string>
-    <string name="ci_update_busy">正在检查并准备 CI 更新…</string>
     <string name="ci_update_unsupported_arch">不支持此设备架构</string>
     <string name="ci_update_request_failed">GitHub API 地址无效</string>
     <string name="ci_update_http_error">GitHub 请求失败（HTTP %1$d），请稍后重试</string>
@@ -1185,7 +1182,6 @@
     <string name="ci_update_install_submitted">更新已提交系统安装器，如有提示请确认安装</string>
     <string name="ci_update_install_success">版本更新安装成功</string>
     <string name="ci_update_install_failed">版本更新安装失败或已取消</string>
-    <string name="ci_update_available">发现新的 CI 构建（#%1$d）</string>
     <string name="settings_avc_spoof">AVC 日志伪装</string>
     <string name="settings_avc_spoof_summary">防止 AVC 拒绝日志泄漏 SELinux 上下文</string>
     <string name="settings_avc_spoof_failed">应用 AVC 日志伪装失败</string>

@@ -101,13 +101,14 @@ internal fun matchSelfUpdateApk(name: String): Long? {
 }
 
 /**
- * 检查管理器更新。上游新增了 CI 通道（manager-ci 滚动 release）与 `checkNewCiVersion`，
- * 但本 fork 不发布 manager-ci：两个入口都落到同一次 fork release 查询上，CI 开关打开时
- * 只是再查一遍同一个 latest，不会把用户引向签名不同的官方 APK。
+ * 检查管理器更新。
+ *
+ * 上游曾有一条独立的 CI 通道（manager-ci 滚动 release）与 `checkNewCiVersion`，
+ * 但本 fork 不发布 manager-ci —— 两个入口最终都落到同一次 fork release 查询上，
+ * 开着 CI 开关只是把同一个 latest 再查一遍，首页会同时弹出两张一模一样的更新卡。
+ * 所以本 fork 只保留这一条通道，CI 开关与它的全部接线已一并移除。
  */
 fun checkNewVersion(): LatestVersionInfo = checkLatestRelease()
-
-fun checkNewCiVersion(): LatestVersionInfo = checkLatestRelease()
 
 private fun checkLatestRelease(): LatestVersionInfo {
     if (!isNetworkAvailable(ksuApp)) return LatestVersionInfo()

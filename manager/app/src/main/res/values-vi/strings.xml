@@ -299,6 +299,4 @@
     <string name="nav_rail_collapse">Thu gọn thanh điều hướng</string>
     <string name="settings_navigation_badge">Biểu tượng Điều hướng</string>
     <string name="settings_navigation_badge_summary">Hiển thị số lượng ứng dụng được cấp phép và số lượng module được kích hoạt trên thanh điều hướng.</string>
-    <string name="settings_check_ci_update">Kiểm tra cập nhật CI</string>
-    <string name="settings_check_ci_update_summary">Kiểm tra các bản dựng CI của nhánh main trên trang chủ và thông báo khi có bản cập nhật.</string>
 </resources>

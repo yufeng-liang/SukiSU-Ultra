@@ -1184,9 +1184,6 @@
     <string name="temporary_root_custom_duration">Custom duration</string>
     <string name="temporary_root_custom_minutes">Duration (minutes)</string>
     <string name="temporary_root_custom_range">Enter 1–10080 minutes (up to 7 days)</string>
-    <string name="settings_check_ci_update">Check for CI updates</string>
-    <string name="settings_check_ci_update_summary">Check main branch CI builds on the home page and notify when an update is available.</string>
-    <string name="ci_update_busy">Checking and preparing CI update…</string>
     <string name="ci_update_unsupported_arch">Unsupported device architecture.</string>
     <string name="ci_update_request_failed">Invalid GitHub API URL.</string>
     <string name="ci_update_http_error">GitHub request failed (HTTP %1$d). Please try again later.</string>
@@ -1199,7 +1196,6 @@
     <string name="ci_update_install_submitted">Update submitted to the system installer. Confirm installation if prompted.</string>
     <string name="ci_update_install_success">Update installed successfully.</string>
     <string name="ci_update_install_failed">Update installation failed or was cancelled.</string>
-    <string name="ci_update_available">New CI build available (#%1$d)</string>
     <string name="settings_avc_spoof">AVC log spoofing</string>
     <string name="settings_avc_spoof_summary">Prevent SELinux context leaks in AVC denial logs</string>
     <string name="settings_avc_spoof_failed">Failed to apply AVC log spoofing</string>

@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -111,17 +110,24 @@ fun AboutScreenMaterial(
                             )
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = state.appName,
-                                style = MaterialTheme.typography.displaySmall,
-                                fontWeight = FontWeight.Black,
-                            )
+                            // 徽标跟着 APP 名字走：窄屏上名字可能折行，用 Row 让它始终贴在
+                            // 名字末尾那一行的右侧，而不是掉到名字下面自成一行。
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    text = state.appName,
+                                    style = MaterialTheme.typography.displaySmall,
+                                    fontWeight = FontWeight.Black,
+                                )
+                                ModuleEcoBadge()
+                            }
                             Text(
                                 text = state.versionName,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontFamily = FontFamily.Monospace,
                             )
-                            ModuleEcoBadge()
                         }
                     }
                 }
@@ -137,15 +143,6 @@ fun AboutScreenMaterial(
                             summary = stringResource(id = R.string.settings_check_update_summary),
                             checked = state.checkUpdate,
                             onCheckedChange = actions.onSetCheckUpdate,
-                        )
-                    }
-                    item(visible = state.checkUpdate) {
-                        SegmentedSwitchItem(
-                            icon = Icons.Filled.Science,
-                            title = stringResource(id = R.string.settings_check_ci_update),
-                            summary = stringResource(id = R.string.settings_check_ci_update_summary),
-                            checked = state.checkCiUpdate,
-                            onCheckedChange = actions.onSetCheckCiUpdate,
                         )
                     }
                     item(visible = isKsuValid) {

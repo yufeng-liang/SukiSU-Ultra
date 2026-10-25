@@ -27,7 +27,6 @@ class SettingsViewModel(
 
     private val _uiState = MutableStateFlow(SettingsUiState(
         checkUpdate = repo.checkUpdate,
-        checkCiUpdate = repo.checkCiUpdate,
         checkModuleUpdate = repo.checkModuleUpdate,
     ))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -109,7 +108,6 @@ class SettingsViewModel(
                     uiMode = uiMode,
                     appLanguage = appLanguage,
                     checkUpdate = repo.checkUpdate,
-                    checkCiUpdate = repo.checkCiUpdate,
                     checkModuleUpdate = repo.checkModuleUpdate,
                     alternativeIcon = alternativeIcon,
                     themeMode = themeMode,
@@ -154,11 +152,6 @@ class SettingsViewModel(
                 )
             }
         }
-    }
-
-    fun setCheckCiUpdate(enabled: Boolean) {
-        repo.checkCiUpdate = enabled
-        _uiState.update { it.copy(checkCiUpdate = enabled) }
     }
 
     fun setCheckUpdate(enabled: Boolean) {

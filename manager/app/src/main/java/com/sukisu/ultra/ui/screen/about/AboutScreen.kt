@@ -35,7 +35,7 @@ fun AboutScreen() {
     val settingsState by viewModel.uiState.collectAsStateWithLifecycle()
     val htmlString = stringResource(
         id = R.string.about_source_code,
-        "<b><a href=\"https://github.com/ShirkNeko/SukiSU-Ultra\">GitHub</a></b>",
+        "<b><a href=\"https://github.com/yufeng-liang/SukiSU-Ultra\">GitHub</a></b>",
         "<b><a href=\"https://t.me/SukiKSU\">Telegram</a></b>",
     )
     val state = AboutUiState(
@@ -44,26 +44,33 @@ fun AboutScreen() {
         versionName = BuildConfig.VERSION_NAME,
         links = extractLinks(htmlString),
         checkUpdate = settingsState.checkUpdate,
-        checkCiUpdate = settingsState.checkCiUpdate,
         checkModuleUpdate = settingsState.checkModuleUpdate,
     )
     val actions = AboutScreenActions(
         onBack = dropUnlessResumed { navigator.pop() },
         onOpenLink = uriHandler::openUri,
         onSetCheckUpdate = viewModel::setCheckUpdate,
-        onSetCheckCiUpdate = viewModel::setCheckCiUpdate,
         onSetCheckModuleUpdate = viewModel::setCheckModuleUpdate,
     )
 
-    // The Material 3 Expressive page is shared by both skins; the Miuix skin has no Material theme above it.
     when (LocalUiMode.current) {
         UiMode.Material -> AboutScreenMaterial(state, actions)
-        UiMode.Miuix -> MiuixSkinMaterialTheme { AboutScreenMaterial(state, actions) }
+        // Miuix 皮肤有自己的关于页：动态背景 + logo 视差淡出 + 磨砂卡片。
+        // 上游 59d4a58f 曾把它删掉、改用「Material 页套 MiuixSkinMaterialTheme」顶替，
+        // 结果 Miuix 皮肤下既丢了动态背景，也丢了更新检查开关的入口。
+        UiMode.Miuix -> AboutScreenMiuix(state, actions)
     }
 }
 
+/**
+ * 把 Material 组件包进 Miuix 皮肤的配色里。
+ *
+ * 贡献者墙、名字墙这些是从 Material 关于页里抽出来的共用组件，它们读
+ * [MaterialTheme] 的 shapes / colorScheme / typography。Miuix 关于页要用它们，
+ * 就必须先套一层这里，否则取到的是 Material 默认配色，跟 Miuix 的深色底对不上。
+ */
 @Composable
-private fun MiuixSkinMaterialTheme(content: @Composable () -> Unit) {
+internal fun MiuixSkinMaterialTheme(content: @Composable () -> Unit) {
     val appSettings = remember { ThemeController.getAppSettings() }
     val colorMode = appSettings.colorMode
     val darkTheme = colorMode.isDark || (colorMode.isSystem && isSystemInDarkTheme())

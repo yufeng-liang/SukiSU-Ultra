@@ -10,7 +10,6 @@ data class SettingsUiState(
     val uiMode: String = UiMode.DEFAULT_VALUE,
     val appLanguage: String = "",
     val checkUpdate: Boolean = true,
-    val checkCiUpdate: Boolean = false,
     val checkModuleUpdate: Boolean = true,
     val alternativeIcon : Boolean = false,
     val themeMode: Int = 0,
@@ -86,7 +85,6 @@ data class SettingsUiState(
 @Immutable
 data class SettingsScreenActions(
     val onSetCheckUpdate: (Boolean) -> Unit,
-    val onSetCheckCiUpdate: (Boolean) -> Unit,
     val onSetCheckModuleUpdate: (Boolean) -> Unit,
     val onOpenTheme: () -> Unit,
     val onSetUiModeIndex: (Int) -> Unit,

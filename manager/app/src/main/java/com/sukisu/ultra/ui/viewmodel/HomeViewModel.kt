@@ -27,7 +27,6 @@ import com.sukisu.ultra.ui.screen.home.HomeUiState
 import com.sukisu.ultra.ui.screen.home.SystemInfo
 import com.sukisu.ultra.ui.screen.home.getHomeModuleCount
 import com.sukisu.ultra.ui.screen.home.getManagerVersion
-import com.sukisu.ultra.ui.util.checkNewCiVersion
 import com.sukisu.ultra.ui.screen.home.getZygiskImplementation
 import com.sukisu.ultra.ui.util.checkNewVersion
 import com.sukisu.ultra.ui.util.getKpmModuleCount
@@ -72,18 +71,11 @@ class HomeViewModel(
                 try {
                     val baseState = withContext(Dispatchers.IO) { buildState() }
                     _uiState.update { current ->
-                        current.copy(
-                            content = baseState.copy(ciUpdateBusy = current.content?.ciUpdateBusy ?: false),
-                            isRefreshing = false,
-                        )
+                        current.copy(content = baseState, isRefreshing = false)
                     }
                     if (baseState.checkUpdateEnabled) {
                         val latestVersionInfo = withContext(Dispatchers.IO) { checkNewVersion() }
                         updateContent { it.copy(latestVersionInfo = latestVersionInfo) }
-                    }
-                    if (baseState.checkCiUpdateEnabled) {
-                        val ciVersionInfo = withContext(Dispatchers.IO) { checkNewCiVersion() }
-                        updateContent { it.copy(ciLatestVersionInfo = ciVersionInfo) }
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -103,16 +95,13 @@ class HomeViewModel(
         }
     }
 
-    fun installCiUpdate() = installUpdate(isCi = true)
+    fun installReleaseUpdate() = installUpdate()
 
-    fun installReleaseUpdate() = installUpdate(isCi = false)
-
-    private fun installUpdate(isCi: Boolean) {
+    private fun installUpdate() {
         val content = _uiState.value.content ?: return
-        val info = if (isCi) content.ciLatestVersionInfo else content.latestVersionInfo
+        val info = content.latestVersionInfo
         if (info.versionCode <= content.currentManagerVersionCode || info.downloadUrl.isBlank()) return
-        if (!settingsRepo.checkUpdate || (isCi && !settingsRepo.checkCiUpdate) || content.ciUpdateBusy) return
-        updateContent { it.copy(ciUpdateBusy = true) }
+        if (!settingsRepo.checkUpdate) return
         viewModelScope.launch {
             try {
                 val installed = withContext(Dispatchers.IO) {
@@ -126,7 +115,7 @@ class HomeViewModel(
             } catch (e: Exception) {
                 android.widget.Toast.makeText(ksuApp, e.message ?: ksuApp.getString(com.sukisu.ultra.R.string.ci_update_download_failed), android.widget.Toast.LENGTH_LONG).show()
             } finally {
-                updateContent { it.copy(ciUpdateBusy = false) }
+                // 安装结果不影响首页状态：进度提示只活在这一段协程里。
             }
         }
     }
@@ -193,7 +182,6 @@ class HomeViewModel(
             isSafeMode = Natives.isSafeMode,
             isLateLoadMode = Natives.isLateLoadMode,
             checkUpdateEnabled = settingsRepo.checkUpdate,
-            checkCiUpdateEnabled = settingsRepo.checkUpdate && settingsRepo.checkCiUpdate,
             showFullStatus = ksuApp.getSharedPreferences("settings", Context.MODE_PRIVATE)
                 .getBoolean("show_fingerprint", true),
             latestVersionInfo = LatestVersionInfo(),
