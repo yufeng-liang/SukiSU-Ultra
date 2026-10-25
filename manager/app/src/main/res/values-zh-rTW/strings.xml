@@ -743,6 +743,10 @@
     <string name="module_upload_form_title">上傳模組</string>
     <string name="module_upload_wall_add">新增</string>
     <string name="module_upload_wall_editing">正在編輯第 %1$d / %2$d 枚</string>
+    <string name="module_upload_summary_count">%1$d 枚 · 合計 %2$s</string>
+    <string name="module_upload_ready">可以上傳</string>
+    <string name="module_upload_blockers">還差 %1$d 項才能上傳</string>
+    <string name="module_upload_detail_package">安裝包</string>
     <string name="module_upload_section_info">模組資訊</string>
     <string name="module_upload_section_source">出處</string>
     <string name="module_upload_section_identity">上傳者</string>

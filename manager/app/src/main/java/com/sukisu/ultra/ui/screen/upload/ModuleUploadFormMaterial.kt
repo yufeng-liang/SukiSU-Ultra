@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.screen.upload
 
 import android.content.ClipData
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,13 +16,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,6 +37,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -39,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -85,6 +95,8 @@ fun ModuleUploadFormMaterial(
         sizes = state.items.map { it.sizeBytes },
         limits = limits,
     )
+    val canSubmit = state.canSubmit(limits)
+    val blockers = remainingBlockers(state, limitProblem)
 
     ExpressiveScaffold(
         topBar = {
@@ -95,6 +107,15 @@ fun ModuleUploadFormMaterial(
                 },
                 scrollBehavior = scrollBehavior,
                 colors = expressiveTopAppBarColors(),
+            )
+        },
+        // 提交按钮钉在底部：这一屏有四张卡，滚到底才能提交的旧做法让人白滚一趟。
+        bottomBar = {
+            SubmitBarMaterial(
+                canSubmit = canSubmit,
+                submitting = state.submitting,
+                blockers = blockers,
+                onSubmit = onSubmit,
             )
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
@@ -108,19 +129,31 @@ fun ModuleUploadFormMaterial(
             contentPadding = innerPadding,
         ) {
             item {
+                BatchSummaryMaterial(state = state, canSubmit = canSubmit, blockers = blockers)
+            }
+
+            item {
                 // 墙：这一批每一枚一张 zip 图标卡，横向滑、点哪张编辑哪张。
                 Column(modifier = Modifier.padding(top = 12.dp)) {
-                    UploadZipWallMaterial(
-                        items = state.items,
-                        selectedPath = state.selectedPath,
-                        enabled = !state.submitting,
-                        onSelect = onSelectItem,
-                        onPickMore = onPickMore,
-                    )
+                    // 墙自身宽度固定，靠外层 Row 摆到中间 —— 否则左侧贴边、右边空一大片。
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        UploadZipWallMaterial(
+                            items = state.items,
+                            selectedPath = state.selectedPath,
+                            enabled = !state.submitting,
+                            onSelect = onSelectItem,
+                            onPickMore = onPickMore,
+                        )
+                    }
                     val index = state.items.indexOfFirst { it.path == state.selectedPath }
                     if (state.items.size > 1) {
                         Text(
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
                             text = stringResource(
                                 R.string.module_upload_wall_editing,
                                 if (index >= 0) index + 1 else 1,
@@ -128,6 +161,7 @@ fun ModuleUploadFormMaterial(
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                     }
                 }
@@ -157,7 +191,10 @@ fun ModuleUploadFormMaterial(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        SectionLabelMaterial(stringResource(R.string.module_upload_section_identity))
+                        SectionLabelMaterial(
+                            icon = Icons.Outlined.Info,
+                            text = stringResource(R.string.module_upload_section_identity),
+                        )
                         OutlinedTextField(
                             value = state.uid,
                             onValueChange = onUidChange,
@@ -207,30 +244,41 @@ fun ModuleUploadFormMaterial(
                         .padding(top = 12.dp)
                         .fillMaxWidth(),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    // 整行可点：勾选框在左上、文字占三行时，只点那个小方块太窄。
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !state.submitting) { onConsentChange(!state.consent) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.Top,
                     ) {
-                        Row(verticalAlignment = Alignment.Top) {
-                            Checkbox(
-                                checked = state.consent,
-                                onCheckedChange = if (state.submitting) null else onConsentChange,
-                                enabled = !state.submitting,
-                            )
+                        Checkbox(
+                            checked = state.consent,
+                            onCheckedChange = null,
+                            enabled = !state.submitting,
+                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             Text(
-                                modifier = Modifier.padding(start = 8.dp),
                                 text = stringResource(R.string.module_upload_consent),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
-                        // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
-                        if (state.uidVerified && (state.signatureValid || state.sessionMatchesUid) && !state.consent) {
-                            Text(
-                                text = stringResource(R.string.module_upload_consent_required),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
+                            // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
+                            if (state.uidVerified &&
+                                (state.signatureValid || state.sessionMatchesUid) &&
+                                !state.consent
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.module_upload_consent_required),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
                         }
                     }
                 }
@@ -267,15 +315,201 @@ fun ModuleUploadFormMaterial(
                 }
             }
 
-            item {
-                SubmitSectionMaterial(
-                    state = state,
-                    canSubmit = state.canSubmit(limits),
-                    onSubmit = onSubmit,
-                )
+            if (state.submitting || state.outcome != null) {
+                item { OutcomeMaterial(state) }
             }
 
             item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+/**
+ * 还差几项才能提交。只数「用户还得动手」的项，判据与 [ModuleUploadRules.canSubmit] 一一对应，
+ * 不新增规则 —— 这里只负责把「差什么」说清楚。
+ */
+private fun remainingBlockers(
+    state: ModuleUploadFormState,
+    limitProblem: ModuleUploadRules.LimitProblem,
+): Int {
+    var count = 0
+    if (!state.uidVerified) count++
+    if (!state.sessionMatchesUid && !state.signatureValid) count++
+    if (!state.consent) count++
+    if (limitProblem != ModuleUploadRules.LimitProblem.NONE) count++
+    if (state.items.any { ModuleUploadRules.sourceProblem(it.source) != ModuleUploadRules.SourceProblem.OK }) {
+        count++
+    }
+    return count
+}
+
+/** 顶部汇总：几枚、多大、能不能传 —— 一进屏就知道，不用滚到底。 */
+@Composable
+private fun BatchSummaryMaterial(
+    state: ModuleUploadFormState,
+    canSubmit: Boolean,
+    blockers: Int,
+) {
+    val accent = if (canSubmit) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    TonalCard(
+        modifier = Modifier
+            .padding(top = 12.dp)
+            .fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                modifier = Modifier.size(20.dp),
+                imageVector = Icons.Outlined.FolderZip,
+                contentDescription = null,
+                tint = accent,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(
+                        R.string.module_upload_summary_count,
+                        state.items.size,
+                        ModuleUploadRules.formatBytes(state.totalBytes),
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = if (canSubmit) {
+                        stringResource(R.string.module_upload_ready)
+                    } else {
+                        stringResource(R.string.module_upload_blockers, blockers)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = accent,
+                )
+            }
+        }
+    }
+}
+
+/** 底部常驻提交栏：按钮永远在手边，左边一句说清能不能传。 */
+@Composable
+private fun SubmitBarMaterial(
+    canSubmit: Boolean,
+    submitting: Boolean,
+    blockers: Int,
+    onSubmit: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 3.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = if (canSubmit) {
+                    stringResource(R.string.module_upload_ready)
+                } else {
+                    stringResource(R.string.module_upload_blockers, blockers)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (canSubmit) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            Button(
+                modifier = Modifier.height(48.dp),
+                onClick = onSubmit,
+                enabled = canSubmit,
+            ) {
+                if (submitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.CloudUpload,
+                        contentDescription = null,
+                    )
+                }
+                Text(
+                    modifier = Modifier.padding(start = 6.dp),
+                    text = stringResource(R.string.module_upload_submit),
+                )
+            }
+        }
+    }
+}
+
+/** 提交中 / 出结果后的那一段。契约没有字节回调：只报总数，不编百分比。 */
+@Composable
+private fun OutcomeMaterial(state: ModuleUploadFormState) {
+    Column(
+        modifier = Modifier.padding(top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (state.submitting) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Column {
+                    Text(
+                        text = stringResource(R.string.module_upload_submitting),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.module_upload_submitting_bytes,
+                            state.items.size,
+                            ModuleUploadRules.formatBytes(state.totalBytes),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        when (val outcome = state.outcome) {
+            is UploadOutcome.Failure -> Text(
+                text = outcome.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+
+            is UploadOutcome.Success -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = outcome.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                outcome.prUrl?.let { url ->
+                    Text(
+                        text = stringResource(R.string.module_upload_result_pr, url),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            null -> Unit
         }
     }
 }
@@ -312,15 +546,19 @@ private fun UploadZipCardMaterial(
                 }
             }
 
-            SectionLabelMaterial(stringResource(R.string.module_upload_section_info))
+            SectionLabelMaterial(
+                icon = Icons.Outlined.Description,
+                text = stringResource(R.string.module_upload_section_info),
+            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                // 标签列固定 76dp：七个字段的取值从同一条竖线起，不再参差。
                 InfoLineMaterial(stringResource(R.string.module_contribution_id), item.id)
                 InfoLineMaterial(
                     stringResource(R.string.module_contribution_version),
@@ -343,7 +581,7 @@ private fun UploadZipCardMaterial(
                 InfoLineMaterial(stringResource(R.string.module_upload_sha), item.sha256, mono = true)
                 if (item.checking) {
                     Text(
-                        modifier = Modifier.padding(top = 6.dp),
+                        modifier = Modifier.padding(top = 4.dp),
                         text = stringResource(R.string.module_upload_checking),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -351,7 +589,7 @@ private fun UploadZipCardMaterial(
                 } else if (item.status != null) {
                     val copy = ModuleUploadRules.statusCopy(item.status)
                     Text(
-                        modifier = Modifier.padding(top = 6.dp),
+                        modifier = Modifier.padding(top = 4.dp),
                         text = stringResource(copy.title) + " · " + stringResource(copy.summary),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (item.status == com.sukisu.ultra.ui.util.CheckStatus.RECORDED) {
@@ -363,7 +601,10 @@ private fun UploadZipCardMaterial(
                 }
             }
 
-            SectionLabelMaterial(stringResource(R.string.module_upload_section_source))
+            SectionLabelMaterial(
+                icon = Icons.Outlined.Link,
+                text = stringResource(R.string.module_upload_section_source),
+            )
             OutlinedTextField(
                 value = item.source,
                 onValueChange = onSourceChange,
@@ -416,26 +657,12 @@ private fun ProofSectionMaterial(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.module_upload_proof_title),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                if (proof != null) {
-                    TextButton(
-                        onClick = {
-                            scope.launch {
-                                clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("proof", proof.text)))
-                            }
-                        },
-                    ) {
-                        Text(stringResource(R.string.module_upload_proof_copy))
-                    }
-                }
-            }
+            SectionLabelMaterial(
+                icon = Icons.Filled.VerifiedUser,
+                text = stringResource(R.string.module_upload_proof_title),
+            )
 
             if (proof == null) {
                 // 只要还有一个包的 sha 没算完，就一行口令都不显示。
@@ -445,21 +672,56 @@ private fun ProofSectionMaterial(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                Text(
-                    text = proof.text,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium,
-                )
+                // 这一串是要拿去抄进酷安签名的东西，给它一个「可以复制的东西」的容器，
+                // 而不是一行裸文本旁边挂个远处的按钮。
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            modifier = Modifier.weight(1f),
+                            text = proof.text,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    clipboard.setClipEntry(
+                                        ClipEntry(ClipData.newPlainText("proof", proof.text)),
+                                    )
+                                }
+                            },
+                        ) {
+                            Text(stringResource(R.string.module_upload_proof_copy))
+                        }
+                    }
+                }
                 Text(
                     text = stringResource(R.string.module_upload_proof_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(verticalAlignment = Alignment.Top) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = enabled) { onSignatureConfirmedChange(!state.signatureValid) },
+                    verticalAlignment = Alignment.Top,
+                ) {
                     Checkbox(
                         checked = state.signatureValid,
-                        onCheckedChange = { onSignatureConfirmedChange(it) },
+                        onCheckedChange = null,
                         enabled = enabled,
                     )
                     Text(
@@ -476,85 +738,6 @@ private fun ProofSectionMaterial(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SubmitSectionMaterial(
-    state: ModuleUploadFormState,
-    canSubmit: Boolean,
-    onSubmit: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.padding(top = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (state.submitting) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
-                Column {
-                    Text(
-                        text = stringResource(R.string.module_upload_submitting),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    // 契约没有字节回调：只报总数与不确定进度，不编一个百分比。
-                    Text(
-                        text = stringResource(
-                            R.string.module_upload_submitting_bytes,
-                            state.items.size,
-                            ModuleUploadRules.formatBytes(state.totalBytes),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        when (val outcome = state.outcome) {
-            is UploadOutcome.Failure -> Text(
-                text = outcome.message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-            )
-
-            is UploadOutcome.Success -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = outcome.message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                outcome.prUrl?.let { url ->
-                    Text(
-                        text = stringResource(R.string.module_upload_result_pr, url),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-
-            null -> Unit
-        }
-
-        Button(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            onClick = onSubmit,
-            enabled = canSubmit,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.CloudUpload,
-                contentDescription = null,
-            )
-            Text(
-                modifier = Modifier.padding(start = 6.dp),
-                text = stringResource(R.string.module_upload_submit),
-            )
         }
     }
 }
@@ -646,24 +829,39 @@ private fun UidStatusRowMaterial(
 }
 
 @Composable
-private fun SectionLabelMaterial(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun InfoLineMaterial(label: String, value: String, mono: Boolean = false) {
-    Row {
-        Text(
-            text = "$label: ",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun SectionLabelMaterial(icon: ImageVector, text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            modifier = Modifier.size(14.dp),
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            modifier = if (mono) Modifier.weight(1f) else Modifier,
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 一行 `标签 / 取值`：标签列定宽，取值从同一条竖线起。 */
+@Composable
+private fun InfoLineMaterial(label: String, value: String, mono: Boolean = false) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            modifier = Modifier.width(76.dp),
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            modifier = Modifier.weight(1f),
             text = value,
             style = MaterialTheme.typography.bodySmall,
             fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,

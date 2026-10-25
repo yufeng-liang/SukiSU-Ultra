@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.screen.upload
 
 import android.content.ClipData
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,11 +16,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -28,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -44,17 +53,19 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BatchLimits
-import kotlinx.coroutines.launch
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -99,6 +110,8 @@ fun ModuleUploadFormMiuix(
         sizes = state.items.map { it.sizeBytes },
         limits = limits,
     )
+    val canSubmit = state.canSubmit(limits)
+    val blockers = remainingBlockersMiuix(state, limitProblem)
 
     Scaffold(
         topBar = {
@@ -122,6 +135,15 @@ fun ModuleUploadFormMiuix(
                 )
             }
         },
+        // 提交按钮钉在底部：这一屏有四张卡，滚到底才能提交的旧做法让人白滚一趟。
+        bottomBar = {
+            SubmitBarMiuix(
+                canSubmit = canSubmit,
+                submitting = state.submitting,
+                blockers = blockers,
+                onSubmit = onSubmit,
+            )
+        },
         popupHost = { },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
             .only(WindowInsetsSides.Horizontal),
@@ -137,20 +159,32 @@ fun ModuleUploadFormMiuix(
             overscrollEffect = null,
         ) {
             item {
+                BatchSummaryMiuix(state = state, canSubmit = canSubmit, blockers = blockers)
+            }
+
+            item {
                 // 墙：这一批每一枚一张 zip 图标卡，横向滑、点哪张编辑哪张。
                 // 只占一行高度 —— 十枚包也不会把表单撑成十几屏。
                 Column(modifier = Modifier.padding(top = 12.dp)) {
-                    UploadZipWallMiuix(
-                        items = state.items,
-                        selectedPath = state.selectedPath,
-                        enabled = !state.submitting,
-                        onSelect = onSelectItem,
-                        onPickMore = onPickMore,
-                    )
+                    // 墙自身宽度固定，靠外层 Row 摆到中间 —— 否则左侧贴边、右边空一大片。
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        UploadZipWallMiuix(
+                            items = state.items,
+                            selectedPath = state.selectedPath,
+                            enabled = !state.submitting,
+                            onSelect = onSelectItem,
+                            onPickMore = onPickMore,
+                        )
+                    }
                     val index = state.items.indexOfFirst { it.path == state.selectedPath }
                     if (state.items.size > 1) {
                         Text(
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
                             text = stringResource(
                                 R.string.module_upload_wall_editing,
                                 if (index >= 0) index + 1 else 1,
@@ -158,6 +192,7 @@ fun ModuleUploadFormMiuix(
                             ),
                             fontSize = 12.sp,
                             color = colorScheme.onSurfaceVariantSummary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                     }
                 }
@@ -188,7 +223,10 @@ fun ModuleUploadFormMiuix(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        SectionLabelMiuix(stringResource(R.string.module_upload_section_identity))
+                        SectionLabelMiuix(
+                            icon = Icons.Outlined.Info,
+                            text = stringResource(R.string.module_upload_section_identity),
+                        )
                         TextField(
                             value = state.uid,
                             onValueChange = onUidChange,
@@ -238,34 +276,45 @@ fun ModuleUploadFormMiuix(
                         .padding(top = 12.dp)
                         .fillMaxWidth(),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    // 整行可点：勾选框在左上、文字占三行时，只点那个小方块太窄。
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !state.submitting) { onConsentChange(!state.consent) }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.Top,
                     ) {
-                        Row(verticalAlignment = Alignment.Top) {
-                            Checkbox(
-                                state = if (state.consent) {
-                                    androidx.compose.ui.state.ToggleableState.On
-                                } else {
-                                    androidx.compose.ui.state.ToggleableState.Off
-                                },
-                                onClick = { if (!state.submitting) onConsentChange(!state.consent) },
-                                enabled = !state.submitting,
-                            )
+                        Checkbox(
+                            state = if (state.consent) {
+                                androidx.compose.ui.state.ToggleableState.On
+                            } else {
+                                androidx.compose.ui.state.ToggleableState.Off
+                            },
+                            onClick = null,
+                            enabled = !state.submitting,
+                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             Text(
-                                modifier = Modifier.padding(start = 8.dp),
                                 text = stringResource(R.string.module_upload_consent),
                                 fontSize = 13.sp,
                                 color = colorScheme.onSurfaceVariantSummary,
                             )
-                        }
-                        // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
-                        if (state.uidVerified && (state.signatureValid || state.sessionMatchesUid) && !state.consent) {
-                            Text(
-                                text = stringResource(R.string.module_upload_consent_required),
-                                fontSize = 12.sp,
-                                color = colorScheme.error,
-                            )
+                            // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
+                            if (state.uidVerified &&
+                                (state.signatureValid || state.sessionMatchesUid) &&
+                                !state.consent
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.module_upload_consent_required),
+                                    fontSize = 12.sp,
+                                    color = colorScheme.error,
+                                )
+                            }
                         }
                     }
                 }
@@ -302,15 +351,187 @@ fun ModuleUploadFormMiuix(
                 }
             }
 
-            item {
-                SubmitSectionMiuix(
-                    state = state,
-                    canSubmit = state.canSubmit(limits),
-                    onSubmit = onSubmit,
-                )
+            if (state.submitting || state.outcome != null) {
+                item { OutcomeMiuix(state) }
             }
 
             item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+/**
+ * 还差几项才能提交。只数「用户还得动手」的项，判据与 [ModuleUploadRules.canSubmit] 一一对应，
+ * 不新增规则 —— 这里只负责把「差什么」说清楚。
+ */
+private fun remainingBlockersMiuix(
+    state: ModuleUploadFormState,
+    limitProblem: ModuleUploadRules.LimitProblem,
+): Int {
+    var count = 0
+    if (!state.uidVerified) count++
+    if (!state.sessionMatchesUid && !state.signatureValid) count++
+    if (!state.consent) count++
+    if (limitProblem != ModuleUploadRules.LimitProblem.NONE) count++
+    if (state.items.any { ModuleUploadRules.sourceProblem(it.source) != ModuleUploadRules.SourceProblem.OK }) {
+        count++
+    }
+    return count
+}
+
+/** 顶部汇总：几枚、多大、能不能传 —— 一进屏就知道，不用滚到底。 */
+@Composable
+private fun BatchSummaryMiuix(
+    state: ModuleUploadFormState,
+    canSubmit: Boolean,
+    blockers: Int,
+) {
+    val accent = if (canSubmit) colorScheme.primary else colorScheme.onSurfaceVariantSummary
+    Card(
+        modifier = Modifier
+            .padding(top = 12.dp)
+            .fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                modifier = Modifier.size(20.dp),
+                imageVector = Icons.Outlined.FolderZip,
+                contentDescription = null,
+                tint = accent,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(
+                        R.string.module_upload_summary_count,
+                        state.items.size,
+                        ModuleUploadRules.formatBytes(state.totalBytes),
+                    ),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = if (canSubmit) {
+                        stringResource(R.string.module_upload_ready)
+                    } else {
+                        stringResource(R.string.module_upload_blockers, blockers)
+                    },
+                    fontSize = 12.sp,
+                    color = accent,
+                )
+            }
+        }
+    }
+}
+
+/** 底部常驻提交栏：按钮永远在手边，左边一句说清能不能传。 */
+@Composable
+private fun SubmitBarMiuix(
+    canSubmit: Boolean,
+    submitting: Boolean,
+    blockers: Int,
+    onSubmit: () -> Unit,
+) {
+    Surface(
+        color = colorScheme.surface,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = if (canSubmit) {
+                    stringResource(R.string.module_upload_ready)
+                } else {
+                    stringResource(R.string.module_upload_blockers, blockers)
+                },
+                fontSize = 12.sp,
+                color = if (canSubmit) colorScheme.primary else colorScheme.onSurfaceVariantSummary,
+            )
+            Button(
+                modifier = Modifier.height(48.dp),
+                onClick = onSubmit,
+                enabled = canSubmit,
+                cornerRadius = 12.dp,
+            ) {
+                if (submitting) {
+                    CircularProgressIndicator(progress = null, size = 18.dp, strokeWidth = 2.dp)
+                } else {
+                    Icon(
+                        imageVector = Icons.Rounded.CloudUpload,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 6.dp),
+                    )
+                }
+                Text(text = stringResource(R.string.module_upload_submit))
+            }
+        }
+    }
+}
+
+/** 提交中 / 出结果后的那一段。契约没有字节回调：只报总数，不编百分比。 */
+@Composable
+private fun OutcomeMiuix(state: ModuleUploadFormState) {
+    Column(
+        modifier = Modifier.padding(top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (state.submitting) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CircularProgressIndicator(progress = null, size = 20.dp, strokeWidth = 2.dp)
+                Column {
+                    Text(
+                        text = stringResource(R.string.module_upload_submitting),
+                        fontSize = 14.sp,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.module_upload_submitting_bytes,
+                            state.items.size,
+                            ModuleUploadRules.formatBytes(state.totalBytes),
+                        ),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            }
+        }
+
+        when (val outcome = state.outcome) {
+            is UploadOutcome.Failure -> Text(
+                text = outcome.message,
+                fontSize = 13.sp,
+                color = colorScheme.error,
+            )
+
+            is UploadOutcome.Success -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = outcome.message,
+                    fontSize = 13.sp,
+                    color = colorScheme.primary,
+                )
+                outcome.prUrl?.let { url ->
+                    Text(
+                        text = stringResource(R.string.module_upload_result_pr, url),
+                        fontSize = 12.sp,
+                        color = colorScheme.primary,
+                    )
+                }
+            }
+
+            null -> Unit
         }
     }
 }
@@ -350,15 +571,19 @@ private fun UploadZipCardMiuix(
             }
 
             // 只读信息：索引里的字段必须与 zip 里的 module.prop 一致，不给编辑。
-            SectionLabelMiuix(stringResource(R.string.module_upload_section_info))
+            SectionLabelMiuix(
+                icon = Icons.Outlined.Description,
+                text = stringResource(R.string.module_upload_section_info),
+            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(colorScheme.surfaceContainer)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                // 标签列固定 76dp：七个字段的取值从同一条竖线起，不再参差。
                 InfoLineMiuix(stringResource(R.string.module_contribution_id), item.id)
                 InfoLineMiuix(
                     stringResource(R.string.module_contribution_version),
@@ -381,7 +606,7 @@ private fun UploadZipCardMiuix(
                 InfoLineMiuix(stringResource(R.string.module_upload_sha), item.sha256, mono = true)
                 if (item.checking) {
                     Text(
-                        modifier = Modifier.padding(top = 6.dp),
+                        modifier = Modifier.padding(top = 4.dp),
                         text = stringResource(R.string.module_upload_checking),
                         fontSize = 12.sp,
                         color = colorScheme.onSurfaceVariantSummary,
@@ -389,7 +614,7 @@ private fun UploadZipCardMiuix(
                 } else if (item.status != null) {
                     val copy = ModuleUploadRules.statusCopy(item.status)
                     Text(
-                        modifier = Modifier.padding(top = 6.dp),
+                        modifier = Modifier.padding(top = 4.dp),
                         text = stringResource(copy.title) + " · " + stringResource(copy.summary),
                         fontSize = 12.sp,
                         color = if (item.status == com.sukisu.ultra.ui.util.CheckStatus.RECORDED) {
@@ -401,7 +626,10 @@ private fun UploadZipCardMiuix(
                 }
             }
 
-            SectionLabelMiuix(stringResource(R.string.module_upload_section_source))
+            SectionLabelMiuix(
+                icon = Icons.Outlined.Link,
+                text = stringResource(R.string.module_upload_section_source),
+            )
             TextField(
                 value = item.source,
                 onValueChange = onSourceChange,
@@ -456,26 +684,12 @@ private fun ProofSectionMiuix(
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(R.string.module_upload_proof_title),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                if (proof != null) {
-                    TextButton(
-                        text = stringResource(R.string.module_upload_proof_copy),
-                        onClick = {
-                            scope.launch {
-                                clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("proof", proof.text)))
-                            }
-                        },
-                    )
-                }
-            }
+            SectionLabelMiuix(
+                icon = Icons.Filled.VerifiedUser,
+                text = stringResource(R.string.module_upload_proof_title),
+            )
 
             if (proof == null) {
                 // 只要还有一个包的 sha 没算完，就一行口令都不显示：
@@ -486,25 +700,58 @@ private fun ProofSectionMiuix(
                     color = colorScheme.onSurfaceVariantSummary,
                 )
             } else {
-                Text(
-                    text = proof.text,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.Monospace,
-                )
+                // 这一串是要拿去抄进酷安签名的东西，给它一个「可以复制的东西」的容器，
+                // 而不是一行裸文本旁边挂个远处的按钮。
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.defaultColors(color = colorScheme.surfaceContainer),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            modifier = Modifier.weight(1f),
+                            text = proof.text,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        TextButton(
+                            text = stringResource(R.string.module_upload_proof_copy),
+                            onClick = {
+                                scope.launch {
+                                    clipboard.setClipEntry(
+                                        ClipEntry(ClipData.newPlainText("proof", proof.text)),
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
                 Text(
                     text = stringResource(R.string.module_upload_proof_hint),
                     fontSize = 12.sp,
                     color = colorScheme.onSurfaceVariantSummary,
                 )
-                Row(verticalAlignment = Alignment.Top) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = enabled) { onSignatureConfirmedChange(!state.signatureValid) },
+                    verticalAlignment = Alignment.Top,
+                ) {
                     Checkbox(
                         state = if (state.signatureValid) {
                             androidx.compose.ui.state.ToggleableState.On
                         } else {
                             androidx.compose.ui.state.ToggleableState.Off
                         },
-                        onClick = { onSignatureConfirmedChange(!state.signatureValid) },
+                        onClick = null,
                         enabled = enabled,
                     )
                     Text(
@@ -522,84 +769,6 @@ private fun ProofSectionMiuix(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SubmitSectionMiuix(
-    state: ModuleUploadFormState,
-    canSubmit: Boolean,
-    onSubmit: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.padding(top = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (state.submitting) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                CircularProgressIndicator(progress = null, size = 20.dp, strokeWidth = 2.dp)
-                Column {
-                    Text(
-                        text = stringResource(R.string.module_upload_submitting),
-                        fontSize = 14.sp,
-                    )
-                    // 契约没有字节回调：只报总数与不确定进度，不编一个百分比。
-                    Text(
-                        text = stringResource(
-                            R.string.module_upload_submitting_bytes,
-                            state.items.size,
-                            ModuleUploadRules.formatBytes(state.totalBytes),
-                        ),
-                        fontSize = 12.sp,
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-            }
-        }
-
-        when (val outcome = state.outcome) {
-            is UploadOutcome.Failure -> Text(
-                text = outcome.message,
-                fontSize = 13.sp,
-                color = colorScheme.error,
-            )
-
-            is UploadOutcome.Success -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = outcome.message,
-                    fontSize = 13.sp,
-                    color = colorScheme.primary,
-                )
-                outcome.prUrl?.let { url ->
-                    Text(
-                        text = stringResource(R.string.module_upload_result_pr, url),
-                        fontSize = 12.sp,
-                        color = colorScheme.primary,
-                    )
-                }
-            }
-
-            null -> Unit
-        }
-
-        Button(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            onClick = onSubmit,
-            enabled = canSubmit,
-            cornerRadius = 12.dp,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.CloudUpload,
-                contentDescription = null,
-                modifier = Modifier.padding(end = 6.dp),
-            )
-            Text(text = stringResource(R.string.module_upload_submit))
         }
     }
 }
@@ -691,25 +860,40 @@ private fun UidStatusRowMiuix(
 }
 
 @Composable
-private fun SectionLabelMiuix(text: String) {
-    Text(
-        text = text,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Medium,
-        color = colorScheme.onSurfaceVariantSummary,
-    )
-}
-
-@Composable
-private fun InfoLineMiuix(label: String, value: String, mono: Boolean = false) {
-    Row {
-        Text(
-            text = "$label: ",
-            fontSize = 12.sp,
-            color = colorScheme.onSurfaceVariantSummary,
+private fun SectionLabelMiuix(icon: ImageVector, text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            modifier = Modifier.size(14.dp),
+            imageVector = icon,
+            contentDescription = null,
+            tint = colorScheme.onSurfaceVariantSummary,
         )
         Text(
-            modifier = if (mono) Modifier.weight(1f) else Modifier,
+            text = text,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+    }
+}
+
+/** 一行 `标签 / 取值`：标签列定宽，取值从同一条竖线起。 */
+@Composable
+private fun InfoLineMiuix(label: String, value: String, mono: Boolean = false) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            modifier = Modifier.width(76.dp),
+            text = label,
+            fontSize = 12.sp,
+            color = colorScheme.onSurfaceVariantSummary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            modifier = Modifier.weight(1f),
             text = value,
             fontSize = 12.sp,
             fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,

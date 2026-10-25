@@ -1095,6 +1095,10 @@
     <string name="module_upload_form_title">Upload modules</string>
     <string name="module_upload_wall_add">Add</string>
     <string name="module_upload_wall_editing">Editing %1$d / %2$d</string>
+    <string name="module_upload_summary_count">%1$d module(s) · %2$s in total</string>
+    <string name="module_upload_ready">Ready to upload</string>
+    <string name="module_upload_blockers">%1$d item(s) left before upload</string>
+    <string name="module_upload_detail_package">Package</string>
     <string name="module_upload_section_info">Module info</string>
     <string name="module_upload_section_source">Source</string>
     <string name="module_upload_section_identity">Uploader</string>

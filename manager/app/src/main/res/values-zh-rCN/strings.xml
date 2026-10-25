@@ -1081,6 +1081,10 @@
     <string name="module_upload_form_title">上传模块</string>
     <string name="module_upload_wall_add">添加</string>
     <string name="module_upload_wall_editing">正在编辑第 %1$d / %2$d 枚</string>
+    <string name="module_upload_summary_count">%1$d 枚 · 合计 %2$s</string>
+    <string name="module_upload_ready">可以上传</string>
+    <string name="module_upload_blockers">还差 %1$d 项才能上传</string>
+    <string name="module_upload_detail_package">安装包</string>
     <string name="module_upload_section_info">模块信息</string>
     <string name="module_upload_section_source">出处</string>
     <string name="module_upload_section_identity">上传者</string>
