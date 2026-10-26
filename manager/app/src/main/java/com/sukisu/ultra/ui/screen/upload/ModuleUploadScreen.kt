@@ -82,6 +82,7 @@ fun ModuleUploadScreen() {
         singleLauncher.launch(arrayOf(ZIP_MIME))
     }
     val pickMany: () -> Unit = { multiLauncher.launch(arrayOf(ZIP_MIME)) }
+    val useArchived: (UploadRow) -> Unit = { row -> viewModel.stageArchived(row) }
 
     when (step) {
         UploadStep.LIST -> when (uiMode) {
@@ -94,6 +95,7 @@ fun ModuleUploadScreen() {
                 onQueryChange = viewModel::setQuery,
                 onToggleRow = viewModel::toggleExpanded,
                 onPickForRow = pickForRow,
+                onUseArchived = useArchived,
                 onPickZip = pickMany,
             )
 
@@ -106,6 +108,7 @@ fun ModuleUploadScreen() {
                 onQueryChange = viewModel::setQuery,
                 onToggleRow = viewModel::toggleExpanded,
                 onPickForRow = pickForRow,
+                onUseArchived = useArchived,
                 onPickZip = pickMany,
             )
         }

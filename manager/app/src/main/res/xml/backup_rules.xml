@@ -20,6 +20,12 @@
 -->
     <exclude domain="sharedpref" path="module_upload_session.xml"/>
     <!--
+   安装模块时留存的原始 zip（ModuleZipArchive，filesDir/module_zips/）也排除：
+   每个包几十 MB、上限 256 MB，塞进云端备份既浪费流量又必然撞配额；而且换机后
+   重新装一遍模块就会重新留存，没有任何需要带走的理由。
+-->
+    <exclude domain="file" path="module_zips/"/>
+    <!--
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>
 -->

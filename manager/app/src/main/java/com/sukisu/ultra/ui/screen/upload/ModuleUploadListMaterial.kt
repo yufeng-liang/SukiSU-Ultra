@@ -66,6 +66,7 @@ fun ModuleUploadListMaterial(
     onQueryChange: (String) -> Unit,
     onToggleRow: (String) -> Unit,
     onPickForRow: (UploadRow) -> Unit,
+    onUseArchived: (UploadRow) -> Unit,
     onPickZip: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -239,6 +240,7 @@ fun ModuleUploadListMaterial(
                     expanded = state.expandedId == row.id,
                     onToggle = { onToggleRow(row.id) },
                     onPick = { onPickForRow(row) },
+                    onUseArchived = { onUseArchived(row) },
                 )
             }
 
@@ -253,6 +255,7 @@ private fun UploadRowCardMaterial(
     expanded: Boolean,
     onToggle: () -> Unit,
     onPick: () -> Unit,
+    onUseArchived: () -> Unit,
 ) {
     TonalCard(
         modifier = Modifier
@@ -331,6 +334,17 @@ private fun UploadRowCardMaterial(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // 安装时留存了原始包就直接给一条捷径：绝大多数用户根本不知道自己的 zip 放哪。
+                if (row.archived) {
+                    TextButton(onClick = onUseArchived) {
+                        Text(stringResource(R.string.module_upload_use_archived_zip))
+                    }
+                    Text(
+                        text = stringResource(R.string.module_upload_use_archived_zip_summary),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 TextButton(onClick = onPick) {

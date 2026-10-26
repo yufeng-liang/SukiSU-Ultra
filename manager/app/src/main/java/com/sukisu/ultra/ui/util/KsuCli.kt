@@ -23,6 +23,7 @@ import com.sukisu.ultra.core.tasks.BootKernelVersion
 import com.sukisu.ultra.core.tasks.ExtractImage
 import com.sukisu.ultra.core.tasks.ProbeResult
 import com.sukisu.ultra.core.utils.DataSourceChannel
+import com.sukisu.ultra.data.modulezip.ModuleZipArchive
 import com.sukisu.ultra.data.registry.DownloadVerificationException
 import com.sukisu.ultra.data.registry.RegistryDownloadStore
 import com.sukisu.ultra.data.registry.copyForInstall
@@ -327,6 +328,7 @@ fun flashModule(
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit,
     deleteSourceOnSuccess: Boolean = false,
+    archiveSource: Boolean = true,
 ): FlashResult {
     // Registry downloads live in app-private storage and carry their expected size + SHA-256;
     // the exact copy handed to ksud is re-hashed right before installing.
@@ -354,6 +356,16 @@ fun flashModule(
         val cmd = "module install ${file.absolutePath}"
         val result = flashWithIO("${getKsuDaemonPath()} $cmd", onStdout, onStderr)
         Log.i("KernelSU", "install module $uri result: $result")
+        // 先算「装完要不要重启」再归档：moduleNeedsReboot 还要读这份 zip 里的 module.prop，
+        // 而下面的归档可能会把这份临时副本直接搬走。
+        val needsReboot = result.isSuccess && moduleNeedsReboot(file)
+        if (archiveSource && result.isSuccess) {
+            // 装成功了就留一份原始包：上传页要用的正是这个字节，而用户当初挑它的那个 SAF
+            // 授权已经随进程失效，事后再让他找一遍路径是不现实的。consumeSource = true 让
+            // 归档把这份临时副本改名搬走（同一个 cacheDir/filesDir 分区，比再复制几十 MB 便宜）；
+            // 留存是 best-effort，失败只是「上传时得手动挑」，绝不能影响这次安装的结论。
+            ModuleZipArchive.default().store(file, consumeSource = true)
+        }
         if (shouldDeleteSourceAfterInstall(deleteSourceOnSuccess, result.isSuccess)) {
             val name = runCatching { uri.getFileName(ksuApp) }.getOrNull()
                 ?: uri.lastPathSegment?.substringAfterLast('/').orEmpty()
@@ -366,7 +378,7 @@ fun flashModule(
                 )
             )
         }
-        return FlashResult(result, result.isSuccess && moduleNeedsReboot(file))
+        return FlashResult(result, needsReboot)
     } finally {
         file.delete()
     }

@@ -50,10 +50,41 @@ object ModuleUploadStaging {
      * 声明的 SIZE 可能缺失或不准，只信声明就会把一个 2GB 的包整个写进 cache 再拒。
      */
     suspend fun stage(context: Context, uri: Uri, maxBytes: Long?): Result = withContext(Dispatchers.IO) {
+        copyIntoStaging(
+            declared = declaredSize(context, uri),
+            maxBytes = maxBytes,
+            open = { context.contentResolver.openInputStream(uri) },
+        )
+    }
+
+    /**
+     * 从本地文件 stage：用于「用安装时留存的那份原始包」。
+     *
+     * 与 uri 那条路径共用同一段落盘与解析逻辑，区别只在数据源——留存包本来就在
+     * app 私有目录里，不需要 SAF，也不需要再问 ContentResolver 要大小。
+     */
+    suspend fun stageFile(file: File, maxBytes: Long?): Result = withContext(Dispatchers.IO) {
+        copyIntoStaging(
+            declared = file.length().takeIf { it > 0L },
+            maxBytes = maxBytes,
+            open = { file.inputStream() },
+        )
+    }
+
+    /**
+     * 复制进 staging 并解析。
+     *
+     * [declared] 是数据源自报的大小（可空）；[open] 负责开流，返回 null 视为 uri 失效。
+     * 复制出来的文件不删——它正是后面 `submitBatch` 要上传的那一份。
+     */
+    private suspend fun copyIntoStaging(
+        declared: Long?,
+        maxBytes: Long?,
+        open: () -> java.io.InputStream?,
+    ): Result {
         val limit = maxBytes?.takeIf { it > 0 }
-        val declared = declaredSize(context, uri)
         if (limit != null && declared != null && declared > limit) {
-            return@withContext Result.TooBig(declared, limit)
+            return Result.TooBig(declared, limit)
         }
 
         var copied = 0L
@@ -64,11 +95,11 @@ object ModuleUploadStaging {
             area.cleanupStale()
             val file = area.newFile("upload-", ".zip")
             target = file
-            val input = context.contentResolver.openInputStream(uri)
+            val input = open()
             if (input == null) {
                 // uri 失效：空副本也别留。
                 file.delete()
-                return@withContext Result.Failed
+                return Result.Failed
             }
             input.use { source ->
                 file.outputStream().use { sink ->
@@ -95,24 +126,24 @@ object ModuleUploadStaging {
         } catch (e: Throwable) {
             target?.delete()
             null
-        } ?: return@withContext Result.Failed
+        } ?: return Result.Failed
 
         if (tooBig) {
             staged.delete()
-            return@withContext Result.TooBig(copied, limit ?: copied)
+            return Result.TooBig(copied, limit ?: copied)
         }
 
         val meta = ModuleProp.parseModuleProp(staged)
         if (meta == null) {
             staged.delete()
-            return@withContext Result.UnreadableModule
+            return Result.UnreadableModule
         }
         val sha = ModuleProp.zipSha256(staged)
         if (sha.isNullOrBlank()) {
             staged.delete()
-            return@withContext Result.Failed
+            return Result.Failed
         }
-        Result.Ok(
+        return Result.Ok(
             UploadZip(
                 path = staged.absolutePath,
                 fileName = "${safeId(meta.id)}-${meta.versionCode}.zip",

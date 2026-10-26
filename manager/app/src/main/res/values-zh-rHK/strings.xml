@@ -332,6 +332,9 @@
     <string name="module_upload_pick_zip_summary">從儲存空間選擇一個或多個模組原始 zip</string>
     <string name="module_upload_pick_original_zip">選擇這個模組的原始 zip</string>
     <string name="module_upload_pick_original_zip_summary">zip 裡的模組 ID 必須是 %1$s</string>
+    <string name="module_upload_use_archived_zip">用安裝時留存的包</string>
+    <string name="module_upload_use_archived_zip_summary">安裝這個模組時已自動留存，不用再去儲存空間找</string>
+    <string name="module_upload_archived_missing">「%1$s」留存的包已不在了（被清理或讀不出），請手動選擇</string>
     <string name="module_upload_id_mismatch">這個 zip 是模組「%2$s」的，不是「%1$s」，沒有加入上傳。</string>
     <string name="module_upload_unreadable_prop">讀不出這個 zip 裡的 module.prop（不是模組 zip，或 id/name 為空）</string>
     <string name="module_upload_unreadable_prop_count">有 %1$d 個 zip 讀不出 module.prop，已略過</string>

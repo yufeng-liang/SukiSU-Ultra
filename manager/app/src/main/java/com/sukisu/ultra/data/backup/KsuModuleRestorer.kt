@@ -12,7 +12,9 @@ import java.io.File
 class KsuModuleRestorer : ModuleRestorer {
 
     override suspend fun install(zip: File): Result<Unit> = runCatchingCancellable {
-        val result = flashModule(Uri.fromFile(zip), onStdout = {}, onStderr = {})
+        // 恢复装的是我们自己用 ZipModuleArchiver 重新打出来的包，字节与作者发布的原始包不同：
+        // 拿它覆盖上传页要用的「原始 zip」，等于把用户手里唯一一份正品换掉，所以不留存。
+        val result = flashModule(Uri.fromFile(zip), onStdout = {}, onStderr = {}, archiveSource = false)
         // ksud 的 stderr 就是最有用的原因；它可能是空的，那就让上层只说"安装失败"，
         // 不要把 `IllegalStateException` 这种类名或者一句英文塞给用户。
         if (result.code != 0) throw IllegalStateException(result.err)

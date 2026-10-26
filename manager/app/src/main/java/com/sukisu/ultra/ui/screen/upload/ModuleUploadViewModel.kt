@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.model.Module
+import com.sukisu.ultra.data.modulezip.ModuleZipArchive
 import com.sukisu.ultra.data.repository.ModuleRepository
 import com.sukisu.ultra.data.repository.ModuleRepositoryImpl
 import com.sukisu.ultra.ksuApp
@@ -54,6 +55,7 @@ import java.io.File
  */
 class ModuleUploadViewModel(
     private val repo: ModuleRepository = ModuleRepositoryImpl(),
+    private val archive: ModuleZipArchive = ModuleZipArchive.default(),
 ) : ViewModel() {
 
     private val _step = MutableStateFlow(UploadStep.LIST)
@@ -122,11 +124,12 @@ class ModuleUploadViewModel(
         loadJob?.cancel()
         _listState.update { it.copy(loading = it.rows.isEmpty(), refreshing = refreshing) }
         loadJob = viewModelScope.launch {
-            val modules = withContext(Dispatchers.IO) {
-                repo.getModules().getOrElse { emptyList() }
+            val (modules, archived) = withContext(Dispatchers.IO) {
+                val modules = repo.getModules().getOrElse { emptyList() }
+                modules to archive.ids()
             }
             _listState.update {
-                val rows = modules.map { module -> module.toRow(it.rows) }
+                val rows = modules.map { module -> module.toRow(it.rows, archived) }
                 it.copy(
                     loading = false,
                     refreshing = false,
@@ -286,6 +289,75 @@ class ModuleUploadViewModel(
             } finally {
                 _listState.update { it.copy(pickingFor = null) }
             }
+        }
+    }
+
+    /**
+     * 直接用安装时留存的那份原始包，不再让用户去文件管理器里找。
+     *
+     * 只在 [UploadRow.archived] 为 true 时才有得用；留存包被淘汰或损坏（`entry` 返回
+     * null）时退回「请手动挑」的提示，不静默失败。
+     */
+    fun stageArchived(row: UploadRow) {
+        if (_formState.value.submitting) return
+        val current = _listState.value
+        if (current.pickingFor != null) return
+        val maxBytes = current.limits?.takeIf { it.usable }?.maxBytes
+        if (maxBytes == null) {
+            postMessage(res.getString(R.string.module_upload_limit_unknown))
+            return
+        }
+        _listState.update { it.copy(pickingFor = row.id) }
+        viewModelScope.launch {
+            try {
+                val entry = withContext(Dispatchers.IO) { archive.entry(row.id) }
+                if (entry == null) {
+                    // 索引说在、实际读不出来：把这一行的 archived 翻成 false，别再骗人。
+                    markArchived(row.id, false)
+                    postMessage(res.getString(R.string.module_upload_archived_missing, row.id))
+                    return@launch
+                }
+                when (val result = ModuleUploadStaging.stageFile(entry.file, maxBytes)) {
+                    is ModuleUploadStaging.Result.Ok -> {
+                        if (result.zip.id != row.id) {
+                            // 留存包里的 id 与这一行对不上：文件被换过或索引串了，宁可不用。
+                            File(result.zip.path).delete()
+                            markArchived(row.id, false)
+                            postMessage(
+                                res.getString(
+                                    R.string.module_upload_id_mismatch,
+                                    row.id,
+                                    result.zip.id,
+                                )
+                            )
+                        } else {
+                            addToForm(listOf(result.zip))
+                        }
+                    }
+
+                    ModuleUploadStaging.Result.UnreadableModule ->
+                        postMessage(res.getString(R.string.module_upload_unreadable_prop))
+
+                    is ModuleUploadStaging.Result.TooBig ->
+                        postMessage(stageTooBigMessage(result))
+
+                    ModuleUploadStaging.Result.Failed ->
+                        postMessage(res.getString(R.string.module_upload_stage_failed))
+                }
+            } finally {
+                _listState.update { it.copy(pickingFor = null) }
+            }
+        }
+    }
+
+    /** 只改这一行的「有没有留存包」标记，其余状态不动。 */
+    private fun markArchived(id: String, archived: Boolean) {
+        _listState.update { state ->
+            state.copy(
+                rows = state.rows.map { row ->
+                    if (row.id == id) row.copy(archived = archived) else row
+                }
+            )
         }
     }
 
@@ -955,7 +1027,7 @@ class ModuleUploadViewModel(
 }
 
 /** 把 `ksud module list` 的一行变成上传列表的一行，尽量保留上一次查到的状态。 */
-private fun Module.toRow(previous: List<UploadRow>): UploadRow {
+private fun Module.toRow(previous: List<UploadRow>, archived: Set<String>): UploadRow {
     val old = previous.firstOrNull { it.id == id && it.versionCode == versionCode }
     return UploadRow(
         id = id,
@@ -969,5 +1041,6 @@ private fun Module.toRow(previous: List<UploadRow>): UploadRow {
         metamodule = metamodule,
         status = old?.status,
         checking = old?.checking == true,
+        archived = ModuleZipArchive.safeId(id) in archived,
     )
 }

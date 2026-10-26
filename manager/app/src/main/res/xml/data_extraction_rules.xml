@@ -12,10 +12,17 @@
    path 用相对 sharedpref 目录的文件名，与 ModuleUploadPrefs.PREFS_NAME 对应：
    "module_upload_session" → module_upload_session.xml。
 -->
+    <!--
+   安装模块时留存的原始 zip（ModuleZipArchive，filesDir/module_zips/）同样两边都排除：
+   上限 256 MB 的安装包塞进云端备份既浪费流量又必然撞配额，而换机后重装模块就会
+   重新留存，没有带走的必要。
+-->
     <cloud-backup>
         <exclude domain="sharedpref" path="module_upload_session.xml"/>
+        <exclude domain="file" path="module_zips/"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="module_upload_session.xml"/>
+        <exclude domain="file" path="module_zips/"/>
     </device-transfer>
 </data-extraction-rules>

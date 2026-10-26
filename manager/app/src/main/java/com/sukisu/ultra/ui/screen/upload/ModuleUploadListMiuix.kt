@@ -76,6 +76,7 @@ fun ModuleUploadListMiuix(
     onQueryChange: (String) -> Unit,
     onToggleRow: (String) -> Unit,
     onPickForRow: (UploadRow) -> Unit,
+    onUseArchived: (UploadRow) -> Unit,
     onPickZip: () -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
@@ -248,6 +249,7 @@ fun ModuleUploadListMiuix(
                     expanded = state.expandedId == row.id,
                     onToggle = { onToggleRow(row.id) },
                     onPick = { onPickForRow(row) },
+                    onUseArchived = { onUseArchived(row) },
                 )
             }
 
@@ -302,6 +304,7 @@ private fun UploadRowCardMiuix(
     expanded: Boolean,
     onToggle: () -> Unit,
     onPick: () -> Unit,
+    onUseArchived: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -362,6 +365,18 @@ private fun UploadRowCardMiuix(
                         color = colorScheme.onSurfaceVariantSummary,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // 安装时留存了原始包就直接给一条捷径：绝大多数用户根本不知道自己的 zip 放哪。
+                if (row.archived) {
+                    TextButton(
+                        text = stringResource(R.string.module_upload_use_archived_zip),
+                        onClick = onUseArchived,
+                    )
+                    Text(
+                        text = stringResource(R.string.module_upload_use_archived_zip_summary),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
                     )
                 }
                 TextButton(

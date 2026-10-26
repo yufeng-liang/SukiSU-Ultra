@@ -1101,6 +1101,9 @@
     <string name="module_upload_pick_zip_summary">Pick one or more original module zips from storage</string>
     <string name="module_upload_pick_original_zip">Choose this module\'s original zip</string>
     <string name="module_upload_pick_original_zip_summary">The zip must contain this module id: %1$s</string>
+    <string name="module_upload_use_archived_zip">Use the zip kept at install time</string>
+    <string name="module_upload_use_archived_zip_summary">Kept automatically when this module was installed, no need to look for it in storage</string>
+    <string name="module_upload_archived_missing">The kept zip for \"%1$s\" is gone (evicted or unreadable), please choose it manually</string>
     <string name="module_upload_id_mismatch">That zip is for module \"%2$s\", not \"%1$s\", so it was not added.</string>
     <string name="module_upload_unreadable_prop">Cannot read module.prop from this zip (not a module zip, or id/name is empty)</string>
     <string name="module_upload_unreadable_prop_count">%1$d zips have no readable module.prop and were skipped</string>

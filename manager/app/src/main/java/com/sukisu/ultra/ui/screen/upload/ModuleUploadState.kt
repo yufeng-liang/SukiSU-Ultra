@@ -46,6 +46,13 @@ data class UploadRow(
     val metamodule: Boolean,
     val status: CheckStatus? = null,
     val checking: Boolean = false,
+    /**
+     * 安装这个模块时有没有留下原始包（见 ModuleZipArchive）。
+     *
+     * 为 true 时这一行可以直接「用安装时的包」，不用再让用户去文件管理器里找路径；
+     * 为 false 才退回手选。
+     */
+    val archived: Boolean = false,
 )
 
 /** 当前在哪一屏。列表与表单共用同一个路由，靠这个状态切换。 */
