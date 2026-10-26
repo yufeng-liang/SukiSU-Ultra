@@ -299,8 +299,6 @@
     <string name="nav_rail_collapse">Ciutkan bilah navigasi</string>
     <string name="settings_navigation_badge">Lencana navigasi</string>
     <string name="settings_navigation_badge_summary">Tampilkan jumlah aplikasi yang diberi akses dan modul aktif pada bilah navigasi</string>
-    <string name="settings_check_ci_update">Periksa pembaruan CI</string>
-    <string name="settings_check_ci_update_summary">Periksa build CI cabang main di beranda dan beri tahu saat pembaruan tersedia.</string>
     <string name="settings_hide_home_warnings">Sembunyikan Peringatan Beranda</string>
     <string name="settings_hide_home_warnings_summary">Sembunyikan kart peringatan di halaman beranda (build PR, pembaruan kernel/manager, pembaruan LKM, mode pratinjau)</string>
 </resources>

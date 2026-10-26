@@ -401,8 +401,6 @@
     <string name="module_upload_limit_unknown">暫時拿不到伺服器上限，先不能提交</string>
     <string name="module_upload_turnstile_title">人機驗證</string>
     <string name="module_upload_turnstile_failed">人機驗證沒完成，本次沒有提交</string>
-    <string name="settings_check_ci_update">檢查 CI 版本更新</string>
-    <string name="settings_check_ci_update_summary">在主頁檢查 main 分支的 CI 構建，有新版本時提示更新</string>
     <string name="settings_hide_home_warnings">隱藏首頁警告</string>
     <string name="settings_hide_home_warnings_summary">隱藏首頁的警告卡片（PR 建置、核心/管理器更新、LKM 更新、預覽模式）</string>
 </resources>

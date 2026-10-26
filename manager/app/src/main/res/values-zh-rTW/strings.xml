@@ -829,8 +829,6 @@
     <string name="temporary_root_custom_duration">自訂時長</string>
     <string name="temporary_root_custom_minutes">時長（分鐘）</string>
     <string name="temporary_root_custom_range">請輸入 1～10080 分鐘（最多 7 天）</string>
-    <string name="settings_check_ci_update">檢查 CI 版本更新</string>
-    <string name="settings_check_ci_update_summary">在首頁檢查 main 分支的 CI 建置，有新版本時提示更新</string>
     <string name="version_spoof_warning">注意：這些設定會改變核心實際回傳的 SukiSU 版本資訊，不只是修改介面顯示。版本號或 UAPI 與編譯值不一致，可能導致 Manager 誤判相容性，並影響安裝與更新。可隨時還原核心編譯值。</string>
     <string name="version_spoof_hint">欄位顯示目前生效值，下方會標示核心編譯時的原始值。修改後會儲存，並在開機時重新套用（安全模式除外）。其他應用程式可能會快取版本資訊；若顯示未更新，請重新啟動該應用程式。完整版本字串最長 254 個 UTF-8 位元組。</string>
     <string name="version_spoof_code">SukiSU 數字版本號</string>
