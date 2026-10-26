@@ -39,6 +39,7 @@ fun ColorPaletteScreen() {
         currentPaletteStyle = currentPaletteStyle,
         currentColorSpec = currentColorSpec,
         showFullStatus = uiState.showFullStatus,
+        hideHomeWarnings = uiState.hideHomeWarnings,
     )
     val actions = ColorPaletteScreenActions(
         onBack = dropUnlessResumed { navigator.pop() },
@@ -62,6 +63,7 @@ fun ColorPaletteScreen() {
         onSetPageScale = viewModel::setPageScale,
         onSetModuleDescriptionMaxLines = viewModel::setModuleDescriptionMaxLines,
         onSetShowFullStatus = viewModel::setShowFullStatus,
+        onSetHideHomeWarnings = viewModel::setHideHomeWarnings,
         onSetAlternativeIcon = { enabled -> viewModel.setAlternativeIcon(context, enabled) },
     )
 

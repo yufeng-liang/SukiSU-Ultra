@@ -75,6 +75,10 @@ fun InstallScreen(
     var allowShell by rememberSaveable { mutableStateOf(false) }
     var enableAdb by rememberSaveable { mutableStateOf(false) }
     var forceBackup by rememberSaveable { mutableStateOf(false) }
+    var kpmEnabled by rememberSaveable { mutableStateOf(false) }
+    var kpmUndo by rememberSaveable { mutableStateOf(false) }
+    var kpmBootExpanded by rememberSaveable { mutableStateOf(false) }
+    var kpmBootUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var blockModulesEnabled by rememberSaveable { mutableStateOf(false) }
     var blockModules by rememberSaveable { mutableStateOf("") }
     var blockModulesPrefilled by rememberSaveable { mutableStateOf(false) }
@@ -216,6 +220,10 @@ fun InstallScreen(
         if (!isBlockModulesValid(effectiveBlockModules)) {
             showMessage(blockModulesInvalidMessage)
         } else installMethod?.let { method ->
+            if (kpmEnabled && method is InstallMethod.DirectInstallToInactiveSlot) {
+                showMessage(resources.getString(R.string.install_kpm_inactive_unsupported))
+                return@let
+            }
             when (method) {
                 is InstallMethod.HorizonKernel -> {
                     method.uri?.let { uri ->
@@ -237,6 +245,9 @@ fun InstallScreen(
                                 is InstallMethod.DownloadFile -> FlashIt.DownloadBoot(
                                     url = method.url ?: return@let,
                                     partition = method.partition ?: return@let,
+                                    kpmEnabled = kpmEnabled,
+                                    kpmUndo = kpmUndo,
+                                    kpmBoot = kpmBootUri,
                                     lkm = lkmSelection,
                                     allowShell = allowShell,
                                     enableAdb = enableAdb,
@@ -247,6 +258,9 @@ fun InstallScreen(
                                 )
                                 else -> FlashIt.FlashBoot(
                                     boot = if (method is InstallMethod.SelectFile) method.uri else null,
+                                    kpmEnabled = kpmEnabled,
+                                    kpmUndo = kpmUndo,
+                                    kpmBoot = kpmBootUri,
                                     lkm = lkmSelection,
                                     ota = isOta,
                                     partition = partitions.getOrNull(partitionSelectionIndex),
@@ -346,6 +360,16 @@ fun InstallScreen(
         }
     }
 
+    val selectKpmBootLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                kpmBootUri = uri
+            }
+        }
+    }
+
     val state = InstallUiState(
         installMethod = installMethod,
         lkmSelection = lkmSelection,
@@ -365,6 +389,12 @@ fun InstallScreen(
         forceBackup = forceBackup,
         canForceBackup = installMethod is InstallMethod.SelectFile,
         kpmPatchOption = kpmPatchOption,
+        kpmEnabled = kpmEnabled,
+        kpmUndo = kpmUndo,
+        kpmBootExpanded = kpmBootExpanded,
+        kpmBootUri = kpmBootUri,
+        canPatchKpm = android.os.Build.SUPPORTED_ABIS.contains("arm64-v8a") &&
+            installMethod !is InstallMethod.HorizonKernel,
         blockModulesEnabled = blockModulesEnabled,
         blockModules = blockModules,
         blockModulesValid = isBlockModulesValid(effectiveBlockModules),
@@ -423,6 +453,16 @@ fun InstallScreen(
         onAdvancedOptionsClicked = {
             advancedOptionsShown = !advancedOptionsShown
         },
+        onPatchKpmFile = {
+            selectKpmBootLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/x-boot-img"))
+            })
+        },
+        onKpmEnabledChange = { kpmEnabled = it },
+        onKpmUndoChange = { kpmUndo = it },
+        onToggleKpmBoot = { kpmBootExpanded = !kpmBootExpanded },
+        onClearKpmBoot = { kpmBootUri = null },
         onSelectAllowShell = {
             allowShell = it
         },

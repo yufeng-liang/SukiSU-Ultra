@@ -49,13 +49,14 @@
 
 #include "extension.h"
 #include "kpm/kpm.h"
+#include "kpm/bridge.h"
 
 #include "klog.h" // IWYU pragma: keep
 
 int ksu_extension_kpm_get(u32 id, u64 *value)
 {
 #ifdef CONFIG_KPM
-    *value = 1;
+    *value = sukisu_kpm_bridge(SUKISU_KPM_PROBE, 0, 0, 0, 0) == SUKISU_KPM_ABI_VERSION;
 #else
     *value = 0;
 #endif
@@ -72,6 +73,7 @@ int ksu_extension_kpm_io(u32 id, void __user *raw)
     return do_kpm(raw);
 #else
     (void)raw;
+    pr_warn_once("extension/kpm: IO disabled: rebuild SukiSU with CONFIG_KPM=y\n");
     return -EOPNOTSUPP;
 #endif
 }

@@ -10,6 +10,7 @@ import com.sukisu.ultra.ui.screen.susfs.util.SlotInfo
 @Immutable
 data class SuSFSUiState(
     val operationResults: List<com.sukisu.ultra.ui.component.ConfigResult> = emptyList(),
+    val priorityUidFilterResults: List<com.sukisu.ultra.ui.component.ConfigResult> = emptyList(),
     val isLoading: Boolean = false,
     val runtimeInfo: SuSFSRuntimeInfo? = null,
     val isNavigatingBack: Boolean = false,
@@ -41,6 +42,10 @@ data class SuSFSUiState(
     val susPaths: Set<String> = emptySet(),
     val susLoopPaths: Set<String> = emptySet(),
     val susMaps: Set<String> = emptySet(),
+    val priorityUidFilter: Set<String> = emptySet(),
+    val priorityApps: List<AppInfo> = emptyList(),
+    val isLoadingPriorityApps: Boolean = false,
+    val showPriorityAppsDialog: Boolean = false,
 
     // Kstat 配置
     val kstatConfigs: Set<String> = emptySet(),
@@ -85,6 +90,7 @@ enum class SuSFSTab(val displayNameRes: Int) {
     SUS_LOOP_PATHS(R.string.susfs_tab_sus_loop_paths),
     SUS_MAPS(R.string.susfs_tab_sus_maps),
     KSTAT_CONFIG(R.string.susfs_tab_kstat_config),
+    PRIORITY_UID_FILTER(R.string.susfs_priority_uid_filter),
     ENABLED_FEATURES(R.string.susfs_tab_enabled_features);
 
     companion object {

@@ -67,6 +67,7 @@ fn install_at(module_path: &Path, config: &ModuleConfig) -> anyhow::Result<()> {
                 &config.sus_paths,
                 &config.sus_loop_paths,
                 &config.sus_maps,
+                &config.priority_uid_filter,
             ),
         ),
     ];

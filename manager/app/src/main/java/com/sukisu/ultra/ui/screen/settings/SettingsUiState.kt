@@ -28,6 +28,7 @@ data class SettingsUiState(
     val moduleDescriptionMaxLines: Int = 4,
     val enableWebDebugging: Boolean = false,
     val showFullStatus: Boolean = true,
+    val hideHomeWarnings: Boolean = false,
 
     // Su Compat
     val suCompatStatus: String = "",

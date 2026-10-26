@@ -10,5 +10,6 @@
 
 pub mod kstat;
 pub mod paths;
+pub mod priority_uid_filter;
 pub mod spoof;
 pub mod status;

@@ -81,8 +81,8 @@
     <string name="home_learn_kernelsu_url">https://sukisu.org/zh/guide/</string>
     <string name="home_click_to_learn_kernelsu">了解如何安裝 SukiSU 及使用模組</string>
     <string name="home_support_title">支持開發</string>
-    <string name="home_support_content">KernelSU 承諾永久免費且開源，歡迎捐款支持</string>
     <string name="home_gki_warning">由 v3.0.0 起 GKI 模式僅限測試環境使用，不建議日常長期使用且不再提供鏡像檔</string>
+    <string name="home_support_content">SukiSU 承諾永久免費且開源，歡迎捐款支持</string>
     <string name="about_source_code"><![CDATA[在 %1$s 中檢視原始碼<br/>加入我們的 %2$s 頻道]]></string>
     <string name="profile_default">預設</string>
     <string name="profile_template">模板</string>
@@ -293,7 +293,7 @@
     <string name="download_install">安裝</string>
     <string name="settings_adb_root_summary">以 Root 權限執行 adbd daemon</string>
     <string name="settings_shell_su_adb_only">限制 Shell 僅可透過 ADB 取得 Root</string>
-    <string name="settings_shell_su_adb_only_summary">授權 Shell 後的額外檢查：僅由 adbd 或 KernelSU Root 程序（如 ADB 模組）啟動的 shell 程序可取得 Root，防止 App 提權至 shell 後進一步取得 Root</string>
+    <string name="settings_shell_su_adb_only_summary">授權 Shell 後的額外檢查：僅由 adbd 或 SukiSU Root 程序（如 ADB 模組）啟動的 shell 程序可取得 Root，防止 App 提權至 shell 後進一步取得 Root</string>
     <string name="menu_sort">排序</string>
     <string name="sort_by_name">應用名</string>
     <string name="sort_by_package_name">套件名</string>
@@ -317,7 +317,6 @@
     <string name="module_upload_search_hint">搜尋模組</string>
     <string name="module_upload_refresh">重新整理</string>
     <string name="module_upload_continue_check">繼續查</string>
-
     <string name="module_upload_check_progress">已查 %1$d 個，還有 %2$d 個</string>
     <string name="module_upload_continue_hint">目前顯示前 %1$d 個模組</string>
     <string name="module_upload_empty">沒有已安裝的模組</string>
@@ -344,7 +343,6 @@
     <string name="module_upload_status_not_checked">還沒查</string>
     <string name="module_upload_status_not_checked_summary">還沒查過，點「繼續查」或重新整理。</string>
     <string name="module_upload_checking">正在查詢…</string>
-
     <string name="module_upload_form_title">上傳模組</string>
     <string name="module_upload_wall_add">新增</string>
     <string name="module_upload_wall_editing">正在編輯第 %1$d / %2$d 枚</string>
@@ -399,4 +397,8 @@
     <string name="module_upload_limit_unknown">暫時拿不到伺服器上限，先不能提交</string>
     <string name="module_upload_turnstile_title">人機驗證</string>
     <string name="module_upload_turnstile_failed">人機驗證沒完成，本次沒有提交</string>
+    <string name="settings_check_ci_update">檢查 CI 版本更新</string>
+    <string name="settings_check_ci_update_summary">在主頁檢查 main 分支的 CI 構建，有新版本時提示更新</string>
+    <string name="settings_hide_home_warnings">隱藏首頁警告</string>
+    <string name="settings_hide_home_warnings_summary">隱藏首頁的警告卡片（PR 建置、核心/管理器更新、LKM 更新、預覽模式）</string>
 </resources>

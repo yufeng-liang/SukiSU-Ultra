@@ -265,7 +265,11 @@ object SuSFSPathManager {
         size: String, atime: String, atimeNsec: String, mtime: String, mtimeNsec: String,
         ctime: String, ctimeNsec: String, blocks: String, blksize: String
     ): Boolean {
-        val command = "add-sus-kstat-statically '$path' '$ino' '$dev' '$nlink' '$size' '$atime' '$atimeNsec' '$mtime' '$mtimeNsec' '$ctime' '$ctimeNsec' '$blocks' '$blksize'"
+        val args = listOf(
+            ino, dev, nlink, size, atime, atimeNsec, mtime, mtimeNsec,
+            ctime, ctimeNsec, blocks, blksize
+        ).joinToString(" ", transform = SuSFSConfig::shellQuote)
+        val command = "add-sus-kstat-statically ${SuSFSConfig.shellQuote(path)} $args"
         val success = SuSFSCommands.executeSusfsCommand(context, command)
         if (success) {
             val entry = "$path|$ino|$dev|$nlink|$size|$atime|$atimeNsec|$mtime|$mtimeNsec|$ctime|$ctimeNsec|$blocks|$blksize"

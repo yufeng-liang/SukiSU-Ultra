@@ -17,8 +17,8 @@
     <string name="home_learn_kernelsu">Tìm hiểu về SukiSU</string>
     <string name="home_click_to_learn_kernelsu">Tìm hiểu cách cài đặt SukiSU và sử dụng các module.</string>
     <string name="home_support_title">Ủng hộ chúng tôi</string>
-    <string name="home_support_content">KernelSU sẽ luôn là miễn phí và mã nguồn mở. Tuy nhiên, bạn có thể cho chúng tôi thấy rằng bạn quan tâm bằng cách quyên góp!</string>
     <string name="home_gki_warning">Bắt đầu từ v3.0.0, chế độ GKI sẽ chỉ được sử dụng trong môi trường thử nghiệm. Chúng tôi không khuyến nghị sử dụng chế độ này và các file image sẽ không còn được cung cấp nữa.</string>
+    <string name="home_support_content">SukiSU sẽ luôn là miễn phí và mã nguồn mở. Tuy nhiên, bạn có thể cho chúng tôi thấy rằng bạn quan tâm bằng cách quyên góp!</string>
     <string name="about_source_code"><![CDATA[Xem mã nguồn tại %1$s<br/>Tham gia kênh %2$s của chúng tôi]]></string>
     <string name="module_magisk_conflict">Các module bị vô hiệu hoá do xung đột với Magisk!</string>
     <string name="module_uninstall_confirm">Bạn có THẬT SỰ muốn gỡ cài đặt module %s không?</string>
@@ -299,4 +299,8 @@
     <string name="nav_rail_collapse">Thu gọn thanh điều hướng</string>
     <string name="settings_navigation_badge">Biểu tượng Điều hướng</string>
     <string name="settings_navigation_badge_summary">Hiển thị số lượng ứng dụng được cấp phép và số lượng module được kích hoạt trên thanh điều hướng.</string>
+    <string name="settings_check_ci_update">Kiểm tra cập nhật CI</string>
+    <string name="settings_check_ci_update_summary">Kiểm tra các bản dựng CI của nhánh main trên trang chủ và thông báo khi có bản cập nhật.</string>
+    <string name="settings_hide_home_warnings">Ẩn cảnh báo trang chủ</string>
+    <string name="settings_hide_home_warnings_summary">Ẩn các thẻ cảnh báo trên trang chủ (bản PR, cập nhật kernel/manager, cập nhật LKM, chế độ xem trước)</string>
 </resources>

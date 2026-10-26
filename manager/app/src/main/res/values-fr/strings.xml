@@ -45,7 +45,7 @@
     <string name="home_learn_kernelsu_url">https://sukisu.org/guide/</string>
     <string name="home_support_title">Soutenez-nous</string>
     <string name="home_click_to_learn_kernelsu">Découvrez comment installer SukiSU et utiliser les modules.</string>
-    <string name="home_support_content">KernelSU est, et restera toujours, gratuit et open-source. Néanmoins, vous pouvez nous témoigner de votre soutien en nous faisant un don.</string>
+    <string name="home_support_content">SukiSU est, et restera toujours, gratuit et open-source. Néanmoins, vous pouvez nous témoigner de votre soutien en nous faisant un don.</string>
     <string name="about_source_code"><![CDATA[Voir le code source à %1$s<br/>Rejoignez notre canal %2$s]]></string>
     <string name="profile_template">Modèle</string>
     <string name="profile_default">Par défaut</string>
@@ -253,4 +253,8 @@
     <string name="profile_flags_desc_no_new_privs">Empêche toute élévation de privilèges supplémentaire via SukiSU dans le contexte de ce profil root.</string>
     <string name="install_force_backup">Sauvegarder comme image d\'origine</string>
     <string name="install_force_backup_summary">Veuillez vous assurer que l\'image boot sélectionnée est l\'image d\'origine</string>
+    <string name="settings_check_ci_update">Rechercher les mises à jour CI</string>
+    <string name="settings_check_ci_update_summary">Vérifier les versions CI de la branche main sur la page d\'accueil et avertir lorsqu\'une mise à jour est disponible.</string>
+    <string name="settings_hide_home_warnings">Masquer les avertissements</string>
+    <string name="settings_hide_home_warnings_summary">Masquer les cartes d\'avertissement sur la page d\'accueil (build PR, mise à jour kernel/manager, mise à jour LKM, mode aperçu)</string>
 </resources>

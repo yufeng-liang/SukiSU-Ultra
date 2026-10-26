@@ -11,6 +11,15 @@ import com.sukisu.ultra.ui.screen.susfs.viewmodel.SuSFSViewModel
 @Composable
 internal fun SuSFSDialogs(uiState: SuSFSUiState, viewModel: SuSFSViewModel) {
     val context = LocalContext.current
+    PriorityUidFilterDialog(
+        showDialog = uiState.showPriorityAppsDialog && uiState.selectedTab == SuSFSTab.PRIORITY_UID_FILTER,
+        onDismiss = { viewModel.showPriorityAppsDialog(false) },
+        onConfirm = { viewModel.applyPriorityUidFilter(context, it.toSet()) },
+        isLoading = uiState.isLoading,
+        apps = uiState.priorityApps,
+        isLoadingApps = uiState.isLoadingPriorityApps,
+        selectedPackages = uiState.priorityUidFilter,
+    )
     SlotInfoDialog(
         showDialog = uiState.showSlotInfoDialog,
         onDismiss = { viewModel.showSlotInfoDialog(false) },
@@ -340,6 +349,16 @@ internal fun SuSFSTabContent(uiState: SuSFSUiState, viewModel: SuSFSViewModel) {
                 onEditAddKstat = { viewModel.openAddKstatDialog(it) },
                 onUpdateKstat = { path -> viewModel.performOperation { check(SuSFSManager.updateKstat(context, path)) } },
                 onUpdateKstatFullClone = { path -> viewModel.performOperation { check(SuSFSManager.updateKstatFullClone(context, path)) } }
+            )
+        }
+        SuSFSTab.PRIORITY_UID_FILTER -> {
+            com.sukisu.ultra.ui.component.ConfigResults(uiState.priorityUidFilterResults)
+            PriorityUidFilterContent(
+                packages = uiState.priorityUidFilter,
+                isLoading = uiState.isLoading,
+                onSelectApps = { viewModel.showPriorityAppsDialog(true) },
+                onApply = { viewModel.applyPriorityUidFilter(context, uiState.priorityUidFilter) },
+                onClear = { viewModel.applyPriorityUidFilter(context, emptySet()) },
             )
         }
         SuSFSTab.ENABLED_FEATURES -> {

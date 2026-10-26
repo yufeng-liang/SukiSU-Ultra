@@ -129,4 +129,9 @@ sealed interface Route : NavKey, Parcelable {
     @Parcelize
     @Serializable
     data object Extensions : Route
+
+    /** KernelSU reported-version overrides detail page. */
+    @Parcelize
+    @Serializable
+    data object VersionSpoof : Route
 }

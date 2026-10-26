@@ -79,6 +79,7 @@ import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.ultra.ui.component.rebootlistpopup.RebootListPopup
 import com.sukisu.ultra.ui.component.statustag.StatusTag
+import com.sukisu.ultra.ui.util.module.LatestVersionInfo
 
 private val HeroShape = RoundedCornerShape(28.dp)
 private val TileShape = RoundedCornerShape(22.dp)
@@ -107,38 +108,46 @@ fun HomePagerMaterial(
                 state = state,
                 actions = actions,
             )
+            if (state.showVersionMismatchWarning) {
+                WarningCard(
+                    stringResource(R.string.version_spoof_home_warning),
+                    onClick = actions.onOpenVersionSpoof,
+                )
+            }
             if (state.checkUpdateEnabled) {
                 UpdateCard(state = state, actions = actions)
             }
-            if (state.showManagerPrBuildWarning && state.showFullStatus) {
-                WarningCard(stringResource(id = R.string.home_pr_build_warning), level = WarningLevel.Notice)
-            }
-            if (state.requiresNewKernel && state.showFullStatus) {
-                WarningCard(
-                    stringResource(
-                        id = if (state.canInstallKernelUpdate) R.string.require_kernel_version else R.string.require_kernel_version_gki
-                    ),
-                    onClick = if (state.canInstallKernelUpdate) actions.onInstallClick else null
-                )
-            }
-            if (state.requiresNewManager) {
-                WarningCard(
-                    stringResource(
-                        id = R.string.require_manager_version
+            if (!state.hideHomeWarnings) {
+                if (state.showManagerPrBuildWarning && state.showFullStatus) {
+                    WarningCard(stringResource(id = R.string.home_pr_build_warning), level = WarningLevel.Notice)
+                }
+                if (state.requiresNewKernel && state.showFullStatus) {
+                    WarningCard(
+                        stringResource(
+                            id = if (state.canInstallKernelUpdate) R.string.require_kernel_version else R.string.require_kernel_version_gki
+                        ),
+                        onClick = if (state.canInstallKernelUpdate) actions.onInstallClick else null
                     )
-                )
-            }
-            if (state.showLkmUpdate && state.showFullStatus) {
-                WarningCard(
-                    message = stringResource(R.string.home_lkm_update_available),
-                    level = WarningLevel.Notice,
-                    onClick = actions.onInstallClick,
-                )
+                }
+                if (state.requiresNewManager) {
+                    WarningCard(
+                        stringResource(
+                            id = R.string.require_manager_version
+                        )
+                    )
+                }
+                if (state.showLkmUpdate && state.showFullStatus) {
+                    WarningCard(
+                        message = stringResource(R.string.home_lkm_update_available),
+                        level = WarningLevel.Notice,
+                        onClick = actions.onInstallClick,
+                    )
+                }
             }
             if (state.showRootWarning) {
                 WarningCard(stringResource(id = R.string.grant_root_failed))
             }
-            if (state.isPreviewMode) {
+            if (state.isPreviewMode && !state.hideHomeWarnings) {
                 WarningCard(stringResource(id = R.string.home_preview_mode), level = WarningLevel.Notice)
             }
             StatsRow(state = state, actions = actions)
@@ -757,7 +766,7 @@ private fun previewHomeScreenState(
     isLateLoadMode = isLateLoadMode,
     checkUpdateEnabled = false,
     showFullStatus = true,
-    latestVersionInfo = com.sukisu.ultra.ui.util.module.LatestVersionInfo(),
+    latestVersionInfo = LatestVersionInfo(),
     currentManagerVersionCode = 10000,
     systemInfo = previewSystemInfo.copy(selinuxStatus = selinuxStatus),
     kernelUAPIVersion = 1,

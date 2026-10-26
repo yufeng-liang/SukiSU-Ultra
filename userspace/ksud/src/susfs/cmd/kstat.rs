@@ -5,13 +5,17 @@
 //! syscall pipeline, factored into [`fill_kstat_from_path`] and
 //! [`fill_and_send_kstat`].
 
-use std::os::unix::fs::MetadataExt;
+use std::str::FromStr;
 
 use anyhow::{Context, Result};
 
 use crate::susfs::abi::consts::{
     CMD_SUSFS_ADD_SUS_KSTAT, CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY, CMD_SUSFS_UPDATE_SUS_KSTAT,
-    ERR_CMD_NOT_SUPPORTED, KSTAT_AUTO_SPOOF, KSTAT_AUTO_SPOOF_FULL_CLONE, SUSFS_MAX_PATHNAME,
+    ERR_CMD_NOT_SUPPORTED, KSTAT_AUTO_SPOOF, KSTAT_AUTO_SPOOF_FULL_CLONE,
+    KSTAT_SPOOF_ATIME_TV_NSEC, KSTAT_SPOOF_ATIME_TV_SEC, KSTAT_SPOOF_BLKSIZE, KSTAT_SPOOF_BLOCKS,
+    KSTAT_SPOOF_CTIME_TV_NSEC, KSTAT_SPOOF_CTIME_TV_SEC, KSTAT_SPOOF_DEV, KSTAT_SPOOF_INO,
+    KSTAT_SPOOF_MTIME_TV_NSEC, KSTAT_SPOOF_MTIME_TV_SEC, KSTAT_SPOOF_NLINK, KSTAT_SPOOF_SIZE,
+    SUSFS_MAX_PATHNAME,
 };
 use crate::susfs::abi::{SusfsKstat, send};
 use crate::susfs::util::{canonicalize, copy_metadata_into_kstat, copy_path_into};
@@ -99,57 +103,97 @@ pub fn update_sus_kstat_full_clone(path: &str) -> Result<()> {
 
 // ── static (caller-supplied stat values) ─────────────────────────────────────
 
-/// Spoof `path`'s stat using the literal values supplied by the caller.
-///
-/// All `spoofed_*` arguments are forwarded verbatim; the kernel uses the
-/// caller-supplied values rather than `stat(2)`-ing the file. `target_ino`
-/// is still resolved from the path so the kernel can match the request
-/// against the previously-captured entry.
+/// Parse a caller-provided stat value. `default` means retain the value
+/// read from the current file metadata.
+fn parse_stat_override<T>(name: &str, value: &str) -> Result<Option<T>>
+where
+    T: FromStr,
+    T::Err: std::fmt::Display,
+{
+    if value == "default" {
+        return Ok(None);
+    }
+    value.parse::<T>().map(Some).map_err(|error| {
+        anyhow::anyhow!(
+            "invalid {name} value '{value}': expected an integer or 'default' ({error})"
+        )
+    })
+}
+
+/// Add a static kstat entry. Fields set to `default` retain their current
+/// stat value; only explicitly supplied fields are enabled in the kernel
+/// spoofing mask.
 #[allow(clippy::similar_names, clippy::too_many_arguments)]
 pub fn add_sus_kstat_statically(
     path: &str,
-    ino: u64,
-    dev: u64,
-    nlink: u32,
-    size: u64,
-    atime_sec: i64,
-    atime_nsec: u64,
-    mtime_sec: i64,
-    mtime_nsec: u64,
-    ctime_sec: i64,
-    ctime_nsec: u64,
-    blocks: u64,
-    blksize: i64,
+    ino: &str,
+    dev: &str,
+    nlink: &str,
+    size: &str,
+    atime_sec: &str,
+    atime_nsec: &str,
+    mtime_sec: &str,
+    mtime_nsec: &str,
+    ctime_sec: &str,
+    ctime_nsec: &str,
+    blocks: &str,
+    blksize: &str,
 ) -> Result<()> {
-    // Resolve the path so we can also record target_ino; the C source
-    // uses realpath() for the same reason.
-    let resolved = canonicalize(path)?;
-    let resolved_str = resolved
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("resolved path is not valid utf-8"))?;
-    let md = std::fs::metadata(&resolved)
-        .with_context(|| format!("failed to get stat from path: '{resolved_str}'"))?;
+    let mut cmd = fill_kstat_from_path(path, 0)?;
+    cmd.is_statically = 1;
 
-    let mut cmd = SusfsKstat {
-        is_statically: 1,
-        target_ino: md.ino(),
-        target_pathname: [0; SUSFS_MAX_PATHNAME],
-        spoofed_ino: ino,
-        spoofed_dev: dev,
-        spoofed_nlink: nlink,
-        spoofed_size: size,
-        spoofed_atime_tv_sec: atime_sec,
-        spoofed_atime_tv_nsec: atime_nsec,
-        spoofed_mtime_tv_sec: mtime_sec,
-        spoofed_mtime_tv_nsec: mtime_nsec,
-        spoofed_ctime_tv_sec: ctime_sec,
-        spoofed_ctime_tv_nsec: ctime_nsec,
-        spoofed_blocks: blocks,
-        spoofed_blksize: blksize,
-        flags: 0,
-        err: ERR_CMD_NOT_SUPPORTED,
-    };
-    copy_path_into(&mut cmd.target_pathname, resolved_str)?;
+    macro_rules! apply_override {
+        ($field:ident, $value:expr, $ty:ty, $flag:ident) => {
+            if let Some(value) = parse_stat_override::<$ty>(stringify!($field), $value)? {
+                cmd.$field = value;
+                cmd.flags |= $flag;
+            }
+        };
+    }
+
+    apply_override!(spoofed_ino, ino, u64, KSTAT_SPOOF_INO);
+    apply_override!(spoofed_dev, dev, u64, KSTAT_SPOOF_DEV);
+    apply_override!(spoofed_nlink, nlink, u32, KSTAT_SPOOF_NLINK);
+    apply_override!(spoofed_size, size, u64, KSTAT_SPOOF_SIZE);
+    apply_override!(
+        spoofed_atime_tv_sec,
+        atime_sec,
+        i64,
+        KSTAT_SPOOF_ATIME_TV_SEC
+    );
+    apply_override!(
+        spoofed_atime_tv_nsec,
+        atime_nsec,
+        u64,
+        KSTAT_SPOOF_ATIME_TV_NSEC
+    );
+    apply_override!(
+        spoofed_mtime_tv_sec,
+        mtime_sec,
+        i64,
+        KSTAT_SPOOF_MTIME_TV_SEC
+    );
+    apply_override!(
+        spoofed_mtime_tv_nsec,
+        mtime_nsec,
+        u64,
+        KSTAT_SPOOF_MTIME_TV_NSEC
+    );
+    apply_override!(
+        spoofed_ctime_tv_sec,
+        ctime_sec,
+        i64,
+        KSTAT_SPOOF_CTIME_TV_SEC
+    );
+    apply_override!(
+        spoofed_ctime_tv_nsec,
+        ctime_nsec,
+        u64,
+        KSTAT_SPOOF_CTIME_TV_NSEC
+    );
+    apply_override!(spoofed_blocks, blocks, u64, KSTAT_SPOOF_BLOCKS);
+    apply_override!(spoofed_blksize, blksize, i64, KSTAT_SPOOF_BLKSIZE);
+
     send(
         CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY,
         &mut cmd,

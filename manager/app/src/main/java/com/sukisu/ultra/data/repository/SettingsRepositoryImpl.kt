@@ -256,6 +256,10 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = prefs.getBoolean("show_fingerprint", true)
         set(value) = prefs.edit { putBoolean("show_fingerprint", value) }
 
+    override var hideHomeWarnings: Boolean
+        get() = prefs.getBoolean("hide_home_warnings", false)
+        set(value) = prefs.edit { putBoolean("hide_home_warnings", value) }
+
     override var autoJailbreak: Boolean
         get() = prefs.getBoolean("auto_jailbreak", false)
         set(value) {

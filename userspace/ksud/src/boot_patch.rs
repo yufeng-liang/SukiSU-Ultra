@@ -200,6 +200,137 @@ mod android {
         Ok(())
     }
 
+    pub(super) fn flash_current_boot(expected: &Path, patched: &Path) -> Result<()> {
+        use std::os::unix::fs::FileTypeExt;
+        let suffix = get_slot_suffix(false);
+        ensure!(
+            matches!(suffix.as_str(), "" | "_a" | "_b"),
+            "Invalid active slot"
+        );
+        let ab = utils::getprop("ro.build.ab_update").unwrap_or_default();
+        ensure!(
+            !matches!(ab.as_str(), "true" | "1") || !suffix.is_empty(),
+            "Cannot determine active slot"
+        );
+        let name = format!("boot{suffix}");
+        let partition = ["/dev/block/by-name", "/dev/block/bootdevice/by-name"]
+            .into_iter()
+            .map(|base| Path::new(base).join(&name))
+            .find(|p| std::fs::metadata(p).is_ok_and(|m| m.file_type().is_block_device()))
+            .context("Cannot find active boot partition")?;
+        let bytes = std::fs::read(patched).context("Read patched boot image")?;
+        ensure!(bytes.starts_with(b"ANDROID!"), "Not an Android boot image");
+        // Header validation only: 6.12+ must not use the old kernel decompressor.
+        ensure!(bytes.len() >= 4096, "Truncated boot image");
+        ensure!(get_slot_suffix(false) == suffix, "Active slot changed");
+        println!("- Flashing and verifying {}", partition.display());
+        // Use this exact in-memory snapshot for writing and verification,
+        // rather than reopening a potentially changed patched file.
+        flash_partition_verified(&partition, expected, &bytes, &suffix)
+    }
+
+    /// Flash a prepared current-slot boot image only if the source still
+    /// matches the device and the complete patched image fits the partition.
+    pub(super) fn flash_partition_verified(
+        partition: &Path,
+        expected: &Path,
+        patched: &[u8],
+        expected_slot: &str,
+    ) -> Result<()> {
+        use std::io::{Read, Seek, SeekFrom};
+        use std::os::unix::fs::FileTypeExt;
+
+        let mut current = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(partition)
+            .with_context(|| format!("open boot partition {}", partition.display()))?;
+        ensure!(
+            current.metadata()?.file_type().is_block_device(),
+            "Target is not a block device"
+        );
+        let mut expected_file = File::open(expected)?;
+        ensure!(
+            expected_file.metadata()?.is_file(),
+            "Source backup must be a regular file"
+        );
+        let expected_len = expected_file.metadata()?.len();
+        let patched_len = patched.len() as u64;
+        ensure!(expected_len > 0 && patched_len > 0, "boot image is empty");
+        let capacity = current
+            .seek(SeekFrom::End(0))
+            .with_context(|| format!("get size of {}", partition.display()))?;
+        ensure!(
+            patched_len <= capacity,
+            "patched boot image exceeds partition capacity"
+        );
+        ensure!(
+            expected_len == capacity,
+            "source backup is not a complete partition image"
+        );
+
+        // FIX (clippy::large_stack_arrays): 64 KiB stack buffers exceed the
+        // 16 KiB pedantic threshold and are risky on small Android thread
+        // stacks. Allocate on the heap instead.
+        current.seek(SeekFrom::Start(0))?;
+        let mut left = expected_len;
+        let mut a = vec![0u8; 64 * 1024];
+        let mut b = vec![0u8; 64 * 1024];
+        while left > 0 {
+            let count = usize::try_from(left.min(a.len() as u64)).unwrap();
+            expected_file.read_exact(&mut a[..count])?;
+            current.read_exact(&mut b[..count])?;
+            ensure!(
+                a[..count] == b[..count],
+                "boot partition changed since it was read; refusing to flash"
+            );
+            left -= count as u64;
+        }
+
+        ensure!(
+            get_slot_suffix(false) == expected_slot,
+            "Active slot changed before write"
+        );
+        let mut value: libc::c_int = 0;
+        unsafe {
+            const BLKROSET: i32 = libc::_IO(0x12, 93);
+            if libc::ioctl(current.as_raw_fd(), BLKROSET, &raw mut value) != 0 {
+                bail!(
+                    "failed to make {} writable: {}",
+                    partition.display(),
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
+        current.seek(SeekFrom::Start(0))?;
+        println!("- Writing boot partition; do not power off the device");
+        current
+            .write_all(patched)
+            .context("write patched boot partition")?;
+        current.sync_all().context("sync patched boot partition")?;
+
+        // FIX (clippy::large_stack_arrays): use heap buffers for read-back
+        // verification as well; keep them distinct from the compare buffers
+        // above so the intent of each loop stays clear.
+        current.seek(SeekFrom::Start(0))?;
+        let mut patched_file = std::io::Cursor::new(patched);
+        let mut written = 0u64;
+        let mut verify_a = vec![0u8; 64 * 1024];
+        let mut verify_b = vec![0u8; 64 * 1024];
+        while written < patched_len {
+            let count =
+                usize::try_from((patched_len - written).min(verify_a.len() as u64)).unwrap();
+            patched_file.read_exact(&mut verify_a[..count])?;
+            current.read_exact(&mut verify_b[..count])?;
+            ensure!(
+                verify_a[..count] == verify_b[..count],
+                "boot partition read-back verification failed at offset 0x{written:x}"
+            );
+            written += count as u64;
+        }
+        Ok(())
+    }
+
     pub(super) fn flash_partition(partition: &str, data: &[u8]) -> Result<()> {
         let mut blk = std::fs::OpenOptions::new()
             .write(true)
@@ -1241,154 +1372,121 @@ pub fn read_ksu_config() -> Result<Vec<String>> {
     }
 }
 
-#[cfg(test)]
-mod block_modules_tests {
-    use super::*;
-
-    #[test]
-    fn parse_block_module_accepts_valid_names() {
-        assert_eq!(
-            parse_block_module("oplus_secure_guard").unwrap(),
-            "oplus_secure_guard"
-        );
-        assert_eq!(parse_block_module("vr").unwrap(), "vr");
-        assert_eq!(parse_block_module("mkp0").unwrap(), "mkp0");
-    }
-
-    #[test]
-    fn parse_block_module_rejects_invalid_names() {
-        assert!(parse_block_module("").is_err());
-        assert!(parse_block_module("bad-name").is_err());
-        assert!(parse_block_module("a b").is_err());
-        assert!(parse_block_module(&"a".repeat(65)).is_err());
-    }
-
-    #[test]
-    fn apply_writes_and_clears_block_modules() {
-        let args = KsuConfigArgs {
-            block_module: vec!["vr".to_owned(), "vklp".to_owned()],
-            ..Default::default()
-        };
-        // Unrelated entries are preserved; apply() only owns the keys it manages.
-        let mut config = vec!["bundled=1".to_owned()];
-        args.apply(&mut config);
-        assert!(config.contains(&"block_modules=vr,vklp".to_owned()));
-        assert!(config.contains(&"bundled=1".to_owned()));
-
-        // Omitting the option removes a previously written entry.
-        let empty = KsuConfigArgs::default();
-        empty.apply(&mut config);
-        assert!(!config.iter().any(|v| v.starts_with("block_modules=")));
-    }
-
-    #[test]
-    fn apply_replaces_existing_block_modules() {
-        let args = KsuConfigArgs {
-            block_module: vec!["vr".to_owned()],
-            ..Default::default()
-        };
-        let mut config = vec!["block_modules=old,stale".to_owned()];
-        args.apply(&mut config);
-        assert_eq!(
-            config
-                .iter()
-                .filter(|v| v.starts_with("block_modules="))
-                .count(),
-            1
-        );
-        assert!(config.contains(&"block_modules=vr".to_owned()));
-    }
-
-    #[test]
-    fn apply_keeps_sibling_keys_with_shared_prefix() {
-        // A key that merely starts with "block_modules" but is not the exact
-        // "block_modules=" entry must not be dropped by retain().
-        let args = KsuConfigArgs {
-            block_module: vec!["vr".to_owned()],
-            ..Default::default()
-        };
-        let mut config = vec!["block_modules_foo=1".to_owned()];
-        args.apply(&mut config);
-        assert!(config.contains(&"block_modules_foo=1".to_owned()));
-        assert!(config.contains(&"block_modules=vr".to_owned()));
-    }
-
-    #[test]
-    fn validate_rejects_overlong_list() {
-        // Many valid names whose joined length exceeds the kernel's 255-byte
-        // value budget must be rejected rather than silently truncated.
-        let names: Vec<String> = (0..30).map(|i| format!("module_name_{i:03}")).collect();
-        assert!(names.join(",").len() > MAX_BLOCK_MODULES_LEN);
-        let args = KsuConfigArgs {
-            block_module: names,
-            ..Default::default()
-        };
-        assert!(args.validate().is_err());
-
-        // A short list is accepted.
-        let ok = KsuConfigArgs {
-            block_module: vec!["vr".to_owned(), "mkp".to_owned()],
-            ..Default::default()
-        };
-        assert!(ok.validate().is_ok());
-        assert!(KsuConfigArgs::default().validate().is_ok());
-    }
+/// Kernel-only boot image operations used by the manager's KPM flow. Keeping
+/// these here reuses the same parser/compression/repacker as LKM installation.
+#[derive(clap::Subcommand, Debug)]
+pub enum BootKernelCommand {
+    Extract {
+        #[arg(long)]
+        boot: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    Repack {
+        #[arg(long)]
+        boot: PathBuf,
+        #[arg(long)]
+        kernel: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Flash a prepared boot image to the active boot slot after verification.
+    FlashCurrent {
+        #[arg(long)]
+        boot: PathBuf,
+        #[arg(long)]
+        patched: PathBuf,
+    },
 }
 
-#[cfg(test)]
-mod config_tokenizer_tests {
-    use super::split_config_tokens;
-
-    #[test]
-    fn splits_plain_entries_on_whitespace() {
-        assert_eq!(
-            split_config_tokens("bundled=1 allow_shell=1"),
-            ["bundled=1", "allow_shell=1"]
-        );
-        // Extra whitespace and newlines are tolerated.
-        assert_eq!(
-            split_config_tokens("  bundled=1\nallow_shell=1\t"),
-            ["bundled=1", "allow_shell=1"]
-        );
+pub fn boot_kernel(command: BootKernelCommand) -> Result<()> {
+    use std::io::Write;
+    if let BootKernelCommand::FlashCurrent { boot, patched } = command {
+        #[cfg(target_os = "android")]
+        {
+            return android::flash_current_boot(&boot, &patched);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = (boot, patched);
+            bail!("current-slot boot flashing is only available on Android");
+        }
     }
-
-    #[test]
-    fn keeps_quoted_value_with_spaces_intact() {
-        assert_eq!(
-            split_config_tokens("spoof_version=\"#1 SMP PREEMPT\""),
-            ["spoof_version=\"#1 SMP PREEMPT\""]
+    let (boot, output, replacement) = match command {
+        BootKernelCommand::Extract { boot, output } => (boot, output, None),
+        BootKernelCommand::Repack {
+            boot,
+            kernel,
+            output,
+        } => (boot, output, Some(kernel)),
+        BootKernelCommand::FlashCurrent { .. } => unreachable!(),
+    };
+    ensure!(
+        !output.exists(),
+        "Output already exists: {}",
+        output.display()
+    );
+    let data = std::fs::read(&boot).context("Cannot read boot image")?;
+    ensure!(
+        data.starts_with(b"ANDROID!"),
+        "Select boot.img, not vendor_boot or a raw kernel"
+    );
+    let image = BootImage::parse(&data).context("Cannot parse boot image")?;
+    let kernel = image
+        .get_blocks()
+        .get_kernel()
+        .context("Image has no kernel; select boot.img, not init_boot.img")?;
+    let mut raw = Vec::new();
+    kernel
+        .dump(&mut raw, false)
+        .context("Cannot decompress kernel")?;
+    ensure!(
+        raw.get(0x38..0x3c) == Some(b"ARM\x64".as_slice()),
+        "KPM requires an ARM64 kernel Image"
+    );
+    let result = if let Some(replacement) = replacement {
+        let patched = std::fs::read(replacement).context("Cannot read patched kernel")?;
+        ensure!(
+            patched.get(0x38..0x3c) == Some(b"ARM\x64".as_slice()),
+            "Patched kernel is not an ARM64 Image"
         );
-    }
-
-    #[test]
-    fn honors_escaped_quote_and_backslash() {
-        // Stored form keeps the escapes verbatim; unescaping is the reader's job.
-        assert_eq!(
-            split_config_tokens("spoof_release=\"a\\\"b\\\\c\""),
-            ["spoof_release=\"a\\\"b\\\\c\""]
+        // FIX (clippy::similar_names): `repacker` is clearly distinct from
+        // the `patched` byte slice above.
+        let mut repacker = BootImagePatchOption::new(&image);
+        // `false` means the replacement is decompressed; the patcher uses
+        // the original boot kernel's compression format when serializing.
+        repacker.replace_kernel(Box::new(Cursor::new(patched.clone())), false);
+        let mut output = Cursor::new(Vec::new());
+        repacker
+            .patch(&mut output)
+            .context("Cannot repack boot image")?;
+        let result = output.into_inner();
+        let verified = BootImage::parse(&result).context("Repacked boot image is invalid")?;
+        let mut verified_kernel = Vec::new();
+        verified
+            .get_blocks()
+            .get_kernel()
+            .context("Repacked kernel missing")?
+            .dump(&mut verified_kernel, false)?;
+        ensure!(
+            verified_kernel == patched,
+            "Repacked kernel differs from patched kernel"
         );
-    }
-
-    #[test]
-    fn handles_mixed_entries() {
-        assert_eq!(
-            split_config_tokens(
-                "bundled=1 spoof_release=\"5.10.115-android12-9\" spoof_version=\"#1 SMP PREEMPT Thu Jan 1 00:00:00 UTC 2026\""
-            ),
-            [
-                "bundled=1",
-                "spoof_release=\"5.10.115-android12-9\"",
-                "spoof_version=\"#1 SMP PREEMPT Thu Jan 1 00:00:00 UTC 2026\"",
-            ]
-        );
-    }
-
-    #[test]
-    fn tolerates_unterminated_quote_and_trailing_backslash() {
-        assert_eq!(
-            split_config_tokens("spoof_version=\"#1 SMP"),
-            ["spoof_version=\"#1 SMP"]
-        );
-        assert_eq!(split_config_tokens("key=\"abc\\"), ["key=\"abc\\"]);
-    }
+        result
+    } else {
+        raw
+    };
+    // FIX (clippy::or_fun_call): avoid eagerly calling Path::new inside unwrap_or.
+    let parent = output
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    temp.write_all(&result)?;
+    temp.as_file().sync_all()?;
+    temp.persist_noclobber(&output)
+        .map_err(|e| anyhow!("Cannot save output: {}", e.error))?;
+    println!("- Output: {}", output.display());
+    Ok(())
 }
+

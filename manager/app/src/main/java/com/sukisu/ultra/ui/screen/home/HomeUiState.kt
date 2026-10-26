@@ -31,8 +31,17 @@ data class HomeUiState(
     val currentManagerVersionCode: Long,
     val systemInfo: SystemInfo,
     val showFullStatus: Boolean = true,
+    val hideHomeWarnings: Boolean = false,
     // Root without a SukiSU kernel: pages are browsable but kernel features are unavailable.
     val isPreviewMode: Boolean = false,
+    val hideVersionMismatchWarning: Boolean = false,
+    // Whether the kernel supports the version-spoof extension. When false the
+    // home warning card is meaningless (the user cannot spoof to resolve the mismatch).
+    val isVersionSpoofSupported: Boolean = true,
+    // Whether the user has actually set a spoofed version value. The home warning is only
+    // meaningful when this is true; without a spoof the version mismatch simply means an
+    // update is needed, not that the spoof is broken.
+    val isVersionSpoofed: Boolean = false,
     // Null until loaded through the root shell; kpmCount stays null when KPM is unavailable.
     val superuserCount: Int? = null,
     val moduleCount: Int? = null,
@@ -59,6 +68,13 @@ data class HomeUiState(
     val showCustomLkmBadge: Boolean
         get() = lkmMode == true && !isLkmBundled
 
+    val isVersionMismatch: Boolean
+        get() = isManager && (kernelUAPIVersion != managerUAPIVersion || ksuVersion?.toUInt()?.toLong() != currentManagerVersionCode)
+
+    val showVersionMismatchWarning: Boolean
+        get() = isVersionMismatch && isVersionSpoofSupported && isVersionSpoofed &&
+            !hideVersionMismatchWarning
+
     val showRootWarning: Boolean
         get() = ksuVersion != null && !isRootAvailable
 
@@ -77,4 +93,5 @@ data class HomeActions(
     val onSuperuserClick: () -> Unit = {},
     val onModuleClick: () -> Unit = {},
     val onReleaseUpdateClick: () -> Unit = {},
+    val onOpenVersionSpoof: () -> Unit = {},
 )

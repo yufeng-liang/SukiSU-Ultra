@@ -6,6 +6,7 @@
 use super::consts::{
     NEW_UTS_LEN, SUSFS_ENABLED_FEATURES_SIZE, SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE,
     SUSFS_MAX_PATHNAME, SUSFS_MAX_VARIANT_BUFSIZE, SUSFS_MAX_VERSION_BUFSIZE,
+    SUSFS_PRIORITY_UID_FILTER_APP_STR_SIZE,
 };
 
 #[repr(C)]
@@ -89,6 +90,12 @@ pub struct SusfsMap {
 #[repr(C)]
 pub struct SusfsSusPath {
     pub target_pathname: [u8; SUSFS_MAX_PATHNAME],
+    pub err: i32,
+}
+
+#[repr(C)]
+pub struct SusfsPriorityUidFilter {
+    pub app_strings: [u8; SUSFS_PRIORITY_UID_FILTER_APP_STR_SIZE],
     pub err: i32,
 }
 

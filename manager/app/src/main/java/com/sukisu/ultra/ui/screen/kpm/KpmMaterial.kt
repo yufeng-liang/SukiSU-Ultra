@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.ConfigResults
 import com.sukisu.ultra.ui.viewmodel.KpmViewModel
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -265,7 +266,7 @@ private fun KpmListMaterial(
                     end = innerPadding.calculateEndPadding(layoutDirection),
                 ),
             ) {
-            item { com.sukisu.ultra.ui.component.ConfigResults(state.operationResults) }
+            item { ConfigResults(state.operationResults) }
                 if (!isNoticeClosed) {
                     item {
                         Card(
@@ -339,6 +340,15 @@ private fun KpmModuleItemMaterial(
     val showInputDialog = state.inputDialogState.visible && state.inputDialogState.moduleId == module.id
 
     if (showInputDialog) {
+        // Keep the field on a local state for immediate echo: binding it to the
+        // ViewModel uiState round-trips every keystroke through a StateFlow update
+        // that recomposes a frame late, so during IME composition the field is
+        // reset to a stale value with a misplaced cursor and typed characters
+        // scramble ("info" comes out as "nfoi" / "iin fni"). The local value is
+        // synced back to the ViewModel on confirm.
+        var argsInput by remember(state.inputDialogState.moduleId) {
+            mutableStateOf(state.inputDialogState.args)
+        }
         AlertDialog(
             onDismissRequest = {
                 actions.onHideInputDialog()
@@ -347,13 +357,13 @@ private fun KpmModuleItemMaterial(
             text = {
                 Column {
                     OutlinedTextField(
-                        value = state.inputDialogState.args,
-                        onValueChange = { actions.onInputArgsChange(it) },
+                        value = argsInput,
+                        onValueChange = { argsInput = it },
                         label = { Text(stringResource(R.string.kpm_args)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-                    if (state.inputDialogState.args.isEmpty() && module.args.isNotEmpty()) {
+                    if (argsInput.isEmpty() && module.args.isNotEmpty()) {
                         Text(
                             text = module.args,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -374,7 +384,10 @@ private fun KpmModuleItemMaterial(
                         }
                         Spacer(modifier = Modifier.width(20.dp))
                         Button(
-                            onClick = { actions.onExecuteControl() },
+                            onClick = {
+                                actions.onInputArgsChange(argsInput)
+                                actions.onExecuteControl()
+                            },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(stringResource(R.string.confirm))

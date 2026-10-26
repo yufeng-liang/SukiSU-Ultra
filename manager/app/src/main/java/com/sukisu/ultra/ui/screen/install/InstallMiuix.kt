@@ -275,6 +275,59 @@ internal fun InstallScreenMiuix(
                         }
                     }
 
+                    if (uiState.canPatchKpm) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp),
+                        ) {
+                            CheckboxPreference(
+                                title = stringResource(R.string.install_kpm_enable),
+                                summary = stringResource(R.string.install_kpm_linked_summary),
+                                checked = uiState.kpmEnabled,
+                                onCheckedChange = actions.onKpmEnabledChange,
+                            )
+                            AnimatedVisibility(visible = uiState.kpmEnabled) {
+                                Column {
+                                    OverlayDropdownPreference(
+                                        title = stringResource(R.string.install_kpm_operation),
+                                        items = listOf(stringResource(R.string.enable_kpm_patch), stringResource(R.string.enable_kpm_undo_patch)),
+                                        selectedIndex = if (uiState.kpmUndo) 1 else 0,
+                                        onSelectedIndexChange = { actions.onKpmUndoChange(it == 1) },
+                                    )
+                                    BasicComponent(
+                                        title = stringResource(R.string.install_kpm_manual),
+                                        summary = uiState.kpmBootUri?.lastPathSegment
+                                            ?: stringResource(R.string.install_kpm_auto),
+                                        onClick = actions.onToggleKpmBoot,
+                                        endActions = {
+                                            Icon(
+                                                if (uiState.kpmBootExpanded) MiuixIcons.ExpandLess else MiuixIcons.ExpandMore,
+                                                contentDescription = stringResource(R.string.expand),
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        },
+                                    )
+                                    AnimatedVisibility(visible = uiState.kpmBootExpanded) {
+                                        Column {
+                                            BasicComponent(
+                                                title = stringResource(R.string.select_file),
+                                                summary = uiState.kpmBootUri?.lastPathSegment,
+                                                onClick = actions.onPatchKpmFile,
+                                            )
+                                            if (uiState.kpmBootUri != null) {
+                                                BasicComponent(
+                                                    title = stringResource(R.string.install_kpm_clear),
+                                                    onClick = actions.onClearKpmBoot,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()

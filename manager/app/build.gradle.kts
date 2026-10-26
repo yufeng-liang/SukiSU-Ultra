@@ -260,3 +260,13 @@ kotlin {
         )
     }
 }
+
+// Executables in assets cannot be executed by an unprivileged Android app.
+// Package the bundled ARM64 kptools as an extracted native library instead.
+val prepareKpmExecutable = tasks.register<Copy>("prepareKpmExecutable") {
+    from("src/main/assets/kptools")
+    into(layout.buildDirectory.dir("generated/kpmJniLibs/arm64-v8a"))
+    rename { "libkptools.so" }
+}
+android.sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/kpmJniLibs").get().asFile)
+tasks.named("preBuild").configure { dependsOn(prepareKpmExecutable) }

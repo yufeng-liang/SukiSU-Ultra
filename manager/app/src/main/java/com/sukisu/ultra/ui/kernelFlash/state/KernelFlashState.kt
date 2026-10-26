@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.kernelFlash.util.AssetsUtil
+import com.sukisu.ultra.ui.kernelFlash.util.KpmPatchCommand
 import com.sukisu.ultra.ui.kernelFlash.util.RemoteToolsDownloader
 import com.sukisu.ultra.ui.util.getRootShell
 import com.sukisu.ultra.ui.util.install
@@ -59,8 +60,7 @@ class HorizonKernelState {
 
     fun tryStartFlashing(): Boolean {
         val current = _state.value
-        if (current.isFlashing || current.isCompleted || current.error.isNotEmpty()) return false
-        return _state.compareAndSet(current, FlashState(isFlashing = true))
+        return !(current.isFlashing || current.isCompleted || current.error.isNotEmpty()) && _state.compareAndSet(current, FlashState(isFlashing = true))
     }
 
     fun completeFlashing() {
@@ -238,8 +238,9 @@ class HorizonKernelWorker(
             }
 
             val imageFile = findImageResult.lines().first().trim()
-            val imageDir = File(imageFile).parent ?: throw IOException("Invalid image path")
+            // AnyKernel3 stores its kernel as Image; keep the package filename and pass that exact path.
             val imageName = File(imageFile).name
+            val imageDir = File(imageFile).parent ?: throw IOException("Invalid image path")
 
             state.addLog(context.getString(R.string.kpm_found_image_file, imageFile))
 
@@ -252,7 +253,7 @@ class HorizonKernelWorker(
                 // 仅当 kptools 执行成功且生成了 oImage 时才替换原 Image；
                 // 命令末尾用 `[ -f oImage ] && mv ...` 保证原文件不被半成品覆盖。
                 val undoCommand = "cd ${shellQuote(imageDir)} && chmod a+rx kptools && " +
-                        "./kptools -u -s 123 -i ${shellQuote(imageName)} -k kpimg -o oImage && " +
+                        KpmPatchCommand.build("./kptools", imageName, "kpimg", "oImage", true) + " && " +
                         "[ -f oImage ] && mv oImage ${shellQuote(imageName)}"
 
                 val patchResult: Int? = runCommand(true, undoCommand)
@@ -266,7 +267,7 @@ class HorizonKernelWorker(
             } else {
                 // ---- 打补丁：必须成功 ----
                 val patchCommand = "cd ${shellQuote(imageDir)} && chmod a+rx kptools && " +
-                        "./kptools -p -s 123 -i ${shellQuote(imageName)} -k kpimg -o oImage && mv oImage ${shellQuote(imageName)}"
+                        KpmPatchCommand.build("./kptools", imageName, "kpimg", "oImage", false) + " && [ -s oImage ] && mv oImage ${shellQuote(imageName)}"
 
                 val patchResult = runCommand(true, patchCommand)
                 if (patchResult != 0) {

@@ -45,8 +45,8 @@
     <string name="home_learn_kernelsu_url">https://sukisu.org/guide/</string>
     <string name="home_click_to_learn_kernelsu">SukiSU\'nun nasıl kurulacağını ve modüllerin nasıl kullanılacağını öğrenin.</string>
     <string name="home_support_title">Bizi Destekleyin</string>
-    <string name="home_support_content">KernelSU ücretsiz ve açık kaynaklı bir yazılımdır ve her zaman öyle kalacaktır. Ancak bağış yaparak bize destek olduğunuzu gösterebilirsiniz.</string>
     <string name="home_gki_warning">v3.0.0 sürümünden itibaren GKI çalışma modu yalnızca test ortamlarında kullanılacaktır. Günlük kullanım için tavsiye etmiyoruz ve imaj dosyaları artık sunulmayacaktır.</string>
+    <string name="home_support_content">SukiSU ücretsiz ve açık kaynaklı bir yazılımdır ve her zaman öyle kalacaktır. Ancak bağış yaparak bize destek olduğunuzu gösterebilirsiniz.</string>
     <string name="about_source_code"><![CDATA[%1$s adresinde kaynak kodunu görüntüleyin.<br/>%2$s kanalımıza katılın.]]></string>
     <string name="profile" translatable="false">Uygulama profili</string>
     <string name="profile_default">Varsayılan</string>
@@ -254,4 +254,8 @@
     <string name="profile_flags_desc_no_new_privs">Bu root profili bağlamında SukiSU aracılığıyla daha fazla ayrıcalık yükseltmesini engeller.</string>
     <string name="install_force_backup">Stok imaj olarak yedekle</string>
     <string name="install_force_backup_summary">Lütfen seçtiğiniz boot imajının stok imaj olduğundan emin olun</string>
+    <string name="settings_check_ci_update">CI güncellemelerini kontrol et</string>
+    <string name="settings_check_ci_update_summary">Ana sayfada main dalı CI derlemelerini kontrol et ve bir güncelleme olduğunda bildir.</string>
+    <string name="settings_hide_home_warnings">Ana Sayfa Uyarılarını Gizle</string>
+    <string name="settings_hide_home_warnings_summary">Ana sayfadaki uyarı kartlarını gizle (PR derlemesi, çekirdek/yönetici güncellemesi, LKM güncellemesi, önizleme modu)</string>
 </resources>

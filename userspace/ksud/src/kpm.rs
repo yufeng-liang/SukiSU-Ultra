@@ -6,7 +6,7 @@
  * forwarded verbatim to kernel/extension/kpm.c::do_kpm().
  */
 use std::{
-    ffi::{CStr, CString, OsStr},
+    ffi::{CString, OsStr},
     fs, io,
     os::unix::fs::PermissionsExt,
     path::Path,
@@ -47,7 +47,7 @@ where
         args.as_ptr() as u64,
     )?;
     if ret < 0 {
-        println!("Failed to load kpm: {}", io::Error::from_raw_os_error(ret));
+        bail!("Failed to load kpm: {}", io::Error::from_raw_os_error(-ret));
     }
     Ok(())
 }
@@ -63,7 +63,7 @@ pub fn list() -> Result<()> {
     if ret < 0 {
         println!(
             "Failed to get kpm list: {}",
-            io::Error::from_raw_os_error(ret)
+            io::Error::from_raw_os_error(-ret)
         );
         return Ok(());
     }
@@ -80,7 +80,7 @@ pub fn unload_module(name: String) -> Result<()> {
     if ret < 0 {
         println!(
             "Failed to unload kpm: {}",
-            io::Error::from_raw_os_error(ret)
+            io::Error::from_raw_os_error(-ret)
         );
     }
     Ok(())
@@ -98,7 +98,7 @@ pub fn info(name: String) -> Result<()> {
     if ret < 0 {
         println!(
             "Failed to get kpm info: {}",
-            io::Error::from_raw_os_error(ret)
+            io::Error::from_raw_os_error(-ret)
         );
         return Ok(());
     }
@@ -118,7 +118,7 @@ pub fn control(name: String, args: String) -> Result<i32> {
     if ret < 0 {
         println!(
             "Failed to control kpm: {}",
-            io::Error::from_raw_os_error(ret)
+            io::Error::from_raw_os_error(-ret)
         );
     }
 
@@ -145,7 +145,7 @@ pub fn version() -> Result<()> {
     if ret < 0 {
         println!(
             "Failed to get kpm version: {}",
-            io::Error::from_raw_os_error(ret)
+            io::Error::from_raw_os_error(-ret)
         );
         return Ok(());
     }
@@ -231,10 +231,7 @@ fn load_all_modules() -> Result<()> {
 /// if directly to_string_lossy, we will get a lot of uninit data
 /// refer: res = copy_to_user(arg1, &buffer, len + 1);
 fn buf2str(buf: &[u8]) -> String {
-    // SAFETY: buffer is always NUL-terminated by kernel.
-    unsafe {
-        CStr::from_ptr(buf.as_ptr().cast())
-            .to_string_lossy()
-            .into_owned()
-    }
+    // Bound the scan even if an older kernel returns an unterminated buffer.
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    String::from_utf8_lossy(&buf[..end]).into_owned()
 }

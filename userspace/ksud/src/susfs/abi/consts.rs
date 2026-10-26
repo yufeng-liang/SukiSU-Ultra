@@ -22,6 +22,7 @@ pub const SUSFS_MAX_VARIANT_BUFSIZE: usize = 16;
 pub const NEW_UTS_LEN: usize = 64;
 pub const SUSFS_MAX_PATHNAME: usize = 256;
 pub const SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE: usize = 8192;
+pub const SUSFS_PRIORITY_UID_FILTER_APP_STR_SIZE: usize = 65_535;
 
 // ── command IDs (internal — only the syscall dispatcher cares) ───────────────
 
@@ -40,6 +41,7 @@ pub const CMD_SUSFS_SHOW_ENABLED_FEATURES: u32 = 0x0005_55E2;
 pub const CMD_SUSFS_SHOW_VARIANT: u32 = 0x0005_55E3;
 pub const CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING: u32 = 0x0006_0010;
 pub const CMD_SUSFS_ADD_SUS_MAP: u32 = 0x0006_0020;
+pub const CMD_SUSFS_SET_PRIORITY_UID_FILTER: u32 = 0x0006_0030;
 
 /// Mask of every stat member that is spoofed automatically when the kernel
 /// re-stats the target path.
@@ -57,3 +59,17 @@ pub const KSTAT_AUTO_SPOOF: u32 = (1 << 0)   // ino
 /// Same as [`KSTAT_AUTO_SPOOF`] but also spoofs `nlink` and `size` — used by
 /// `update_sus_kstat_full_clone`.
 pub const KSTAT_AUTO_SPOOF_FULL_CLONE: u32 = KSTAT_AUTO_SPOOF | (1 << 2) | (1 << 3);
+
+/// Bit positions identifying explicitly spoofed stat fields in a kstat request.
+pub const KSTAT_SPOOF_INO: u32 = 1 << 0;
+pub const KSTAT_SPOOF_DEV: u32 = 1 << 1;
+pub const KSTAT_SPOOF_NLINK: u32 = 1 << 2;
+pub const KSTAT_SPOOF_SIZE: u32 = 1 << 3;
+pub const KSTAT_SPOOF_ATIME_TV_SEC: u32 = 1 << 4;
+pub const KSTAT_SPOOF_ATIME_TV_NSEC: u32 = 1 << 5;
+pub const KSTAT_SPOOF_MTIME_TV_SEC: u32 = 1 << 6;
+pub const KSTAT_SPOOF_MTIME_TV_NSEC: u32 = 1 << 7;
+pub const KSTAT_SPOOF_CTIME_TV_SEC: u32 = 1 << 8;
+pub const KSTAT_SPOOF_CTIME_TV_NSEC: u32 = 1 << 9;
+pub const KSTAT_SPOOF_BLOCKS: u32 = 1 << 10;
+pub const KSTAT_SPOOF_BLKSIZE: u32 = 1 << 11;

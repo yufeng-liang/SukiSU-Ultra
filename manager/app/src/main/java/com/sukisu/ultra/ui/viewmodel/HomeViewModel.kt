@@ -17,7 +17,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.sukisu.ultra.BuildConfig
+import com.sukisu.ultra.ui.screen.extensions.VersionSpoofProbe
+import com.sukisu.ultra.ui.screen.extensions.VersionSpoofRepository
 import com.sukisu.ultra.Natives
+import com.sukisu.ultra.R
+import com.sukisu.ultra.data.repository.CiManagerUpdater
 import com.sukisu.ultra.data.repository.SettingsRepository
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.getKernelVersion
@@ -105,15 +109,15 @@ class HomeViewModel(
         viewModelScope.launch {
             try {
                 val installed = withContext(Dispatchers.IO) {
-                    com.sukisu.ultra.data.repository.CiManagerUpdater(ksuApp).updateAndInstall(info)
+                    CiManagerUpdater(ksuApp).updateAndInstall(info)
                 }
-                val message = if (installed) com.sukisu.ultra.R.string.ci_update_install_success
-                    else com.sukisu.ultra.R.string.ci_update_install_submitted
+                val message = if (installed) R.string.ci_update_install_success
+                    else R.string.ci_update_install_submitted
                 android.widget.Toast.makeText(ksuApp, message, android.widget.Toast.LENGTH_LONG).show()
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.widget.Toast.makeText(ksuApp, e.message ?: ksuApp.getString(com.sukisu.ultra.R.string.ci_update_download_failed), android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(ksuApp, e.message ?: ksuApp.getString(R.string.ci_update_download_failed), android.widget.Toast.LENGTH_LONG).show()
             } finally {
                 // 安装结果不影响首页状态：进度提示只活在这一段协程里。
             }
@@ -157,13 +161,22 @@ class HomeViewModel(
         val zygiskImplementation = if (isManager && isRootAvailable) {
             getZygiskImplementation(
                 modulesJson = modulesJson.orEmpty(),
-                notInstalledText = ksuApp.getString(com.sukisu.ultra.R.string.home_zygisk_not_installed),
-                disabledText = ksuApp.getString(com.sukisu.ultra.R.string.home_zygisk_disabled),
-                rebootRequiredText = ksuApp.getString(com.sukisu.ultra.R.string.home_zygisk_reboot_required),
+                notInstalledText = ksuApp.getString(R.string.home_zygisk_not_installed),
+                disabledText = ksuApp.getString(R.string.home_zygisk_disabled),
+                rebootRequiredText = ksuApp.getString(R.string.home_zygisk_reboot_required),
             )
         } else null
 
+        val versionSpoofProbe = if (isManager && isRootAvailable) {
+            VersionSpoofRepository.probeWarning()
+        } else {
+            VersionSpoofProbe(supported = false, warningHidden = false, isSpoofed = false)
+        }
+
         return HomeUiState(
+            hideVersionMismatchWarning = versionSpoofProbe.warningHidden,
+            isVersionSpoofSupported = versionSpoofProbe.supported,
+            isVersionSpoofed = versionSpoofProbe.isSpoofed,
             kernelVersion = kernelVersion,
             ksuVersion = ksuVersion,
             lkmMode = lkmMode,
@@ -184,6 +197,8 @@ class HomeViewModel(
             checkUpdateEnabled = settingsRepo.checkUpdate,
             showFullStatus = ksuApp.getSharedPreferences("settings", Context.MODE_PRIVATE)
                 .getBoolean("show_fingerprint", true),
+            hideHomeWarnings = ksuApp.getSharedPreferences("settings", Context.MODE_PRIVATE)
+                .getBoolean("hide_home_warnings", false),
             latestVersionInfo = LatestVersionInfo(),
             currentManagerVersionCode = managerVersion.versionCode,
             systemInfo = SystemInfo(

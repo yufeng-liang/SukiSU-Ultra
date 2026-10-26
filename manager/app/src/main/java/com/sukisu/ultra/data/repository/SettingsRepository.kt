@@ -44,6 +44,7 @@ interface SettingsRepository {
     var superuserSortOption: Int
     var suLogFilters: Set<String>?
     var showFullStatus: Boolean
+    var hideHomeWarnings: Boolean
     var autoJailbreak: Boolean
     var useSoftReboot: Boolean
 

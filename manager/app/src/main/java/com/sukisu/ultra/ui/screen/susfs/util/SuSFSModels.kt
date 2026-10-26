@@ -76,6 +76,7 @@ data class ModuleConfig(
     val enableAvcLogSpoofing: Boolean,
     val cmdlineOrBootconfigPath: String = "",
     val autoStartEnabled: Boolean = false,
+    val priorityUidFilter: Set<String> = emptySet(),
 ) {
     fun hasAutoStartConfig(): Boolean {
         return unameValue != SuSFSConfig.DEFAULT_UNAME ||
@@ -83,6 +84,7 @@ data class ModuleConfig(
                 susPaths.isNotEmpty() ||
                 susLoopPaths.isNotEmpty() ||
                 susMaps.isNotEmpty() ||
+                priorityUidFilter.isNotEmpty() ||
                 kstatConfigs.isNotEmpty() ||
                 addKstatPaths.isNotEmpty() ||
                 cmdlineOrBootconfigPath.isNotBlank()
@@ -102,6 +104,7 @@ internal fun moduleConfigFromValues(values: Map<String, String>): ModuleConfig {
         susPaths = entries(SuSFSConfig.KEY_SUS_PATHS),
         susLoopPaths = entries(SuSFSConfig.KEY_SUS_LOOP_PATHS),
         susMaps = entries(SuSFSConfig.KEY_SUS_MAPS),
+        priorityUidFilter = entries(SuSFSConfig.KEY_PRIORITY_UID_FILTER, ",").map { it.trim() }.toSet(),
         enableLog = enabled(SuSFSConfig.KEY_ENABLE_LOG),
         kstatConfigs = entries(SuSFSConfig.KEY_KSTAT_CONFIGS, ";;"),
         addKstatPaths = entries(SuSFSConfig.KEY_ADD_KSTAT_PATHS),

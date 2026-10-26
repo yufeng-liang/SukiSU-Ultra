@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Pin
 import androidx.compose.material.icons.rounded.Style
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.ViewCarousel
@@ -432,6 +433,23 @@ fun ColorPaletteScreenMiuix(
                             checked = state.showFullStatus,
                             onCheckedChange = {
                                 actions.onSetShowFullStatus(it)
+                            }
+                        )
+
+                        SwitchPreference(
+                            title = stringResource(id = R.string.settings_hide_home_warnings),
+                            summary = stringResource(id = R.string.settings_hide_home_warnings_summary),
+                            startAction = {
+                                Icon(
+                                    Icons.Rounded.Warning,
+                                    modifier = Modifier.padding(end = 6.dp),
+                                    contentDescription = stringResource(id = R.string.settings_hide_home_warnings),
+                                    tint = colorScheme.onBackground
+                                )
+                            },
+                            checked = state.hideHomeWarnings,
+                            onCheckedChange = {
+                                actions.onSetHideHomeWarnings(it)
                             }
                         )
 

@@ -24,5 +24,6 @@ pub mod util;
 
 pub use cmd::kstat::*;
 pub use cmd::paths::*;
+pub use cmd::priority_uid_filter::*;
 pub use cmd::spoof::*;
 pub use cmd::status::*;
