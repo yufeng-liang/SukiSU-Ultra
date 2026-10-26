@@ -1,5 +1,7 @@
 package com.sukisu.ultra.ui.screen.install
 
+import com.sukisu.ultra.ui.kernelFlash.KpmPatchOption
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -281,20 +283,15 @@ internal fun InstallScreenMiuix(
                                 .fillMaxWidth()
                                 .padding(top = 12.dp),
                         ) {
-                            CheckboxPreference(
-                                title = stringResource(R.string.install_kpm_enable),
-                                summary = stringResource(R.string.install_kpm_linked_summary),
-                                checked = uiState.kpmEnabled,
-                                onCheckedChange = actions.onKpmEnabledChange,
+                            OverlayDropdownPreference(
+                                title = stringResource(R.string.install_kpm_operation),
+                                summary = stringResource(R.string.install_kpm_summary),
+                                items = listOf(stringResource(R.string.kpm_follow_kernel_file), stringResource(R.string.enable_kpm_patch), stringResource(R.string.enable_kpm_undo_patch)),
+                                selectedIndex = KpmPatchOption.entries.indexOf(uiState.kpmPatchOption),
+                                onSelectedIndexChange = { actions.onKpmOptionChange(KpmPatchOption.entries[it]) },
                             )
-                            AnimatedVisibility(visible = uiState.kpmEnabled) {
+                            AnimatedVisibility(visible = uiState.canSelectKpmBoot) {
                                 Column {
-                                    OverlayDropdownPreference(
-                                        title = stringResource(R.string.install_kpm_operation),
-                                        items = listOf(stringResource(R.string.enable_kpm_patch), stringResource(R.string.enable_kpm_undo_patch)),
-                                        selectedIndex = if (uiState.kpmUndo) 1 else 0,
-                                        onSelectedIndexChange = { actions.onKpmUndoChange(it == 1) },
-                                    )
                                     BasicComponent(
                                         title = stringResource(R.string.install_kpm_manual),
                                         summary = uiState.kpmBootUri?.lastPathSegment

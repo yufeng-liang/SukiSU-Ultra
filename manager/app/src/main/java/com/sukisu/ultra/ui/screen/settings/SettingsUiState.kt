@@ -11,6 +11,7 @@ data class SettingsUiState(
     val appLanguage: String = "",
     val checkUpdate: Boolean = true,
     val checkModuleUpdate: Boolean = true,
+    val autoDeleteModuleZip: Boolean = false,
     val alternativeIcon : Boolean = false,
     val themeMode: Int = 0,
     val miuixMonet: Boolean = false,
@@ -87,6 +88,7 @@ data class SettingsUiState(
 data class SettingsScreenActions(
     val onSetCheckUpdate: (Boolean) -> Unit,
     val onSetCheckModuleUpdate: (Boolean) -> Unit,
+    val onSetAutoDeleteModuleZip: (Boolean) -> Unit,
     val onOpenTheme: () -> Unit,
     val onSetUiModeIndex: (Int) -> Unit,
     val onOpenProfileTemplate: () -> Unit,

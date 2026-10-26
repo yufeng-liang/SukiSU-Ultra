@@ -1,82 +1,38 @@
 package com.sukisu.ultra.ui.screen.kpm
 
 import android.util.Log
-import androidx.compose.foundation.lazy.LazyListState
+import com.sukisu.ultra.ui.screen.susfs.util.SuSFSConfig
 import com.sukisu.ultra.ui.util.getRootShell
+import com.topjohnwu.superuser.Shell
 import java.io.File
-import java.io.FileInputStream
 
-fun extractModuleName(file: File): String? {
-    return try {
-        val shell = getRootShell()
-        val command = "strings ${file.absolutePath} | grep 'name='"
-        val result = shell.newJob().add(command).to(ArrayList(), null).exec()
-        if (result.isSuccess) {
-            result.out.firstOrNull { it.startsWith("name=") }
-                ?.substringAfter("name=")
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-        } else null
-    } catch (e: Exception) {
-        Log.e("KsuCli", "Failed to extract module name: ${e.message}", e)
-        null
-    }
+fun isSafeKpmModuleId(name: String): Boolean = name.isNotBlank() &&
+    name != "." && name != ".." && name.none { it == '/' || it == '\\' || it.isISOControl() }
+
+fun extractModuleName(file: File): String? = extractModuleName(file) { getRootShell().newJob() }
+
+internal fun extractModuleName(file: File, newJob: () -> Shell.Job): String? = try {
+    val result = newJob()
+        .add("strings ${SuSFSConfig.shellQuote(file.absolutePath)}")
+        // libsu discards stdout unless an output destination is explicitly supplied.
+        .to(ArrayList(), ArrayList())
+        .exec()
+    if (result.isSuccess) result.out.firstOrNull { it.startsWith("name=") }
+        ?.substringAfter("name=")?.trim()?.takeIf(::isSafeKpmModuleId) else null
+} catch (e: Exception) {
+    Log.e("Kpm", "Failed to extract module name", e)
+    null
 }
 
-fun isValidKpmFile(file: File, mimeType: String?): Boolean {
-    val isCorrectMimeType = mimeType == null || mimeType.contains("application/octet-stream")
-    if (isCorrectMimeType) return true
+// MIME types are provider supplied; validate the file itself before invoking the loader.
+fun isValidKpmFile(file: File): Boolean = isElfFile(file)
 
-    return try {
-        checkStringsCommand(file) >= 1 || isElfFile(file)
-    } catch (e: Exception) {
-        Log.e("KsuCli", "Failed to validate file: ${e.message}", e)
-        false
+fun isElfFile(file: File): Boolean = try {
+    file.inputStream().use { input ->
+        val bytes = ByteArray(4)
+        input.read(bytes) == bytes.size && bytes.contentEquals(byteArrayOf(0x7f, 0x45, 0x4c, 0x46))
     }
-}
-
-fun checkStringsCommand(tempFile: File): Int {
-    val shell = getRootShell()
-    val command = "strings ${tempFile.absolutePath} | grep -E 'name=|version=|license=|author='"
-    val result = shell.newJob().add(command).to(ArrayList(), null).exec()
-
-    if (!result.isSuccess) return 0
-
-    val keywords = listOf("name=", "version=", "license=", "author=")
-    var nameExists = false
-    var matchCount = 0
-
-    for (line in result.out) {
-        when {
-            !nameExists && line.startsWith("name=") -> {
-                nameExists = true
-                matchCount++
-            }
-            nameExists && keywords.any { line.startsWith(it) } -> {
-                matchCount++
-            }
-        }
-    }
-
-    return if (nameExists) matchCount else 0
-}
-
-fun isElfFile(tempFile: File): Boolean {
-    val elfMagic = byteArrayOf(0x7F, 0x45, 0x4C, 0x46) // "\u007FELF"
-    return try {
-        FileInputStream(tempFile).use { input ->
-            val bytes = ByteArray(4)
-            input.read(bytes) == 4 && bytes.contentEquals(elfMagic)
-        }
-    } catch (e: Exception) {
-        Log.e("KsuCli", "Failed to check ELF file: ${e.message}", e)
-        false
-    }
-}
-
-fun isScrolledToEnd(listState: LazyListState): Boolean {
-    val layoutInfo = listState.layoutInfo
-    val lastItem = layoutInfo.visibleItemsInfo.lastOrNull() ?: return false
-    return lastItem.index == layoutInfo.totalItemsCount - 1 &&
-            lastItem.size < layoutInfo.viewportEndOffset
+} catch (e: Exception) {
+    Log.e("Kpm", "Failed to check ELF file", e)
+    false
 }

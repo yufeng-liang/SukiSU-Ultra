@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import com.sukisu.ultra.BuildConfig
 import com.sukisu.ultra.Natives
+import com.sukisu.ultra.R
 import com.sukisu.ultra.core.tasks.BootKernelVersion
 import com.sukisu.ultra.core.tasks.ExtractImage
 import com.sukisu.ultra.core.tasks.ProbeResult
@@ -324,7 +325,8 @@ private fun flashWithIO(
 fun flashModule(
     uri: Uri,
     onStdout: (String) -> Unit,
-    onStderr: (String) -> Unit
+    onStderr: (String) -> Unit,
+    deleteSourceOnSuccess: Boolean = false,
 ): FlashResult {
     // Registry downloads live in app-private storage and carry their expected size + SHA-256;
     // the exact copy handed to ksud is re-hashed right before installing.
@@ -352,6 +354,18 @@ fun flashModule(
         val cmd = "module install ${file.absolutePath}"
         val result = flashWithIO("${getKsuDaemonPath()} $cmd", onStdout, onStderr)
         Log.i("KernelSU", "install module $uri result: $result")
+        if (shouldDeleteSourceAfterInstall(deleteSourceOnSuccess, result.isSuccess)) {
+            val name = runCatching { uri.getFileName(ksuApp) }.getOrNull()
+                ?: uri.lastPathSegment?.substringAfterLast('/').orEmpty()
+            val deleted = deleteInstalledModuleZip(uri)
+            // The flash screen only renders stdout, so report both outcomes there.
+            onStdout(
+                ksuApp.getString(
+                    if (deleted) R.string.module_zip_deleted else R.string.module_zip_delete_failed,
+                    name,
+                )
+            )
+        }
         return FlashResult(result, result.isSuccess && moduleNeedsReboot(file))
     } finally {
         file.delete()
@@ -1057,14 +1071,19 @@ suspend fun streamFile(path: String): List<String> = withContext(Dispatchers.IO)
 }
 
 fun listKpmModules(): String {
-    val shell = getRootShell()
-    val cmd = "${getKsuDaemonPath()} kpm list"
-    return try {
-        runCmd(shell, cmd).trim()
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to list KPM modules", e)
-        ""
+    return listKpmModules(getRootShell().newJob().add("${getKsuDaemonPath()} kpm list"))
+}
+
+internal fun listKpmModules(job: Shell.Job): String {
+    val result = job.to(ArrayList(), ArrayList()).exec()
+    check(result.isSuccess) {
+        result.err.joinToString("\n").ifBlank { "KPM list failed (${result.code})" }
     }
+    // ksud can report a kernel error on stdout while exiting successfully.
+    check(result.out.none { it.trimStart().startsWith("Failed to get kpm list:") }) {
+        result.out.joinToString("\n")
+    }
+    return result.out.joinToString("\n").trim()
 }
 
 fun getKpmModuleInfo(name: String): String {

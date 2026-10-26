@@ -25,7 +25,6 @@ import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.choosekmidialog.ChooseKmiDialog
 import com.sukisu.ultra.ui.kernelFlash.KpmPatchOption
-import com.sukisu.ultra.ui.kernelFlash.KpmPatchSelectionDialog
 import com.sukisu.ultra.ui.kernelFlash.component.SlotSelectionDialog
 import com.sukisu.ultra.ui.component.dialog.rememberLoadingDialog
 import com.sukisu.ultra.ui.kernelFlash.rememberAnyKernel3State
@@ -63,7 +62,8 @@ fun InstallScreen(
     var probeJob by remember { mutableStateOf<Job?>(null) }
     val loadingDialog = rememberLoadingDialog()
 
-    var installMethod by rememberSaveable { mutableStateOf<InstallMethod?>(null) }
+    val installMethodState = rememberSaveable { mutableStateOf<InstallMethod?>(null) }
+    var installMethod by installMethodState
     var downloadDialogShown by rememberSaveable { mutableStateOf(false) }
     var remotePartitions by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var remotePartitionSelectionIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -75,8 +75,9 @@ fun InstallScreen(
     var allowShell by rememberSaveable { mutableStateOf(false) }
     var enableAdb by rememberSaveable { mutableStateOf(false) }
     var forceBackup by rememberSaveable { mutableStateOf(false) }
-    var kpmEnabled by rememberSaveable { mutableStateOf(false) }
-    var kpmUndo by rememberSaveable { mutableStateOf(false) }
+    var kpmPatchOption by rememberSaveable { mutableStateOf(KpmPatchOption.FOLLOW_KERNEL) }
+    val kpmEnabled = kpmPatchOption.enabled
+    val kpmUndo = kpmPatchOption.undo
     var kpmBootExpanded by rememberSaveable { mutableStateOf(false) }
     var kpmBootUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var blockModulesEnabled by rememberSaveable { mutableStateOf(false) }
@@ -141,8 +142,6 @@ fun InstallScreen(
         }
     }
 
-    val installMethodState = remember { mutableStateOf<InstallMethod?>(null) }
-
     // AnyKernel3 状态
     val anyKernel3State = rememberAnyKernel3State(
         installMethodState = installMethodState,
@@ -151,14 +150,7 @@ fun InstallScreen(
         isAbDevice = isAbDevice
     )
 
-    // 同步 installMethod 和 anyKernel3State
-    LaunchedEffect(installMethod) {
-        installMethodState.value = installMethod
-    }
-
-    val kpmPatchOption = anyKernel3State.kpmPatchOption
     val showSlotSelectionDialog = anyKernel3State.showSlotSelectionDialog && isAbDevice
-    val showKpmPatchDialog = anyKernel3State.showKpmPatchDialog
 
     // 槽位选择对话框
     if (showSlotSelectionDialog) {
@@ -167,18 +159,6 @@ fun InstallScreen(
             onDismiss = { anyKernel3State.onDismissSlotDialog() },
             onSlotSelected = { slot ->
                 anyKernel3State.onSlotSelected(slot)
-            }
-        )
-    }
-
-    // KPM补丁选择对话框
-    if (showKpmPatchDialog) {
-        KpmPatchSelectionDialog(
-            show = true,
-            currentOption = kpmPatchOption,
-            onDismiss = { anyKernel3State.onDismissPatchDialog() },
-            onOptionSelected = { option ->
-                anyKernel3State.onOptionSelected(option)
             }
         )
     }
@@ -389,12 +369,9 @@ fun InstallScreen(
         forceBackup = forceBackup,
         canForceBackup = installMethod is InstallMethod.SelectFile,
         kpmPatchOption = kpmPatchOption,
-        kpmEnabled = kpmEnabled,
-        kpmUndo = kpmUndo,
         kpmBootExpanded = kpmBootExpanded,
         kpmBootUri = kpmBootUri,
-        canPatchKpm = android.os.Build.SUPPORTED_ABIS.contains("arm64-v8a") &&
-            installMethod !is InstallMethod.HorizonKernel,
+        canPatchKpm = android.os.Build.SUPPORTED_ABIS.contains("arm64-v8a"),
         blockModulesEnabled = blockModulesEnabled,
         blockModules = blockModules,
         blockModulesValid = isBlockModulesValid(effectiveBlockModules),
@@ -459,8 +436,7 @@ fun InstallScreen(
                 putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/x-boot-img"))
             })
         },
-        onKpmEnabledChange = { kpmEnabled = it },
-        onKpmUndoChange = { kpmUndo = it },
+        onKpmOptionChange = { kpmPatchOption = it },
         onToggleKpmBoot = { kpmBootExpanded = !kpmBootExpanded },
         onClearKpmBoot = { kpmBootUri = null },
         onSelectAllowShell = {

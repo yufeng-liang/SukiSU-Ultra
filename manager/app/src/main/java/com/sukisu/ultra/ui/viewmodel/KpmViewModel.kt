@@ -5,33 +5,46 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sukisu.ultra.data.repository.KpmRepository
 import com.sukisu.ultra.data.repository.KpmRepositoryImpl
-import com.sukisu.ultra.ui.component.SearchStatus
+import com.sukisu.ultra.ui.component.ConfigResult
 import com.sukisu.ultra.ui.screen.kpm.InputDialogState
 import com.sukisu.ultra.ui.screen.kpm.KpmUiState
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 
 class KpmViewModel(
     private val repo: KpmRepository = KpmRepositoryImpl()
 ) : ViewModel() {
-
-    companion object {
-        private const val TAG = "KpmViewModel"
-    }
-
     private val _uiState = MutableStateFlow(KpmUiState())
     val uiState: StateFlow<KpmUiState> = _uiState.asStateFlow()
-
+    private var refreshJob: Job? = null
+    private var operationJob: Job? = null
     private var tempFile: File? = null
 
-    fun setTempFileForInstall(file: File) {
+    // Reserve before launching so rapid clicks cannot start concurrent root operations.
+    fun runOperation(block: suspend () -> Unit) {
+        if (_uiState.value.isBusy) return
+        _uiState.update { it.copy(isBusy = true) }
+        operationJob = viewModelScope.launch {
+            try {
+                refreshJob?.join()
+                block()
+            } finally {
+                _uiState.update { it.copy(isBusy = false) }
+                fetchModuleList()
+            }
+        }
+    }
+
+    fun prepareInstall(file: File, moduleName: String) {
+        clearTempFile()
         tempFile = file
+        _uiState.update { it.copy(showInstallModeDialog = true, tempModuleName = moduleName) }
     }
 
     fun clearTempFile() {
@@ -41,135 +54,78 @@ class KpmViewModel(
 
     fun getTempFile(): File? = tempFile
 
-    fun setOperationResult(result: com.sukisu.ultra.ui.component.ConfigResult) {
+    fun setOperationResult(result: ConfigResult) {
         _uiState.update { it.copy(operationResults = listOf(result)) }
     }
 
-    fun fetchModuleList() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isRefreshing = true, error = null) }
-
-            repo.getModuleList()
-                .onSuccess { modules ->
-                    _uiState.update {
-                        it.copy(
-                            moduleList = modules,
-                            isRefreshing = false
-                        )
+    fun fetchModuleList(silent: Boolean = false) {
+        if (refreshJob?.isActive == true || _uiState.value.isBusy) return
+        refreshJob = viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = !silent || !it.hasLoaded) }
+            try {
+                repo.getModuleList()
+                    .onSuccess { modules ->
+                        _uiState.update {
+                            it.copy(moduleList = modules, hasLoaded = true, error = null)
+                        }
                     }
-                }
-                .onFailure { e ->
-                    Log.e(TAG, "fetchModuleList failed", e)
-                    _uiState.update {
-                        it.copy(
-                            isRefreshing = false,
-                            error = e
-                        )
+                    .onFailure { e ->
+                        if (e is CancellationException) throw e
+                        Log.e("KpmViewModel", "Failed to refresh modules", e)
+                        _uiState.update { it.copy(error = e) }
                     }
-                }
-        }
-    }
-
-    fun showInstallDialog(moduleName: String) {
-        _uiState.update {
-            it.copy(
-                showInstallModeDialog = true,
-                tempModuleName = moduleName
-            )
+            } finally {
+                _uiState.update { it.copy(isRefreshing = false) }
+            }
         }
     }
 
     fun dismissInstallDialog() {
-        _uiState.update {
-            it.copy(
-                showInstallModeDialog = false,
-                tempModuleName = null
-            )
-        }
+        _uiState.update { it.copy(showInstallModeDialog = false, tempModuleName = null) }
     }
 
     fun showInputDialog(moduleId: String) {
+        if (_uiState.value.isBusy) return
         _uiState.update {
-            it.copy(
-                inputDialogState = InputDialogState(
-                    visible = true,
-                    moduleId = moduleId,
-                    args = it.moduleList.find { m -> m.id == moduleId }?.args ?: ""
-                )
-            )
+            it.copy(inputDialogState = InputDialogState(
+                visible = true,
+                moduleId = moduleId,
+                args = it.moduleList.find { module -> module.id == moduleId }?.args.orEmpty()
+            ))
         }
     }
 
     fun hideInputDialog() {
-        _uiState.update {
-            it.copy(inputDialogState = InputDialogState())
-        }
+        if (_uiState.value.isBusy) return
+        _uiState.update { it.copy(inputDialogState = InputDialogState()) }
     }
 
     fun updateInputArgs(args: String) {
-        _uiState.update {
-            it.copy(inputDialogState = it.inputDialogState.copy(args = args))
-        }
+        _uiState.update { it.copy(inputDialogState = it.inputDialogState.copy(args = args)) }
     }
 
     suspend fun executeControl(): Int {
-        val moduleId = _uiState.value.inputDialogState.moduleId ?: return -1
-        val args = _uiState.value.inputDialogState.args
-
-        return repo.controlModule(moduleId, args)
-            .onSuccess { _ ->
-                hideInputDialog()
-            }
-            .onFailure { e ->
-                Log.e(TAG, "Failed to control module", e)
-                hideInputDialog()
-            }
-            .getOrElse { -1 }
+        val input = _uiState.value.inputDialogState
+        val moduleId = input.moduleId ?: return -1
+        val result = repo.controlModule(moduleId, input.args).getOrElse { e ->
+            if (e is CancellationException) throw e
+            Log.e("KpmViewModel", "Failed to control module", e)
+            -1
+        }
+        // Preserve the user's parameters on failure so the command can be retried.
+        if (result == 0) _uiState.update { it.copy(inputDialogState = InputDialogState()) }
+        return result
     }
 
-    fun updateSearchStatus(status: SearchStatus) {
-        _uiState.update { it.copy(searchStatus = status) }
+    fun updateSearchText(text: String) {
+        _uiState.update { it.copy(searchQuery = text) }
     }
 
-    suspend fun updateSearchText(text: String) {
-        _uiState.update {
-            it.copy(
-                searchStatus = it.searchStatus.copy(searchText = text)
-            )
-        }
-
-        if (text.isEmpty()) {
-            _uiState.update {
-                it.copy(
-                    searchStatus = it.searchStatus.copy(resultStatus = SearchStatus.ResultStatus.DEFAULT),
-                    searchResults = emptyList()
-                )
-            }
-            return
-        }
-
-        _uiState.update {
-            it.copy(searchStatus = it.searchStatus.copy(resultStatus = SearchStatus.ResultStatus.LOAD))
-        }
-
-        val result = withContext(Dispatchers.Default) {
-            _uiState.value.moduleList.filter {
-                it.id.contains(text, true) ||
-                it.name.contains(text, true) ||
-                it.description.contains(text, true) ||
-                it.author.contains(text, true) ||
-                it.version.contains(text, true)
-            }
-        }
-
-        _uiState.update {
-            it.copy(
-                searchResults = result,
-                searchStatus = it.searchStatus.copy(
-                    resultStatus = if (result.isEmpty()) SearchStatus.ResultStatus.EMPTY else SearchStatus.ResultStatus.SHOW
-                )
-            )
-        }
+    override fun onCleared() {
+        // Shell execution can still be reading the staged file after cancellation.
+        val operation = operationJob
+        if (operation == null || operation.isCompleted) clearTempFile()
+        else operation.invokeOnCompletion { clearTempFile() }
     }
 
     data class ModuleInfo(

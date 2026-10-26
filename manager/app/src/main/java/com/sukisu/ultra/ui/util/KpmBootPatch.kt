@@ -4,10 +4,8 @@ import android.net.Uri
 import android.os.Environment
 import com.sukisu.ultra.getKernelVersion
 import com.sukisu.ultra.ksuApp
-import com.sukisu.ultra.ui.kernelFlash.util.KpmPatchCommand
-import com.sukisu.ultra.ui.kernelFlash.util.RemoteToolsDownloader
+import com.sukisu.ultra.ui.kernelFlash.util.KpmTools
 import com.topjohnwu.superuser.CallbackList
-import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.nio.file.Files
 
@@ -94,35 +92,9 @@ fun patchKpmBoot(
         val patched = File(session, "kernel.patched")
         val output = File(session, "patched-boot.img")
         val daemon = q(getKsuDaemonPath())
-        val kpimg = File(session, "kpimg")
         onStdout("- Preparing latest KPM tools from the configured remote URLs")
-        val listener = object : RemoteToolsDownloader.DownloadProgressListener {
-            override fun onProgress(fileName: String, progress: Int, total: Int) = Unit
-            override fun onLog(message: String) = onStdout(message)
-            override fun onError(fileName: String, error: String) {
-                onStdout("- Warning: $fileName: $error")
-            }
-            override fun onSuccess(fileName: String, isRemote: Boolean) {
-                onStdout("- $fileName source: ${if (isRemote) "remote" else "bundled fallback"}")
-            }
-        }
-        val results = runBlocking {
-            RemoteToolsDownloader(ksuApp, session.absolutePath).downloadToolsAsync(listener)
-        }
-        for (name in listOf("kptools", "kpimg")) {
-            val result = results[name]
-            check(result?.success == true) {
-                "Cannot prepare $name: ${result?.errorMessage ?: "missing download result"}"
-            }
-        }
-        val tool = File(session, "kptools")
-        command("chmod 700 ${q(tool.absolutePath)}")
-        // Launch downloaded dynamic ARM64 tools through the system linker when
-        // running without root rather than exec'ing writable app storage.
-        val launcher = if (rootAvailable()) null else "/system/bin/linker64"
-        if (launcher != null) check(File(launcher).isFile) { "System linker64 is unavailable" }
-        val toolCommand = launcher?.let { "${q(it)} ${q(tool.absolutePath)}" } ?: q(tool.absolutePath)
-        onStdout("- KPM executable launcher: ${launcher ?: "direct (root)"}")
+        val tools = KpmTools.prepare(ksuApp, session, onStdout, ::command)
+        val toolCommand = tools.command
         val version = getKernelVersion()
         check(version.major >= 0 && version.patchLevel >= 0) { "Cannot determine kernel version" }
         val useKptoolsBoot = version.major > 6 ||
@@ -138,9 +110,7 @@ fun patchKpmBoot(
         }
         command("[ -s ${q(kernel.absolutePath)} ]")
         onStdout(if (undo) "- Undoing KPM patch" else "- Applying KPM patch")
-        command(KpmPatchCommand.build(tool.absolutePath, kernel.absolutePath,
-            kpimg.absolutePath, patched.absolutePath, undo, launcher))
-        command("[ -s ${q(patched.absolutePath)} ]")
+        tools.patch(kernel, patched, undo, ::command)
         onStdout("- Repacking boot.img")
         if (useKptoolsBoot) {
             // repack reads `kernel`, not `kernel.patched`. Keep the original

@@ -5,13 +5,11 @@ import android.content.Context
 import android.net.Uri
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.kernelFlash.util.AssetsUtil
-import com.sukisu.ultra.ui.kernelFlash.util.KpmPatchCommand
-import com.sukisu.ultra.ui.kernelFlash.util.RemoteToolsDownloader
+import com.sukisu.ultra.ui.kernelFlash.util.KpmTools
 import com.sukisu.ultra.ui.util.getRootShell
 import com.sukisu.ultra.ui.util.install
 import com.sukisu.ultra.ui.util.rootAvailable
 import com.topjohnwu.superuser.ShellUtils
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -111,14 +109,16 @@ class HorizonKernelWorker(
             if (kpmPatchEnabled || kpmUndoPatch) {
                 state.updateStep(context.getString(R.string.kpm_preparing_tools))
                 state.updateProgress(0.5f)
-                prepareKpmToolsWithDownload()
+                val tools = KpmTools.prepare(context, File(workDir), state::addLog) {
+                    requireCommand(true, it)
+                }
 
                 state.updateStep(
                     if (kpmUndoPatch) context.getString(R.string.kpm_undoing_patch)
                     else context.getString(R.string.kpm_applying_patch)
                 )
                 state.updateProgress(0.55f)
-                performKpmPatch()
+                performKpmPatch(tools)
             }
 
             state.updateStep(context.getString(R.string.horizon_patching_script))
@@ -170,58 +170,17 @@ class HorizonKernelWorker(
         }
     }
 
-    private fun prepareKpmToolsWithDownload() {
-        try {
-            File(workDir).mkdirs()
-            val downloader = RemoteToolsDownloader(context, workDir)
-
-            val progressListener = object : RemoteToolsDownloader.DownloadProgressListener {
-                override fun onProgress(fileName: String, progress: Int, total: Int) {
-                    val percentage = if (total > 0) (progress.toLong() * 100 / total).toInt() else 0
-                    state.addLog("Downloading $fileName: $percentage% ($progress/$total bytes)")
-                }
-
-                override fun onLog(message: String) {
-                    state.addLog(message)
-                }
-
-                override fun onError(fileName: String, error: String) {
-                    state.addLog("Warning: $fileName - $error")
-                }
-
-                override fun onSuccess(fileName: String, isRemote: Boolean) {
-                    val source = if (isRemote) "remote" else "local"
-                    state.addLog("✓ $fileName $source version prepared successfully")
-                }
-            }
-
-            val results = runBlocking {
-                downloader.downloadToolsAsync(progressListener)
-            }
-            results.forEach { (name, result) ->
-                if (!result.success) {
-                    throw IOException("Unable to prepare $name: ${result.errorMessage}")
-                }
-            }
-            requireCommand(true, "chmod a+rx $workDir/kptools")
-            state.addLog("KPM tools preparation completed, starting patch operation")
-        } catch (e: Exception) {
-            state.addLog("KPM tools preparation failed: ${e.message}")
-            throw e
-        }
-    }
-
     /**
      * 执行KPM修补操作
      */
-    private fun performKpmPatch() {
+    private fun performKpmPatch(tools: KpmTools) {
         try {
             // 创建临时解压目录
             val extractDir = "$workDir/extracted"
             File(extractDir).mkdirs()
 
             // 解压压缩包到临时目录
-            val unzipResult = runCommand(true, "cd $extractDir && unzip -o \"$filePath\"")
+            val unzipResult = runCommand(true, "cd ${shellQuote(extractDir)} && unzip -o ${shellQuote(filePath)}")
             if (unzipResult != 0) {
                 throw IOException(context.getString(R.string.kpm_extract_zip_failed))
             }
@@ -237,47 +196,19 @@ class HorizonKernelWorker(
                 throw IOException(context.getString(R.string.kpm_image_file_not_found))
             }
 
-            val imageFile = findImageResult.lines().first().trim()
-            // AnyKernel3 stores its kernel as Image; keep the package filename and pass that exact path.
-            val imageName = File(imageFile).name
-            val imageDir = File(imageFile).parent ?: throw IOException("Invalid image path")
+            val images = findImageResult.lines().filter { it.isNotBlank() }
+            check(images.size == 1) { "Multiple kernel Images found; cannot determine which one to patch" }
+            val imageFile = images.single().trim()
 
             state.addLog(context.getString(R.string.kpm_found_image_file, imageFile))
 
-            // 复制KPM工具到Image文件所在目录
-            requireCommand(true, "cp ${shellQuote("$workDir/kptools")} ${shellQuote("$imageDir/")}")
-            requireCommand(true, "cp ${shellQuote("$workDir/kpimg")} ${shellQuote("$imageDir/")}")
-
-            if (kpmUndoPatch) {
-                // ---- 取消修补：返回值允许为空，失败时不覆盖原文件 ----
-                // 仅当 kptools 执行成功且生成了 oImage 时才替换原 Image；
-                // 命令末尾用 `[ -f oImage ] && mv ...` 保证原文件不被半成品覆盖。
-                val undoCommand = "cd ${shellQuote(imageDir)} && chmod a+rx kptools && " +
-                        KpmPatchCommand.build("./kptools", imageName, "kpimg", "oImage", true) + " && " +
-                        "[ -f oImage ] && mv oImage ${shellQuote(imageName)}"
-
-                val patchResult: Int? = runCommand(true, undoCommand)
-                if (patchResult == null) {
-                    state.addLog("${context.getString(R.string.kpm_undo_patch_failed)} (no exit code)")
-                } else if (patchResult != 0) {
-                    state.addLog(context.getString(R.string.kpm_undo_patch_failed))
-                } else {
-                    state.addLog(context.getString(R.string.kpm_undo_patch_success))
-                }
-            } else {
-                // ---- 打补丁：必须成功 ----
-                val patchCommand = "cd ${shellQuote(imageDir)} && chmod a+rx kptools && " +
-                        KpmPatchCommand.build("./kptools", imageName, "kpimg", "oImage", false) + " && [ -s oImage ] && mv oImage ${shellQuote(imageName)}"
-
-                val patchResult = runCommand(true, patchCommand)
-                if (patchResult != 0) {
-                    throw IOException(context.getString(R.string.kpm_patch_failed))
-                }
-                state.addLog(context.getString(R.string.kpm_patch_success))
-            }
-
-            // 清理KPM工具文件
-            requireCommand(true, "rm -f ${shellQuote("$imageDir/kptools")} ${shellQuote("$imageDir/kpimg")} ${shellQuote("$imageDir/oImage")}")
+            // Keep tools outside the ZIP tree so package files cannot be overwritten.
+            val patched = File(workDir, "kernel.patched")
+            tools.patch(File(imageFile), patched, kpmUndoPatch) { requireCommand(true, it) }
+            requireCommand(true, "mv ${shellQuote(patched.absolutePath)} ${shellQuote(imageFile)}")
+            state.addLog(context.getString(
+                if (kpmUndoPatch) R.string.kpm_undo_patch_success else R.string.kpm_patch_success
+            ))
 
             // 重新打包ZIP文件
             val originalFileName = File(filePath).name

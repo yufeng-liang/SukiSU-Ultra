@@ -22,8 +22,6 @@ internal data class InstallUiState(
     val forceBackup: Boolean,
     val canForceBackup: Boolean,
     val kpmPatchOption: KpmPatchOption,
-    val kpmEnabled: Boolean,
-    val kpmUndo: Boolean,
     val kpmBootExpanded: Boolean,
     val kpmBootUri: android.net.Uri?,
     val canPatchKpm: Boolean,
@@ -33,7 +31,11 @@ internal data class InstallUiState(
     val spoofEnabled: Boolean = false,
     val spoofRelease: String,
     val spoofVersion: String,
-)
+) {
+    val kpmEnabled: Boolean get() = kpmPatchOption.enabled
+    val canSelectKpmBoot: Boolean
+        get() = kpmEnabled && installMethod !is InstallMethod.HorizonKernel
+}
 
 @Immutable
 internal data class InstallScreenActions(
@@ -47,8 +49,7 @@ internal data class InstallScreenActions(
     val onNext: () -> Unit,
     val onAdvancedOptionsClicked: () -> Unit,
     val onPatchKpmFile: () -> Unit,
-    val onKpmEnabledChange: (Boolean) -> Unit,
-    val onKpmUndoChange: (Boolean) -> Unit,
+    val onKpmOptionChange: (KpmPatchOption) -> Unit,
     val onToggleKpmBoot: () -> Unit,
     val onClearKpmBoot: () -> Unit,
     val onSelectAllowShell: (Boolean) -> Unit,

@@ -2,8 +2,6 @@ package com.sukisu.ultra.ui.kernelFlash.util
 
 import android.content.Context
 import android.util.Log
-import com.sukisu.ultra.ui.util.getRootShell
-import com.topjohnwu.superuser.ShellUtils
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
@@ -59,12 +57,6 @@ class RemoteToolsDownloader(
             "kptools" to async { downloadSingleTool("kptools", KPTOOLS_REMOTE_URL, listener) },
             "kpimg" to async { downloadSingleTool("kpimg", KPIMG_REMOTE_URL, listener) }
         ).mapValues { it.value.await() }
-
-        // 设置 kptools 执行权限
-        File(workDir, "kptools").takeIf { it.exists() }?.let { file ->
-            setExecutablePermission(file.absolutePath)
-            listener?.onLog("Set kptools execution permission")
-        }
 
         val successCount = results.values.count { it.success }
         val remoteCount = results.values.count { it.success && it.isRemoteSource }
@@ -265,25 +257,6 @@ class RemoteToolsDownloader(
         } catch (e: Exception) {
             Log.w(TAG, "$fileName file verification exception", e)
             false
-        }
-    }
-
-    private fun setExecutablePermission(filePath: String) {
-        try {
-            val shell = getRootShell()
-            if (ShellUtils.fastCmdResult(shell, "chmod a+rx $filePath")) {
-                Log.d(TAG, "Set execution permission for $filePath")
-            } else {
-                File(filePath).setExecutable(true, false)
-                Log.d(TAG, "Set execution permission using Java method for $filePath")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to set execution permission: $filePath", e)
-            try {
-                File(filePath).setExecutable(true, false)
-            } catch (ex: Exception) {
-                Log.w(TAG, "Java method to set permissions also failed", ex)
-            }
         }
     }
 

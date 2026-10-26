@@ -276,6 +276,10 @@
     <string name="settings_adb_root_summary">以 Root 權限執行 adbd 常駐程式</string>
     <string name="safe_mode_module_disabled">處於安全模式下，禁止安裝模組</string>
     <string name="settings_module_check_update">檢查模組更新</string>
+    <string name="settings_auto_delete_module_zip">安裝後刪除模組壓縮檔</string>
+    <string name="settings_auto_delete_module_zip_summary">安裝成功後自動刪除模組壓縮檔，包含手動選擇、模組更新及從倉庫下載的</string>
+    <string name="module_zip_deleted">已刪除模組壓縮檔：%1$s</string>
+    <string name="module_zip_delete_failed">! 刪除模組壓縮檔失敗：%1$s</string>
     <string name="menu_sort">排序</string>
     <string name="sort_by_name">應用名</string>
     <string name="sort_by_package_name">套件名</string>
@@ -353,8 +357,6 @@
     <string name="kpm_patch_description">用於添加額外的KPM功能</string>
     <string name="enable_kpm_patch">KPM 補丁</string>
     <string name="enable_kpm_undo_patch">KPM 撤銷補丁</string>
-    <string name="kpm_patch_enabled">KPM 補丁已啟用</string>
-    <string name="kpm_undo_patch_enabled">KPM 撤銷補丁已啟用</string>
     <string name="kpm_patch_mode">KPM 補丁模式</string>
     <string name="kpm_undo_patch_mode">KPM 撤銷補丁模式</string>
     <string name="kpm_preparing_tools">準備KPM工具</string>
@@ -366,39 +368,44 @@
     <string name="kpm_file_repacked">文件重新打包成功</string>
     <string name="kpm_extract_zip_failed">解壓zip文件失敗</string>
     <string name="kpm_image_file_not_found">未找到鏡像文件</string>
-    <string name="kpm_patch_failed">KPM 補丁失敗</string>
-    <string name="kpm_undo_patch_failed">KPM 撤銷補丁失敗</string>
     <string name="kpm_patch_operation_failed">KPM 補丁操作失敗: %s</string>
     <string name="kpm_follow_kernel_file">跟隨內核</string>
     <string name="kernel_flashing">內核刷入</string>
     <string name="horizon_kernel">AnyKernel3 內核</string>
     <string name="horizon_kernel_summary">刷入AnyKernel3格式的內核zip包</string>
+    <string name="external_kernel_flash_prompt">是否刷寫 AnyKernel3 核心「%1$s」？請確認核心適用於目前裝置，接下來將選擇槽位及 KPM 模式。</string>
+    <string name="external_kernel_separate_files">請單獨開啟一個核心 ZIP，不要與模組檔案一起選取。</string>
     <!-- KPM -->
     <string name="kpm_title">KPM</string>
     <string name="settings_kpm_summary">使用 KPM 管理內核模塊</string>
+    <string name="kpm_modules_title">核心模組</string>
+    <string name="kpm_overview_description">管理目前核心中載入的模組</string>
+    <string name="kpm_loaded_count">已載入 %1$d 個模組</string>
+    <string name="kpm_search">搜尋核心模組</string>
+    <string name="kpm_search_empty">沒有相符的核心模組</string>
+    <string name="kpm_clear_search">清除搜尋</string>
+    <string name="kpm_refresh_failed">無法重新整理核心模組</string>
+    <string name="kpm_retry">重試</string>
+    <string name="kpm_working">處理中，請稍候…</string>
     <string name="kpm_empty">當前沒有安裝內核模塊</string>
     <string name="kpm_version">版本</string>
     <string name="kpm_author">作者</string>
     <string name="kpm_uninstall">卸載</string>
-    <string name="kpm_uninstall_success">卸載成功</string>
-    <string name="kpm_uninstall_failed">卸載失敗</string>
-    <string name="kpm_install_success">kpm 模塊加載成功</string>
     <string name="kpm_install_failed">kpm 模塊加載失敗</string>
     <string name="kpm_args">參數</string>
     <string name="kpm_control">執行</string>
     <string name="close_notice">關閉</string>
     <string name="kernel_module_notice">以下內核模塊功能由 KernelPatch 開發，並經過修改後加入了 SukiSU 的內核模塊功能</string>
     <string name="kpm_control_success">成功</string>
-    <string name="kpm_control_failed">失敗</string>
     <string name="not_supported">不支持</string>
     <string name="kpm_install_mode">KPM 安裝</string>
     <string name="kpm_install_mode_load">加載</string>
     <string name="kpm_install_mode_embed">嵌入</string>
-    <string name="kpm_install_mode_description">請選擇：%1$s 模塊安裝模式\n\n加載：臨時加載模塊\n嵌入：永久安裝到系統中</string>
+    <string name="kpm_load_description">僅在本次開機期間載入，重新啟動後失效。</string>
+    <string name="kpm_embed_description">立即載入並儲存，開機時自動載入。請僅安裝可信任的模組。</string>
     <string name="invalid_file_type">文件類型不正確！請選擇 .kpm 文件</string>
     <string name="confirm_uninstall_title_with_filename">卸載</string>
     <string name="confirm_uninstall_content">以下 KPM 將被卸載：%s</string>
-    <string name="snackbar_failed_to_check_module_file">無法檢查模塊文件是否存在</string>
     <string name="cancel">取消</string>
     <!-- Tools -->
     <string name="settings_tools">工具</string>
@@ -438,13 +445,14 @@
     <!-- Zip Install Prompts -->
     <!-- SuSFS Configuration -->
     <string name="susfs_config_title">SuSFS 配置</string>
-    <string name="susfs_config_summary">配置SuSFS模塊設置</string>
     <string name="susfs_config_description">配置說明</string>
     <string name="susfs_config_description_text">此功能允許您自定義 SuSFS 的 uname 值和構建時間偽裝。輸入您想要設置的值，點擊應用即可生效</string>
+    <string name="susfs_runtime_unknown">未知</string>
+    <string name="susfs_runtime_version">版本</string>
+    <string name="susfs_runtime_variant">核心類型</string>
+    <string name="susfs_runtime_implementation">實作方式</string>
     <string name="susfs_uname_label">Kernel Release</string>
     <string name="susfs_build_time_label">Kernel Version</string>
-    <string name="susfs_current_value">目前 Release: %s</string>
-    <string name="susfs_current_build_time">目前 Version: %s</string>
     <string name="susfs_apply">應用</string>
     <!-- SuSFS Reset Confirmation -->
     <string name="susfs_reset_confirm_title">確認重置</string>
@@ -456,6 +464,7 @@
     <string name="susfs_autostart_requirement">需要添加配置後才能啟用</string>
     <!-- SuSFS Tab Titles -->
     <string name="susfs_tab_basic_settings">基本設置</string>
+    <string name="susfs_tab_feature_toggles">功能開關</string>
     <string name="susfs_tab_sus_paths">SuS 路徑</string>
     <string name="susfs_tab_path_settings">路徑設置</string>
     <string name="susfs_tab_enabled_features">啟用功能狀態</string>
@@ -470,6 +479,7 @@
     <!-- SuSFS Path Settings -->
     <!-- SuSFS Enabled Features -->
     <string name="susfs_enabled_features_description">顯示當前 SuSFS 啟用的功能狀態</string>
+    <string name="susfs_features_summary">已啟用 %1$d / %2$d 項功能</string>
     <string name="susfs_no_features_found">未找到功能狀態信息</string>
     <string name="susfs_feature_enabled">已啟用</string>
     <string name="susfs_feature_disabled">已禁用</string>
@@ -488,19 +498,24 @@
     <string name="susfs_enable_log_label">SuSFS 啟用日誌</string>
     <string name="susfs_log_config_description">啟用或者關閉 SuSFS 的日誌</string>
     <string name="susfs_log_config_title">SuSFS 日誌配置</string>
+    <string name="susfs_priority_uid_filter">優先級 UID 過濾</string>
+    <string name="susfs_priority_uid_filter_description">在其他應用程式呼叫 getpriority/setpriority 和 ioprio_get/ioprio_set 時隱藏所選應用程式的 UID。每次套用會取代整個清單；核心會在應用程式安裝或解除安裝後重新解析 UID。</string>
+    <string name="susfs_priority_uid_filter_warning">需要支援優先級 UID 過濾的 SuSFS 核心。僅支援應用 ID 10000-19999；無法解析的套件名稱會導致執行失敗。儲存設定不代表核心即時狀態。開啟自動啟動可在重新啟動後還原。</string>
+    <string name="susfs_priority_uid_filter_apps">已選擇的套件</string>
+    <string name="susfs_priority_uid_filter_empty">尚未選擇應用程式</string>
+    <string name="susfs_priority_uid_filter_select">選擇應用程式</string>
+    <string name="susfs_priority_uid_filter_clear">清除過濾清單</string>
     <string name="susfs_execution_location_label">執行位置</string>
-    <string name="susfs_current_execution_location">當前執行位置：%s</string>
     <string name="susfs_execution_location_service">Service</string>
     <string name="susfs_execution_location_post_fs_data">Post-FS-Data</string>
     <string name="susfs_slot_info_title">槽位信息</string>
     <string name="susfs_slot_info_description">查看當前啟動槽位信息並複製數值</string>
-    <string name="susfs_current_active_slot">當前活動槽位：%s</string>
-    <string name="susfs_slot_uname">Uname：%s</string>
-    <string name="susfs_slot_build_time">構建時間：%s</string>
     <string name="susfs_slot_current_badge">當前</string>
     <string name="susfs_slot_use_uname">使用 Uname</string>
     <string name="susfs_slot_use_build_time">使用構建時間</string>
     <string name="susfs_slot_info_unavailable">無法獲取槽位信息</string>
+    <string name="susfs_slot_draft_hint">選擇後填入編輯框，需回到基本設定點擊套用才會生效。不可用欄位無法填入；壓縮的核心映像可能無法讀取版本資訊。</string>
+    <string name="susfs_slot_value_filled">已填入編輯框</string>
     <!-- SuSFS Kstat Related Strings -->
     <string name="susfs_tab_kstat_config">Kstat 配置</string>
     <string name="add_kstat_statically_title">添加 Kstat 靜態配置</string>
@@ -545,6 +560,11 @@
     <string name="susfs_backup_info_date">備份日期：%s</string>
     <string name="susfs_backup_info_device">設備：%s</string>
     <string name="susfs_backup_info_version">版本：%s</string>
+    <string name="susfs_cmdline_or_bootconfig_title">欺騙 Cmdline / Bootconfig</string>
+    <string name="susfs_cmdline_or_bootconfig_description">選擇一個文字檔，其內容將透過 SuSFS 推送到內核，作為 /proc/cmdline（非 GKI）或 /proc/bootconfig（GKI）的替代。開啟自動啟動後將持久化並在每次開機時套用。</string>
+    <string name="susfs_cmdline_or_bootconfig_current">當前路徑: %s</string>
+    <string name="susfs_cmdline_or_bootconfig_none">（尚未選擇）</string>
+    <string name="susfs_cmdline_or_bootconfig_pick_file">選擇 Cmdline / Bootconfig 檔案</string>
     <string name="hide_bl_script">上鎖狀態</string>
     <string name="hide_bl_script_description">覆蓋引導鎖狀態屬性於 late_start 服務模式</string>
     <string name="cleanup_residue">清理工具殘留</string>
@@ -562,9 +582,6 @@
     <string name="add_custom_path">其他</string>
     <string name="susfs_add_app_path">添加應用路徑</string>
     <string name="search_apps">搜索應用</string>
-    <string name="selected_apps_count">%1$d 個已選應用</string>
-    <string name="already_added_apps_count">%1$d 個已添加應用</string>
-    <string name="all_apps_already_added">所有應用均已添加</string>
     <string name="no_apps_found">未找到應用</string>
     <!-- SuSFS Loop Path Related Strings -->
     <string name="susfs_tab_sus_loop_paths">SuS 循環路徑</string>
@@ -584,11 +601,6 @@
     <string name="sus_loop_paths_description_title">循環路徑配置</string>
     <string name="sus_loop_paths_description_text">循環路徑會在每次非 root 用戶應用或隔離服務啟動時重新標記為 SUS_PATH。這有助於解決添加的路徑可能因 inode 狀態重置或內核中 inode 重新創建而失效的問題</string>
     <string name="avc_log_spoofing">AVC 日誌欺騙</string>
-    <string name="susfs_cmdline_or_bootconfig_title">欺騙 Cmdline / Bootconfig</string>
-    <string name="susfs_cmdline_or_bootconfig_description">選擇一個文字檔，其內容將透過 SuSFS 推送到內核，作為 /proc/cmdline（非 GKI）或 /proc/bootconfig（GKI）的替代。開啟自動啟動後將持久化並在每次開機時套用。</string>
-    <string name="susfs_cmdline_or_bootconfig_current">當前路徑: %s</string>
-    <string name="susfs_cmdline_or_bootconfig_none">（尚未選擇）</string>
-    <string name="susfs_cmdline_or_bootconfig_pick_file">選擇 Cmdline / Bootconfig 檔案</string>
     <string name="avc_log_spoofing_description">禁用: 禁用在內核 AVC 日誌中欺騙 \'su\' 的 sus tcontext。\n啟用: 啟用在內核 AVC 日誌中將 \'su\' 的 sus tcontext 欺騙為 \'kernel\'</string>
     <!-- SUS Map Related Strings -->
     <string name="susfs_tab_sus_maps">SUS映射</string>
@@ -650,6 +662,8 @@
     <string name="settings_selinux_hide_summary">阻止應用檢測 SELinux 修改</string>
     <string name="settings_show_fullstatus">顯示完整狀態</string>
     <string name="settings_show_fullstatus_summary">在首頁信息卡中顯示設備的完整狀態</string>
+    <string name="settings_hide_home_warnings">隱藏首頁警告</string>
+    <string name="settings_hide_home_warnings_summary">隱藏首頁的警告卡片（PR 建置、核心/管理器更新、LKM 更新、預覽模式）</string>
     <string name="home_zygisk_implementation">Zygisk 實作</string>
     <string name="home_zygisk_not_installed">未安裝</string>
     <string name="home_zygisk_disabled">已停用</string>
@@ -664,17 +678,14 @@
     <string name="dynamic_manager_enabled">啟用動態管理器</string>
     <string name="dynamic_manager_add">新增管理器</string>
     <string name="dynamic_manager_remove">移除管理器</string>
-    <string name="dynamic_manager_select_app">已安裝的應用程式</string>
     <string name="dynamic_manager_authorize">授權 %1$s</string>
     <!-- Extension subsystem -->
     <string name="extension_section_title">擴充功能</string>
     <string name="extension_section_summary">核心拓展功能</string>
     <string name="extension_not_supported">目前核心不支援</string>
     <string name="extension_status_supported">支援</string>
-    <string name="extension_status_unsupported">核心不支援此擴充功能</string>
     <string name="extension_status_forced">已強制</string>
     <string name="extension_status_managed">模組託管</string>
-    <string name="extension_status_enabled">已啟用</string>
     <string name="extension_status_disabled">已停用</string>
     <string name="extension_kpm_title">KPM (核心補丁模組)</string>
     <string name="extension_kpm_summary">執行階段載入第三方 .kpm 模組。需要核心支援 KPM。</string>
@@ -684,6 +695,8 @@
     <string name="extension_umount_paths_summary">管理應用啟動時核心將卸載的掛載點清單。</string>
     <string name="extension_dynamic_manager_title">動態管理器</string>
     <string name="extension_dynamic_manager_summary">允許多個透過簽名憑證驗證的應用程式充當 SukiSU 管理器。</string>
+    <string name="extension_version_spoof_title">SukiSU 版本資訊自訂</string>
+    <string name="extension_version_spoof_summary">自訂核心對外回報的 SukiSU 數字版本號、完整版本字串和 UAPI 版本號。</string>
     <string name="extension_open_details">開啟詳情</string>
     <string name="extension_open_kpm">開啟 KPM 管理</string>
     <string name="extension_open_dynamic_manager">開啟動態管理器列表</string>
@@ -797,19 +810,9 @@
     <string name="module_upload_limit_unknown">暫時拿不到伺服器上限，先不能提交</string>
     <string name="module_upload_turnstile_title">人機驗證</string>
     <string name="module_upload_turnstile_failed">人機驗證沒完成，本次沒有提交</string>
-    <string name="external_kernel_flash_prompt">是否刷寫 AnyKernel3 核心「%1$s」？請確認核心適用於目前裝置，接下來將選擇槽位及 KPM 模式。</string>
-    <string name="external_kernel_separate_files">請單獨開啟一個核心 ZIP，不要與模組檔案一起選取。</string>
-    <string name="susfs_tab_feature_toggles">功能開關</string>
-    <string name="susfs_slot_draft_hint">選擇後填入編輯框，需回到基本設定點擊套用才會生效。不可用欄位無法填入；壓縮的核心映像可能無法讀取版本資訊。</string>
-    <string name="susfs_slot_value_filled">已填入編輯框</string>
-    <string name="susfs_features_summary">已啟用 %1$d / %2$d 項功能</string>
-    <string name="susfs_runtime_unknown">未知</string>
     <string name="susfs_runtime_available">可用</string>
     <string name="susfs_runtime_unavailable">不可用</string>
     <string name="susfs_runtime_status">狀態</string>
-    <string name="susfs_runtime_version">版本</string>
-    <string name="susfs_runtime_variant">核心類型</string>
-    <string name="susfs_runtime_implementation">實作方式</string>
     <string name="temporary_root_active">臨時 Root 已啟用</string>
     <string name="temporary_root_title">臨時 Root</string>
     <string name="temporary_root_minutes">%1$d 分鐘</string>
@@ -828,15 +831,6 @@
     <string name="temporary_root_custom_range">請輸入 1～10080 分鐘（最多 7 天）</string>
     <string name="settings_check_ci_update">檢查 CI 版本更新</string>
     <string name="settings_check_ci_update_summary">在首頁檢查 main 分支的 CI 建置，有新版本時提示更新</string>
-    <string name="susfs_priority_uid_filter">優先級 UID 過濾</string>
-    <string name="susfs_priority_uid_filter_description">在其他應用程式呼叫 getpriority/setpriority 和 ioprio_get/ioprio_set 時隱藏所選應用程式的 UID。每次套用會取代整個清單；核心會在應用程式安裝或解除安裝後重新解析 UID。</string>
-    <string name="susfs_priority_uid_filter_warning">需要支援優先級 UID 過濾的 SuSFS 核心。僅支援應用 ID 10000-19999；無法解析的套件名稱會導致執行失敗。儲存設定不代表核心即時狀態。開啟自動啟動可在重新啟動後還原。</string>
-    <string name="susfs_priority_uid_filter_apps">已選擇的套件</string>
-    <string name="susfs_priority_uid_filter_empty">尚未選擇應用程式</string>
-    <string name="susfs_priority_uid_filter_select">選擇應用程式</string>
-    <string name="susfs_priority_uid_filter_clear">清除過濾清單</string>
-    <string name="extension_version_spoof_title">SukiSU 版本資訊自訂</string>
-    <string name="extension_version_spoof_summary">自訂核心對外回報的 SukiSU 數字版本號、完整版本字串和 UAPI 版本號。</string>
     <string name="version_spoof_warning">注意：這些設定會改變核心實際回傳的 SukiSU 版本資訊，不只是修改介面顯示。版本號或 UAPI 與編譯值不一致，可能導致 Manager 誤判相容性，並影響安裝與更新。可隨時還原核心編譯值。</string>
     <string name="version_spoof_hint">欄位顯示目前生效值，下方會標示核心編譯時的原始值。修改後會儲存，並在開機時重新套用（安全模式除外）。其他應用程式可能會快取版本資訊；若顯示未更新，請重新啟動該應用程式。完整版本字串最長 254 個 UTF-8 位元組。</string>
     <string name="version_spoof_code">SukiSU 數字版本號</string>
@@ -846,7 +840,6 @@
     <string name="version_spoof_reset">還原核心編譯值</string>
     <string name="version_spoof_success">版本資訊已更新。若其他應用程式仍顯示舊值，請重新啟動該應用程式。</string>
     <string name="version_spoof_compiled_target">目前 Manager 編譯參考值：版本號 %1$s，UAPI %2$s。自訂值可以不同；儲存前請確認已了解相容性影響。</string>
-    <string name="version_spoof_must_match">輸入值超出支援的數值範圍，請檢查版本號和 UAPI。</string>
     <string name="version_spoof_original_value">核心編譯時的原始值：%1$s</string>
     <string name="version_spoof_back">返回</string>
     <string name="version_spoof_home_warning">SukiSU 版本號或 UAPI 與目前管理器不一致。點選查看版本設定與還原方法。</string>
@@ -856,6 +849,4 @@
     <string name="version_spoof_section_fields">對外回報的版本</string>
     <string name="version_spoof_section_recovery">警告設定與還原</string>
     <string name="version_spoof_recovery">還原核心原始版本：使用 Root 權限刪除 /data/adb/ksu/.version_spoof_config，然後重新開機。\n\n重新顯示警告：使用 Root 權限刪除 /data/adb/ksu/.version_spoof_warning_hidden，然後重新啟動管理器或裝置。刪除此檔案不會清除自訂版本。若管理器無法開啟，請使用其他可用的 Root 或 Recovery 環境操作。</string>
-    <string name="settings_hide_home_warnings">隱藏首頁警告</string>
-    <string name="settings_hide_home_warnings_summary">隱藏首頁的警告卡片（PR 建置、核心/管理器更新、LKM 更新、預覽模式）</string>
 </resources>

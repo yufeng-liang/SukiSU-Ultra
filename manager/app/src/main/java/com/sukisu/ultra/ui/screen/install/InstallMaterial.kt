@@ -44,6 +44,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.getKernelVersion
+import com.sukisu.ultra.ui.kernelFlash.KpmPatchOption
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.SegmentedCheckboxItem
@@ -201,22 +202,15 @@ internal fun InstallScreenMaterial(
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
                     item {
-                        SegmentedCheckboxItem(
-                            title = stringResource(R.string.install_kpm_enable),
-                            summary = stringResource(R.string.install_kpm_linked_summary),
-                            checked = uiState.kpmEnabled,
-                            onCheckedChange = actions.onKpmEnabledChange,
-                        )
-                    }
-                    item(visible = uiState.kpmEnabled) {
                         SegmentedDropdownItem(
                             title = stringResource(R.string.install_kpm_operation),
-                            items = listOf(stringResource(R.string.enable_kpm_patch), stringResource(R.string.enable_kpm_undo_patch)),
-                            selectedIndex = if (uiState.kpmUndo) 1 else 0,
-                            onItemSelected = { actions.onKpmUndoChange(it == 1) },
+                            summary = stringResource(R.string.install_kpm_summary),
+                            items = listOf(stringResource(R.string.kpm_follow_kernel_file), stringResource(R.string.enable_kpm_patch), stringResource(R.string.enable_kpm_undo_patch)),
+                            selectedIndex = KpmPatchOption.entries.indexOf(uiState.kpmPatchOption),
+                            onItemSelected = { actions.onKpmOptionChange(KpmPatchOption.entries[it]) },
                         )
                     }
-                    item(visible = uiState.kpmEnabled) {
+                    item(visible = uiState.canSelectKpmBoot) {
                         SegmentedListItem(
                             headlineContent = { Text(stringResource(R.string.install_kpm_manual)) },
                             supportingContent = { Text(uiState.kpmBootUri?.lastPathSegment ?: stringResource(R.string.install_kpm_auto)) },
@@ -230,7 +224,7 @@ internal fun InstallScreenMaterial(
                             onClick = actions.onToggleKpmBoot,
                         )
                     }
-                    item(visible = uiState.kpmEnabled && uiState.kpmBootExpanded) {
+                    item(visible = uiState.canSelectKpmBoot && uiState.kpmBootExpanded) {
                         SegmentedListItem(
                             headlineContent = { Text(stringResource(R.string.select_file)) },
                             supportingContent = { uiState.kpmBootUri?.let { Text(it.lastPathSegment.orEmpty()) } },

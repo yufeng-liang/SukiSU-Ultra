@@ -1489,4 +1489,3 @@ pub fn boot_kernel(command: BootKernelCommand) -> Result<()> {
     println!("- Output: {}", output.display());
     Ok(())
 }
-

@@ -8,6 +8,7 @@ import com.sukisu.ultra.ui.util.loadKpmModule
 import com.sukisu.ultra.ui.util.unloadKpmModule
 import com.sukisu.ultra.ui.viewmodel.KpmViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 
 class KpmRepositoryImpl : KpmRepository {
@@ -18,14 +19,17 @@ class KpmRepositoryImpl : KpmRepository {
 
     override suspend fun getModuleList(): Result<List<KpmViewModel.ModuleInfo>> = withContext(Dispatchers.IO) {
         runCatching {
-            val moduleNames = listKpmModules()
-                .split("\n")
+            val moduleNames = listKpmModules().lineSequence()
+                .map { it.trim() }
                 .filter { it.isNotBlank() }
+                .distinct()
+                .toList()
 
             moduleNames.mapNotNull { name ->
                 try {
                     parseModuleInfo(name)
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     Log.e(TAG, "Error processing module $name", e)
                     null
                 }

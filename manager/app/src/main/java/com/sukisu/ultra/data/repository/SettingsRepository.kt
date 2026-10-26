@@ -5,6 +5,7 @@ interface SettingsRepository {
     var appLanguage: String
     var checkUpdate: Boolean
     var checkModuleUpdate: Boolean
+    var autoDeleteModuleZip: Boolean
     var alternativeIcon : Boolean
     var themeMode: Int
     var miuixMonet: Boolean

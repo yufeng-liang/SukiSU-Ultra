@@ -6,7 +6,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.net.toUri
 import com.sukisu.ultra.ui.LocalUiMode
@@ -20,10 +20,8 @@ fun rememberAnyKernel3State(
     horizonKernelSummary: String,
     isAbDevice: Boolean
 ): AnyKernel3State {
-    var kpmPatchOption by remember { mutableStateOf(KpmPatchOption.FOLLOW_KERNEL) }
-    var showSlotSelectionDialog by remember { mutableStateOf(false) }
-    var showKpmPatchDialog by remember { mutableStateOf(false) }
-    var tempKernelUri by remember { mutableStateOf<Uri?>(null) }
+    var showSlotSelectionDialog by rememberSaveable { mutableStateOf(false) }
+    var tempKernelUri by rememberSaveable { mutableStateOf<Uri?>(null) }
 
     val onHorizonKernelSelected: (InstallMethod.HorizonKernel) -> Unit = { method ->
         method.uri?.let { uri ->
@@ -32,7 +30,6 @@ fun rememberAnyKernel3State(
                 showSlotSelectionDialog = true
             } else {
                 installMethodState.value = method
-                showKpmPatchDialog = true
             }
         }
     }
@@ -52,15 +49,9 @@ fun rememberAnyKernel3State(
             )
             tempKernelUri = null
             showSlotSelectionDialog = false
-            showKpmPatchDialog = true
         }
     }
     val onDismissSlotDialog = { showSlotSelectionDialog = false }
-    val onOptionSelected: (KpmPatchOption) -> Unit = { option ->
-        kpmPatchOption = option
-        showKpmPatchDialog = false
-    }
-    val onDismissPatchDialog = { showKpmPatchDialog = false }
 
     LaunchedEffect(preselectedKernelUri, isAbDevice, horizonKernelSummary) {
         preselectedKernelUri?.let { uriString ->
@@ -71,21 +62,16 @@ fun rememberAnyKernel3State(
                     showSlotSelectionDialog = true
                 } else {
                     installMethodState.value = method
-                    showKpmPatchDialog = true
                 }
             }
         }
     }
 
     return AnyKernel3State(
-        kpmPatchOption = kpmPatchOption,
         showSlotSelectionDialog = showSlotSelectionDialog,
-        showKpmPatchDialog = showKpmPatchDialog,
         onHorizonKernelSelected = onHorizonKernelSelected,
         onSlotSelected = onSlotSelected,
         onDismissSlotDialog = onDismissSlotDialog,
-        onOptionSelected = onOptionSelected,
-        onDismissPatchDialog = onDismissPatchDialog,
         onReopenSlotDialog = onReopenSlotDialog
     )
 }
