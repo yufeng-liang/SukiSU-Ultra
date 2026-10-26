@@ -9,14 +9,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
+import com.sukisu.ultra.ui.component.dialog.ConfirmResult
+import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.navigation3.LocalNavigator
+import com.sukisu.ultra.ui.util.formatFileSize
+import kotlinx.coroutines.launch
 
 /**
  * 「模块上传」路由的入口：一个路由、两屏（列表 / 表单）、两套主题。
@@ -84,6 +90,38 @@ fun ModuleUploadScreen() {
     val pickMany: () -> Unit = { multiLauncher.launch(arrayOf(ZIP_MIME)) }
     val useArchived: (UploadRow) -> Unit = { row -> viewModel.stageArchived(row) }
 
+    // 顶栏「更多」背后的小面板：留存开关 + 清理入口。用状态位而不是对话框句柄，
+    // 因为它要显示实时占用（archivedCount / archivedBytes），必须跟着 state 重组。
+    var showArchiveSettings by remember { mutableStateOf(false) }
+
+    // 清理留存包是删数据，走一次确认；数字与容量在弹窗里说清楚，
+    // 免得用户点完才发现「下次上传要手动挑包了」。
+    val confirmDialog = rememberConfirmDialog()
+    val scope = rememberCoroutineScope()
+    var clearing by remember { mutableStateOf(false) }
+    val clearArchived: () -> Unit = {
+        if (!clearing) {
+            clearing = true
+            scope.launch {
+                try {
+                    val result = confirmDialog.awaitConfirm(
+                        title = context.getString(R.string.module_upload_clear_archived_zip),
+                        content = context.getString(
+                            R.string.module_upload_clear_archived_zip_confirm,
+                            listState.archivedCount,
+                            formatFileSize(listState.archivedBytes),
+                        ),
+                        confirm = context.getString(R.string.module_upload_clear_archived_zip),
+                        dismiss = context.getString(R.string.cancel),
+                    )
+                    if (result == ConfirmResult.Confirmed) viewModel.clearArchived()
+                } finally {
+                    clearing = false
+                }
+            }
+        }
+    }
+
     when (step) {
         UploadStep.LIST -> when (uiMode) {
             UiMode.Miuix -> ModuleUploadListMiuix(
@@ -97,6 +135,7 @@ fun ModuleUploadScreen() {
                 onPickForRow = pickForRow,
                 onUseArchived = useArchived,
                 onPickZip = pickMany,
+                onOpenArchiveSettings = { showArchiveSettings = true },
             )
 
             UiMode.Material -> ModuleUploadListMaterial(
@@ -110,6 +149,7 @@ fun ModuleUploadScreen() {
                 onPickForRow = pickForRow,
                 onUseArchived = useArchived,
                 onPickZip = pickMany,
+                onOpenArchiveSettings = { showArchiveSettings = true },
             )
         }
 
@@ -148,6 +188,19 @@ fun ModuleUploadScreen() {
                 onSubmit = { viewModel.submit(turnstile) },
             )
         }
+    }
+
+    if (showArchiveSettings) {
+        ModuleUploadArchiveDialog(
+            state = listState,
+            onKeepZipChange = viewModel::setKeepModuleZip,
+            onClearArchived = {
+                // 先收起面板再弹确认：两层对话框叠着会把「删多少个」挡住。
+                showArchiveSettings = false
+                clearArchived()
+            },
+            onDismissRequest = { showArchiveSettings = false },
+        )
     }
 
     TurnstileDialog(turnstile)

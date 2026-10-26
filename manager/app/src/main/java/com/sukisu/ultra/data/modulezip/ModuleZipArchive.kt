@@ -41,6 +41,23 @@ class ModuleZipArchive(
     )
 
     /**
+     * 当前占用情况，给「清理留存的包」那个入口显示用。
+     *
+     * 只 stat、不解压：用户只是想知道「占了多少」，没理由为此读一遍每个 zip 的 module.prop。
+     */
+    data class Usage(val entries: Int, val totalBytes: Long) {
+        val isEmpty: Boolean get() = entries == 0
+    }
+
+    /** 算一遍当前占用。目录不存在时是 (0, 0)，不是异常。 */
+    fun usage(): Usage {
+        val files = runCatching {
+            root.listFiles { file -> file.isFile && file.name.endsWith(".zip") }
+        }.getOrNull() ?: return Usage(0, 0L)
+        return Usage(entries = files.size, totalBytes = files.sumOf { it.length() })
+    }
+
+    /**
      * 这个 id 有没有留存的包。
      *
      * 只 stat 一次文件在不在、不解压：列表里逐行问的时候必须便宜——几十行都去读

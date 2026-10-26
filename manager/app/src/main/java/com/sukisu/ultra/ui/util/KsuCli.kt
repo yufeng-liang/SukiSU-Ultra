@@ -27,6 +27,7 @@ import com.sukisu.ultra.data.modulezip.ModuleZipArchive
 import com.sukisu.ultra.data.registry.DownloadVerificationException
 import com.sukisu.ultra.data.registry.RegistryDownloadStore
 import com.sukisu.ultra.data.registry.copyForInstall
+import com.sukisu.ultra.data.repository.isKeepModuleZipEnabled
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.screen.susfs.util.SuSFSConfig
 import okhttp3.OkHttpClient
@@ -328,7 +329,13 @@ fun flashModule(
     onStdout: (String) -> Unit,
     onStderr: (String) -> Unit,
     deleteSourceOnSuccess: Boolean = false,
-    archiveSource: Boolean = true,
+    /**
+     * 装成功后要不要把这份 zip 留一份给上传页用。
+     *
+     * 默认读设置（[isKeepModuleZipEnabled]，默认开）；备份恢复那条路显式传 false——
+     * 它装的是重打过的包，不能覆盖作者原始包。
+     */
+    archiveSource: Boolean = isKeepModuleZipEnabled(),
 ): FlashResult {
     // Registry downloads live in app-private storage and carry their expected size + SHA-256;
     // the exact copy handed to ksud is re-hashed right before installing.

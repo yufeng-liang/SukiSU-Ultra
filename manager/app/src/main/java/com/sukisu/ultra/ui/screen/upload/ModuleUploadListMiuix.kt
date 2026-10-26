@@ -53,6 +53,7 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
@@ -78,6 +79,7 @@ fun ModuleUploadListMiuix(
     onPickForRow: (UploadRow) -> Unit,
     onUseArchived: (UploadRow) -> Unit,
     onPickZip: () -> Unit,
+    onOpenArchiveSettings: () -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     val enableBlur = LocalEnableBlur.current
@@ -114,6 +116,15 @@ fun ModuleUploadListMiuix(
                             Icon(
                                 imageVector = Icons.Rounded.Refresh,
                                 contentDescription = stringResource(R.string.module_upload_refresh),
+                                tint = colorScheme.onSurface,
+                            )
+                        }
+                        // 留存开关与清理入口都在这个按钮背后：两件事都只跟「占空间」有关，
+                        // 顶栏也不该为此多摆一个开关。
+                        IconButton(onClick = onOpenArchiveSettings) {
+                            Icon(
+                                imageVector = MiuixIcons.MoreCircle,
+                                contentDescription = stringResource(R.string.module_upload_more),
                                 tint = colorScheme.onSurface,
                             )
                         }

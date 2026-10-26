@@ -28,6 +28,7 @@ import java.security.SecureRandom
 private const val SETTINGS_PREFS = "settings"
 private const val KEY_USE_SOFT_REBOOT = "soft_reboot"
 private const val KEY_AUTO_DELETE_MODULE_ZIP = "auto_delete_module_zip"
+private const val KEY_KEEP_MODULE_ZIP = "keep_module_zip"
 
 /** Prefer soft reboot: always in jailbreak mode, or when the setting is enabled. */
 fun isSoftRebootPreferred(): Boolean =
@@ -96,6 +97,17 @@ fun isAutoDeleteModuleZipEnabled(): Boolean =
     ksuApp.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
         .getBoolean(KEY_AUTO_DELETE_MODULE_ZIP, false)
 
+/**
+ * 装完模块是否把原始 zip 留一份（见 [com.sukisu.ultra.data.modulezip.ModuleZipArchive]）。
+ *
+ * 默认 true：这个开关存在的意义就是省掉「去文件管理器里翻包」，默认关掉等于没做。
+ * 与 [isAutoDeleteModuleZipEnabled] 是两件事：那个删的是用户自己挑的源文件，
+ * 这个留的是 app 私有目录里的一份副本，两者互不影响。
+ */
+fun isKeepModuleZipEnabled(): Boolean =
+    ksuApp.getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(KEY_KEEP_MODULE_ZIP, true)
+
 class SettingsRepositoryImpl : SettingsRepository {
 
     private companion object {
@@ -137,6 +149,10 @@ class SettingsRepositoryImpl : SettingsRepository {
     override var autoDeleteModuleZip: Boolean
         get() = prefs.getBoolean(KEY_AUTO_DELETE_MODULE_ZIP, false)
         set(value) = prefs.edit { putBoolean(KEY_AUTO_DELETE_MODULE_ZIP, value) }
+
+    override var keepModuleZip: Boolean
+        get() = prefs.getBoolean(KEY_KEEP_MODULE_ZIP, true)
+        set(value) = prefs.edit { putBoolean(KEY_KEEP_MODULE_ZIP, value) }
 
     override var alternativeIcon : Boolean
         get() = prefs.getBoolean("use_alt_icon", false)

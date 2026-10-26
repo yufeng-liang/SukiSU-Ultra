@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,6 +69,7 @@ fun ModuleUploadListMaterial(
     onPickForRow: (UploadRow) -> Unit,
     onUseArchived: (UploadRow) -> Unit,
     onPickZip: () -> Unit,
+    onOpenArchiveSettings: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val visible = state.visibleRows
@@ -96,6 +98,14 @@ fun ModuleUploadListMaterial(
                                 contentDescription = stringResource(R.string.module_upload_refresh),
                             )
                         }
+                    }
+                    // 留存开关与清理入口都在这个菜单背后：两件事都只跟「占空间」有关，
+                    // 顶栏也不该为此多摆一个开关。
+                    IconButton(onClick = onOpenArchiveSettings) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = stringResource(R.string.module_upload_more),
+                        )
                     }
                 },
                 scrollBehavior = scrollBehavior,

@@ -78,6 +78,16 @@ data class ModuleUploadListState(
     val pickingFor: String? = null,
     /** 一次性提示（staging 失败、id 不一致等），消费后清空。 */
     val message: String? = null,
+    /** 「安装时留存原始 zip」开关的当前值（见 ModuleZipArchive）。 */
+    val keepZip: Boolean = true,
+    /**
+     * 已留存的包数与总字节数，给「清理留存的包」入口显示占用。
+     *
+     * 拆成两个 Long/Int 而不是塞一个 ModuleZipArchive.Usage 进来：状态类只放
+     * 不可变基元，Compose 的比较与 remember 都省事。
+     */
+    val archivedCount: Int = 0,
+    val archivedBytes: Long = 0L,
 ) {
     /** 界面直接渲染的那一份（筛选 + 搜索 + 排序）。 */
     val visibleRows: List<UploadRow>

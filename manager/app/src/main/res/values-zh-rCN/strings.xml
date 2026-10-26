@@ -1090,6 +1090,14 @@
     <string name="module_upload_use_archived_zip">用安装时留存的包</string>
     <string name="module_upload_use_archived_zip_summary">安装这个模块时已自动留存，不用再去存储里找</string>
     <string name="module_upload_archived_missing">「%1$s」留存的包已不在了（被清理或读不出），请手动选择</string>
+    <string name="module_upload_more">更多</string>
+    <string name="module_upload_keep_zip">安装时留存原始 zip</string>
+    <string name="module_upload_keep_zip_summary">上传时不用再去找包</string>
+    <string name="module_upload_clear_archived_zip">清理留存的包</string>
+    <string name="module_upload_clear_archived_zip_summary">已留存 %1$d 个，占用 %2$s</string>
+    <string name="module_upload_clear_archived_zip_summary_empty">还没有留存任何包</string>
+    <string name="module_upload_clear_archived_zip_confirm">删掉留存的 %1$d 个包（%2$s）？下次上传就得手动挑包了。</string>
+    <string name="module_upload_clear_archived_zip_done">已释放 %1$s</string>
     <string name="module_upload_id_mismatch">这个 zip 是模块「%2$s」的，不是「%1$s」，没有加入上传。</string>
     <string name="module_upload_unreadable_prop">读不出这个 zip 里的 module.prop（不是模块 zip，或 id/name 为空）</string>
     <string name="module_upload_unreadable_prop_count">有 %1$d 个 zip 读不出 module.prop，已跳过</string>

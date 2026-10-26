@@ -9,6 +9,8 @@ import com.sukisu.ultra.data.model.Module
 import com.sukisu.ultra.data.modulezip.ModuleZipArchive
 import com.sukisu.ultra.data.repository.ModuleRepository
 import com.sukisu.ultra.data.repository.ModuleRepositoryImpl
+import com.sukisu.ultra.data.repository.SettingsRepository
+import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.component.toState
@@ -23,6 +25,7 @@ import com.sukisu.ultra.ui.util.ModuleContribution
 import com.sukisu.ultra.ui.util.SessionCheck
 import com.sukisu.ultra.ui.util.SessionGrant
 import com.sukisu.ultra.ui.util.UploadSession
+import com.sukisu.ultra.ui.util.formatFileSize
 import com.sukisu.ultra.ui.util.makeNonce
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +59,7 @@ import java.io.File
 class ModuleUploadViewModel(
     private val repo: ModuleRepository = ModuleRepositoryImpl(),
     private val archive: ModuleZipArchive = ModuleZipArchive.default(),
+    private val settings: SettingsRepository = SettingsRepositoryImpl(),
 ) : ViewModel() {
 
     private val _step = MutableStateFlow(UploadStep.LIST)
@@ -124,9 +128,9 @@ class ModuleUploadViewModel(
         loadJob?.cancel()
         _listState.update { it.copy(loading = it.rows.isEmpty(), refreshing = refreshing) }
         loadJob = viewModelScope.launch {
-            val (modules, archived) = withContext(Dispatchers.IO) {
+            val (modules, archived, usage) = withContext(Dispatchers.IO) {
                 val modules = repo.getModules().getOrElse { emptyList() }
-                modules to archive.ids()
+                Triple(modules, archive.ids(), archive.usage())
             }
             _listState.update {
                 val rows = modules.map { module -> module.toRow(it.rows, archived) }
@@ -135,6 +139,9 @@ class ModuleUploadViewModel(
                     refreshing = false,
                     rows = rows,
                     remaining = rows.count { row -> row.status == null },
+                    keepZip = settings.keepModuleZip,
+                    archivedCount = usage.entries,
+                    archivedBytes = usage.totalBytes,
                 )
             }
             if (thenCheck) checkPending()
@@ -358,6 +365,44 @@ class ModuleUploadViewModel(
                     if (row.id == id) row.copy(archived = archived) else row
                 }
             )
+        }
+    }
+
+    /**
+     * 打开/关闭「安装时留存原始 zip」。
+     *
+     * 只写设置，**不动已经留存的包**：关开关的语义是「以后别再留新的」，
+     * 顺手把旧的删掉属于用户没要求的数据删除。要清空有 [clearArchived]。
+     */
+    fun setKeepModuleZip(enabled: Boolean) {
+        settings.keepModuleZip = enabled
+        _listState.update { it.copy(keepZip = enabled) }
+    }
+
+    /**
+     * 清空所有留存的包，并把每一行的 archived 标记翻回 false。
+     *
+     * 清完要让界面立刻反映「占用 0 / 没有包可复用」，所以重算 usage 与标记，
+     * 而不是等下次刷新。
+     */
+    fun clearArchived() {
+        viewModelScope.launch {
+            val freed = withContext(Dispatchers.IO) {
+                val usage = archive.usage()
+                archive.clear()
+                usage.totalBytes
+            }
+            _listState.update { state ->
+                state.copy(
+                    rows = state.rows.map { row -> row.copy(archived = false) },
+                    archivedCount = 0,
+                    archivedBytes = 0L,
+                    message = res.getString(
+                        R.string.module_upload_clear_archived_zip_done,
+                        formatFileSize(freed),
+                    ),
+                )
+            }
         }
     }
 

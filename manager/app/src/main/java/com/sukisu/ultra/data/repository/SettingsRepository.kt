@@ -6,6 +6,14 @@ interface SettingsRepository {
     var checkUpdate: Boolean
     var checkModuleUpdate: Boolean
     var autoDeleteModuleZip: Boolean
+
+    /**
+     * 安装模块时把原始 zip 留一份，供上传页直接复用。
+     *
+     * 默认 true：这是「不用再去文件管理器里找包」的前提；关掉后已经留存的那份不动，
+     * 只是不再留新的（清理由上传页顶栏那个入口负责）。
+     */
+    var keepModuleZip: Boolean
     var alternativeIcon : Boolean
     var themeMode: Int
     var miuixMonet: Boolean
