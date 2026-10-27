@@ -21,6 +21,7 @@ import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.dialog.ConfirmResult
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.navigation3.LocalNavigator
+import com.sukisu.ultra.ui.util.MineModule
 import com.sukisu.ultra.ui.util.formatFileSize
 import kotlinx.coroutines.launch
 
@@ -43,11 +44,18 @@ fun ModuleUploadScreen() {
     val step by viewModel.step.collectAsStateWithLifecycle()
     val listState by viewModel.listState.collectAsStateWithLifecycle()
     val formState by viewModel.formState.collectAsStateWithLifecycle()
+    val mineState by viewModel.mineState.collectAsStateWithLifecycle()
 
     // 人机校验的 WebView 只在需要时弹出；它自己管生命周期。
     val turnstile = remember { WebViewTurnstileProvider() }
 
     LaunchedEffect(Unit) { viewModel.onEnter() }
+
+    // 「我的模块」只在列表页可见，所以要按「进入列表」来拉：初进、从表单返回、
+    // 投完一批回来都算；放在 Unit 里只拉一次，投完回来就还是旧名单。
+    LaunchedEffect(step) {
+        if (step == UploadStep.LIST) viewModel.refreshMine()
+    }
 
     // 表单里系统返回 = 回列表（与左上角箭头同一件事），不是退出整个路由：
     // 直接 pop 会把这一批已选好的包和算好的 sha 一起丢掉。
@@ -59,6 +67,13 @@ fun ModuleUploadScreen() {
         val message = listState.message ?: return@LaunchedEffect
         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         viewModel.consumeMessage()
+    }
+    // 「我的模块」的补充说明（例如「名单还在，但这次没刷新成功」）同样是一次性提示：
+    // 常态的四种落点由列表自己按标志渲染，这里只消化会过期的那一句。
+    LaunchedEffect(mineState.message) {
+        val message = mineState.message ?: return@LaunchedEffect
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        viewModel.consumeMineMessage()
     }
     LaunchedEffect(formState.notice) {
         val notice = formState.notice ?: return@LaunchedEffect
@@ -85,6 +100,13 @@ fun ModuleUploadScreen() {
 
     val pickForRow: (UploadRow) -> Unit = { row ->
         pendingRowId = row.id
+        singleLauncher.launch(arrayOf(ZIP_MIME))
+    }
+    // 给已收录的模块挑新版：与「为某一行挑包」走同一个启动器、同一个 pendingRowId，
+    // 区别只在期望的模块 id 从哪来——这里来自服务端签名的索引，不是本地解析。
+    // 回来时照样比对包里的 id，选错了包不会被悄悄装到另一个模块名下。
+    val pickForMine: (MineModule) -> Unit = { module ->
+        pendingRowId = module.id
         singleLauncher.launch(arrayOf(ZIP_MIME))
     }
     val pickMany: () -> Unit = { multiLauncher.launch(arrayOf(ZIP_MIME)) }
@@ -161,6 +183,8 @@ fun ModuleUploadScreen() {
                 onUseArchived = useArchived,
                 onPickZip = pickMany,
                 onOpenArchiveSettings = { showArchiveSettings = true },
+                mine = mineState,
+                onPickForMine = pickForMine,
             )
 
             UiMode.Material -> ModuleUploadListMaterial(
@@ -175,6 +199,8 @@ fun ModuleUploadScreen() {
                 onUseArchived = useArchived,
                 onPickZip = pickMany,
                 onOpenArchiveSettings = { showArchiveSettings = true },
+                mine = mineState,
+                onPickForMine = pickForMine,
             )
         }
 

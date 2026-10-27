@@ -440,7 +440,7 @@ private fun SubmitStateBlock(state: ContributionSubmitState) {
  * 只读的模块信息段。
  *
  * 全部来自 [ModulePropInfo]，不给编辑框：索引里的 id/name/version 必须与 zip 里的
- * module.prop 一致，让用户手改就等着人工审核被打回。
+ * module.prop 一致，让用户手改就等着自动审核被打回。
  */
 @Composable
 private fun MetaSection(meta: ModulePropInfo) {

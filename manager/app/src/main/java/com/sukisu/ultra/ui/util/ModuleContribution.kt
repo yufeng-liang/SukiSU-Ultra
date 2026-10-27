@@ -79,6 +79,109 @@ enum class CheckStatus {
 }
 
 /**
+ * 「这一版更新权归不归当前这个酷安 UID」——服务端 `update_eligible` 的**三态**。
+ *
+ * 为什么不是 `Boolean`：服务端把「没答案」与「不是你的」刻意分开。
+ * - 没带 uid、索引里没有这一枚、请求超时、应答缺这一格 —— 都只能是 [UNKNOWN]；
+ * - 只有服务端**明确**回了 `false` 才是 [NOT_MINE]。
+ *
+ * 把 null 当成 false 的后果是实打实的：用户填完一整页、改完签名、上传几百 MB，
+ * 最后吃一个服务端 403；而把 false 当成 null 的后果相反 —— 一条本该拦住的
+ * 「替别人发更新」被放过去，只能等服务端 403 兜底。两个方向都得靠这一格分辨。
+ *
+ * [reason] 是服务端原话，只在 [NOT_MINE] 时有意义，直接给界面显示（不替服务端编原因）。
+ */
+enum class UpdateEligibility {
+    /** 没问出来：没带 uid / 索引里没有这一枚 / 请求失败 / 应答里没这一格。 */
+    UNKNOWN,
+
+    /** 服务端明确说：这一枚已收录的模块归当前这个 UID，可以发更新。 */
+    MINE,
+
+    /** 服务端明确说：已被别人收录，只有原作者能发更新版本。 */
+    NOT_MINE,
+    ;
+
+    /** 只有这一种才该拦下提交。UNKNOWN 不许拦 —— 那是「不知道」，不是「不是你的」。 */
+    val blocksSubmit: Boolean get() = this == NOT_MINE
+}
+
+/**
+ * 「我的模块」里的一枚（`GET /mine` 返回的一行）。
+ *
+ * 每一格都来自索引（公开事实）+ `mine:` 台账。索引里没有 `source`，服务端就回空串而
+ * 不是编一个 `"coolapk"` 出来 —— 所以 [version]/[name] 这类字段可能是空串，
+ * 界面要按「不知道」渲染，不能当成真的空。
+ */
+data class MineModule(
+    val id: String,
+    val name: String,
+    val author: String,
+    val version: String,
+    val versionCode: Long,
+    val sha256: String,
+    /** 索引里那份 `time`（ms）；0 = 索引没给，不是「1970 年」。 */
+    val time: Long,
+)
+
+/**
+ * `GET /mine` 的四种落点。
+ *
+ * 分成四态而不是「列表 or 空」是因为它们的**下一步动作完全不同**：
+ * - [Ok] 但 [Ok.degraded] 为真 → 说「暂时读不到」，可重试；
+ * - [Ok] 且不 degraded 且列表空 → 说「你还没有投过模块」，引导去投第一个；
+ * - [NeedVerify] → 引导重新验证身份（令牌失效）；
+ * - [Failed] → 说网络/服务问题，可重试。
+ *
+ * 把后两者混成一句「加载失败」，用户就分不清「该重新验证」还是「等会儿再试」。
+ */
+sealed interface MineResult {
+    data class Ok(val modules: List<MineModule>, val degraded: Boolean) : MineResult
+
+    /** 令牌没给、或服务端说失效：要重新验证身份。 */
+    data object NeedVerify : MineResult
+
+    /** 网络/服务异常：可重试。 */
+    data object Failed : MineResult
+}
+
+/**
+ * 一次收录查询的完整答案：状态 + 归属 + 服务端原话。
+ *
+ * 三个字段来自**同一个应答**，所以打包成一个返回值而不是三次回调：
+ * 拆开传会让调用方有机会只更新其中一格，留下「status 是新的、eligibility 是旧的」这种
+ * 半新半旧的行 —— 那种行在界面上看起来完全正常，只是归属闸会按过期信息放行或误拦。
+ */
+data class CheckAnswer(
+    val status: CheckStatus,
+    val eligibility: UpdateEligibility = UpdateEligibility.UNKNOWN,
+    val reason: String = "",
+) {
+    companion object {
+        /** 什么都没问出来时的答案：[CheckStatus.UNKNOWN] 且不拦提交。 */
+        val UNKNOWN = CheckAnswer(CheckStatus.UNKNOWN)
+
+        /**
+         * 解析服务端 `update_eligible` 的那一格。
+         *
+         * `JSONObject.optBoolean` 对 JSON `null` 与键缺失都返回 false —— 那正好把
+         * 「没答案」误判成「不是你的」，所以这里必须先 `isNull` 再看类型。
+         * 服务端契约是 `boolean | null`；收到字符串 `"true"` 之类的花活也算没答案，
+         * 不猜。
+         */
+        fun parseEligibility(json: JSONObject?, key: String = "update_eligible"): UpdateEligibility {
+            if (json == null) return UpdateEligibility.UNKNOWN
+            if (json.isNull(key)) return UpdateEligibility.UNKNOWN
+            val raw = json.opt(key) ?: return UpdateEligibility.UNKNOWN
+            return when (raw) {
+                is Boolean -> if (raw) UpdateEligibility.MINE else UpdateEligibility.NOT_MINE
+                else -> UpdateEligibility.UNKNOWN
+            }
+        }
+    }
+}
+
+/**
  * 投稿结果。
  *
  * [ok] 为 false 时 [message] 一定非空且是人类可读的中文原因，供界面直接显示；
@@ -278,21 +381,83 @@ object ModuleContribution {
      * id 先过白名单 [isValidId] 再转义进查询串：形状不合规的 id 直接算"查不出来"，
      * 不会被拿去和索引比对，也不会让调用方把它当成新模块去提示分享。
      */
-    suspend fun checkRecorded(id: String, versionCode: Int): CheckStatus {
-        if (!isValidId(id)) return CheckStatus.UNKNOWN
-        val url = checkUrl(id, versionCode)
+    suspend fun checkRecorded(id: String, versionCode: Int, uid: String = ""): CheckAnswer {
+        if (!isValidId(id)) return CheckAnswer.UNKNOWN
+        val url = checkUrl(id, versionCode, uid)
         return withContext(Dispatchers.IO) {
             val call = runCatching { client().newCall(Request.Builder().url(url).get().build()) }
-                .getOrNull() ?: return@withContext CheckStatus.UNKNOWN
+                .getOrNull() ?: return@withContext CheckAnswer.UNKNOWN
             // 只吞自己那次超时；调用方发起的取消（界面关了、协程取消了）必须照常往外传，
             // 否则已经没人等结果了，这里还会继续跑完整个请求。
             try {
-                withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response -> readStatus(response) }
+                withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response -> readAnswer(response) }
             } catch (e: CancellationException) {
-                if (e is TimeoutCancellationException) CheckStatus.UNKNOWN else throw e
+                if (e is TimeoutCancellationException) CheckAnswer.UNKNOWN else throw e
             } catch (e: Throwable) {
-                CheckStatus.UNKNOWN
+                CheckAnswer.UNKNOWN
             }
+        }
+    }
+
+    /**
+     * 「我的模块」（`GET /mine?token=`，契约 §3.2）。
+     *
+     * 服务端回三态而不是「列表」：
+     * - `ok:true, degraded:false` → [MineResult.Ok]，列表可能是空的（真的一个都没投过）；
+     * - `ok:true, degraded:true` → [MineResult.Ok] 但 `degraded=true`：**读不到索引**，
+     *   这时候的空列表不是「你没有模块」，而是「暂时看不到」。两种都得让界面分得出来 ——
+     *   把后者显示成前者，用户会以为投稿丢了，然后再投一遍；
+     * - `ok:false` → [MineResult.NeedVerify]：令牌失效是常态，界面该引导重新验证，
+     *   而不是报一句「网络错误」。
+     *
+     * 令牌只进 query（服务端就是这么定的），不进 header —— 与网页端 `api.js` 的
+     * `fetchMine` 同一个形状。
+     */
+    suspend fun fetchMine(token: String): MineResult = withContext(Dispatchers.IO) {
+        val tok = token.trim()
+        if (tok.isEmpty()) return@withContext MineResult.NeedVerify
+        val url = okhttp3.HttpUrl.Builder()
+            .scheme("https")
+            .host(HOST)
+            .addPathSegment("mine")
+            .addQueryParameter("token", tok)
+            .build()
+            .toString()
+            .replaceFirst("https://$HOST", BASE_URL.trimEnd('/'))
+        val call = runCatching { client().newCall(Request.Builder().url(url).get().build()) }
+            .getOrNull() ?: return@withContext MineResult.Failed
+        try {
+            withTimeout(QUERY_TIMEOUT_MS) { execute(call, QUERY_TIMEOUT_MS) }.use { response ->
+                if (!response.isSuccessful) return@withContext MineResult.Failed
+                val body = runCatching { response.body.string() }.getOrNull()
+                    ?: return@withContext MineResult.Failed
+                val json = runCatching { JSONObject(body) }.getOrNull()
+                    ?: return@withContext MineResult.Failed
+                if (!json.optBoolean("ok", false)) return@withContext MineResult.NeedVerify
+                val arr = json.optJSONArray("modules")
+                val list = ArrayList<MineModule>(arr?.length() ?: 0)
+                for (i in 0 until (arr?.length() ?: 0)) {
+                    val row = arr?.optJSONObject(i) ?: continue
+                    val id = row.optString("id").trim()
+                    if (id.isEmpty()) continue
+                    list.add(
+                        MineModule(
+                            id = id,
+                            name = row.optString("name").trim(),
+                            author = row.optString("author").trim(),
+                            version = row.optString("version").trim(),
+                            versionCode = row.optLong("versionCode", 0L),
+                            sha256 = row.optString("sha256").trim(),
+                            time = row.optLong("time", 0L),
+                        )
+                    )
+                }
+                MineResult.Ok(list, degraded = json.optBoolean("degraded", false))
+            }
+        } catch (e: CancellationException) {
+            if (e is TimeoutCancellationException) MineResult.Failed else throw e
+        } catch (e: Throwable) {
+            MineResult.Failed
         }
     }
 
@@ -332,22 +497,39 @@ object ModuleContribution {
      *
      * 服务端一次最多 8 条（与 `maxModules` 同值），这里按 [CHECK_BATCH_MAX] 再切一道，
      * 防止调用方漏切时把整张表一把塞过去。任何一批失败都只是**这一批**没有结果，
-     * 调用方按 [CheckStatus.UNKNOWN] 处理——绝不猜成 [CheckStatus.NEW]。
+     * 调用方按 [CheckAnswer.UNKNOWN] 处理——绝不猜成 [CheckStatus.NEW]。
+     *
+     * [uid] 是**投稿人自己的**酷安 UID（不是模块作者的）：服务端拿它算 `update_eligible`，
+     * 回答「这一版更新权归不归这个人」。不带 uid 时服务端照常回 status，但
+     * `update_eligible` 恒为 null（[UpdateEligibility.UNKNOWN]）——归属闸在这条路上就是空的。
+     * 所以只要调用方知道 uid，就必须传：批量这条路正是「一键更新」走的那条
+     * （网页端 `api.js` 的 `checkModulesBatch` 有同一条注释与同一个坑）。
      */
-    suspend fun checkBatch(modules: List<Pair<String, Int>>): Map<String, CheckStatus> =
+    suspend fun checkBatch(
+        modules: List<Pair<String, Int>>,
+        uid: String = "",
+    ): Map<String, CheckAnswer> =
         withContext(Dispatchers.IO) {
             if (modules.isEmpty()) return@withContext emptyMap()
-            val out = LinkedHashMap<String, CheckStatus>()
+            val out = LinkedHashMap<String, CheckAnswer>()
             for (chunk in modules.chunked(CHECK_BATCH_MAX)) {
-                out.putAll(checkBatchChunk(chunk))
+                out.putAll(checkBatchChunk(chunk, uid))
             }
             out
         }
 
-    private suspend fun checkBatchChunk(modules: List<Pair<String, Int>>): Map<String, CheckStatus> {
+    private suspend fun checkBatchChunk(
+        modules: List<Pair<String, Int>>,
+        uid: String,
+    ): Map<String, CheckAnswer> {
+        val who = uid.trim()
         val arr = JSONArray()
         for ((id, versionCode) in modules) {
-            arr.put(JSONObject().put("id", id).put("versionCode", versionCode))
+            val row = JSONObject().put("id", id).put("versionCode", versionCode)
+            // 空 uid 不下发这个键，而不是下发一个空串：服务端把空串当「没给」，
+            // 但让请求体里明明白白写着 `uid:""` 会诱使下一个人以为「已经带上了」。
+            if (who.isNotEmpty()) row.put("uid", who)
+            arr.put(row)
         }
         val payload = JSONObject().put("modules", arr).toString()
         val url = BASE_URL.trimEnd('/') + "/check"
@@ -362,13 +544,17 @@ object ModuleContribution {
                 val text = runCatching { response.body.string() }.getOrNull() ?: return emptyMap()
                 val json = runCatching { JSONObject(text) }.getOrNull() ?: return emptyMap()
                 val results = json.optJSONArray("results") ?: return emptyMap()
-                val out = LinkedHashMap<String, CheckStatus>()
+                val out = LinkedHashMap<String, CheckAnswer>()
                 for (i in 0 until results.length()) {
                     val row = results.optJSONObject(i) ?: continue
                     val id = row.optString("id").trim()
                     if (id.isEmpty()) continue
                     val name = row.optString("status").trim().lowercase(Locale.ROOT)
-                    out[id] = STATUS_BY_NAME[name] ?: CheckStatus.UNKNOWN
+                    out[id] = CheckAnswer(
+                        status = STATUS_BY_NAME[name] ?: CheckStatus.UNKNOWN,
+                        eligibility = CheckAnswer.parseEligibility(row),
+                        reason = row.optString("reason").trim(),
+                    )
                 }
                 out
             }
@@ -610,7 +796,7 @@ object ModuleContribution {
      * 任何失败都返回 `ok=false` 且带人类可读的 [SubmitResult.message]，不抛异常。
      *
      * [zip] 会被流式上传（不整体读进内存）；[meta] 为 null 时退化为"读不出模块信息"，
-     * 直接失败，不让一条残缺条目进人工审核队列。
+     * 直接失败，不让一条残缺条目进仓库。
      *
      * 身份两个字段一起发：`uploader` 是酷安反查出来的昵称（索引里公开展示），
      * `coolapkUid` 是投稿人自己填的 UID（审核与追责用）。**服务端把 `coolapkUid`
@@ -798,15 +984,22 @@ object ModuleContribution {
         return call.execute()
     }
 
-    private fun readStatus(response: Response): CheckStatus {
-        if (!response.isSuccessful) return CheckStatus.UNKNOWN
-        val body = runCatching { response.body.string() }.getOrNull() ?: return CheckStatus.UNKNOWN
-        val name = runCatching { JSONObject(body).optString("status") }
-            .getOrNull()
-            ?.trim()
-            ?.lowercase(Locale.ROOT)
-            ?: return CheckStatus.UNKNOWN
-        return STATUS_BY_NAME[name] ?: CheckStatus.UNKNOWN
+    /**
+     * `/check` 应答的完整解析：status + `update_eligible` + `reason`。
+     *
+     * 取代了原先「只读 status」的那一支：只读 status 会让归属闸永远是空的（三态恒 UNKNOWN），
+     * 而 `/check` 一次就回了三格，分两趟读等于让调用方有机会只更新其中一格。
+     */
+    private fun readAnswer(response: Response): CheckAnswer {
+        if (!response.isSuccessful) return CheckAnswer.UNKNOWN
+        val body = runCatching { response.body.string() }.getOrNull() ?: return CheckAnswer.UNKNOWN
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return CheckAnswer.UNKNOWN
+        val name = json.optString("status").trim().lowercase(Locale.ROOT)
+        return CheckAnswer(
+            status = STATUS_BY_NAME[name] ?: CheckStatus.UNKNOWN,
+            eligibility = CheckAnswer.parseEligibility(json),
+            reason = json.optString("reason").trim(),
+        )
     }
 
     /**
@@ -918,16 +1111,22 @@ object ModuleContribution {
      * 公开出来是为了让单测能直接盯住拼出来的串——转义写错是静默的，
      * 看代码很难发现，但一个 `id=x&versionCode=999999` 就能把 NEW 查成 RECORDED。
      */
-    fun checkUrl(id: String, versionCode: Int): String =
-        okhttp3.HttpUrl.Builder()
+    fun checkUrl(id: String, versionCode: Int, uid: String = ""): String {
+        val builder = okhttp3.HttpUrl.Builder()
             .scheme("https")
             .host(HOST)
             .addPathSegment("check")
             .addQueryParameter("id", id)
             .addQueryParameter("versionCode", versionCode.toString())
-            .build()
+        // uid 与 id 走**同一个**转义器：它是用户手输/从签名里读来的自由文本，
+        // 直接拼进查询串就能再注入一个参数，把「不是你的」查成「是你的」。
+        // 空 uid 不下发这个键（服务端把空串当没给，但别让请求看起来像"带了"）。
+        val who = uid.trim()
+        if (who.isNotEmpty()) builder.addQueryParameter("uid", who)
+        return builder.build()
             .toString()
             .replaceFirst("https://$HOST", BASE_URL.trimEnd('/'))
+    }
 
     /**
      * id 白名单校验：**在**转义之前先挡一道。

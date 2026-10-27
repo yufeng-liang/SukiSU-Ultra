@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.util
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -217,6 +218,27 @@ class ContributionBatchTest {
         assertEquals(
             "服务端拒绝了这次上传：签名里没有这次口令",
             ContributionBatch.errorCopy(403, null, "签名里没有这次口令"),
+        )
+    }
+
+    @Test
+    fun `a not owner rejection is not blamed on the signature`() {
+        // 403 的通用兜底句是「请核对签名 / 等级后重试」，而归属拒绝跟签名和等级都无关。
+        // 这条钉住：有码就必须走专属那一支，不能落进 403 兜底去误导用户反复改签名。
+        assertFalse(
+            ContributionBatch.errorCopy(403, "not_owner", null).contains("签名"),
+        )
+        assertTrue(
+            ContributionBatch.errorCopy(403, "not_owner", null).contains("原作者"),
+        )
+        // 服务端给了原话就原样用（它会指出是哪个 id），本地不覆盖。
+        assertEquals(
+            "模块 `demo` 已由其他上传者收录，只有原作者能发更新版本。",
+            ContributionBatch.errorCopy(
+                403,
+                "not_owner",
+                "模块 `demo` 已由其他上传者收录，只有原作者能发更新版本。",
+            ),
         )
     }
 

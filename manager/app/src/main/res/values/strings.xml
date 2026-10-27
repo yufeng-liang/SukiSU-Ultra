@@ -979,7 +979,7 @@
     <string name="module_contribution_consent">I understand the file will be stored publicly and anyone can download it. Do not upload content containing personal information or keys.</string>
     <string name="module_contribution_consent_required">Please check the confirmation box first</string>
     <string name="module_contribution_submitting">Submitting…</string>
-    <string name="module_contribution_success">Submitted, awaiting review</string>
+    <string name="module_contribution_success">Submitted — it enters the index automatically once the checks pass</string>
     <string name="module_contribution_failed">Submission failed</string>
     <string name="module_contribution_unknown">Unable to confirm whether it was accepted</string>
     <string name="module_contribution_settings_title">Module contributions</string>
@@ -1133,6 +1133,18 @@
     <string name="module_upload_status_not_checked">Not checked</string>
     <string name="module_upload_status_not_checked_summary">Not checked yet. Tap \"Check more\" or refresh.</string>
     <string name="module_upload_checking">Checking…</string>
+    <string name="module_upload_ownership_mine">Your module</string>
+    <string name="module_upload_ownership_mine_summary">You uploaded this module, so you can publish a new version.</string>
+    <string name="module_upload_ownership_not_mine">Another uploader</string>
+    <string name="module_upload_ownership_not_mine_summary">This module is already listed by another uploader. Only the original author can publish an update.</string>
+    <string name="module_upload_mine_entry_title">My modules</string>
+    <string name="module_upload_mine_entry_summary">Modules you have uploaded. Publishing a new version does not need the file again.</string>
+    <string name="module_upload_mine_empty">You have not uploaded any module yet</string>
+    <string name="module_upload_mine_degraded">The index cannot be read right now. Only the submissions already recorded are listed.</string>
+    <string name="module_upload_mine_need_verify">Verify your Coolapk account first</string>
+    <string name="module_upload_mine_failed">Could not load the list. Please try again.</string>
+    <string name="module_upload_mine_loading">Loading…</string>
+    <string name="module_upload_mine_update">New version</string>
 
     <string name="module_upload_form_title">Upload modules</string>
     <string name="module_upload_wall_add">Add</string>
@@ -1178,8 +1190,8 @@
     <string name="module_upload_submitting">Uploading…</string>
     <string name="module_upload_submitting_bytes">Uploading %1$d module(s), %2$s in total</string>
     <string name="module_upload_submit_timeout">Upload timed out. The signature string was not consumed, so you can retry with the same one; if it says it was already used, the app will generate a new one.</string>
-    <string name="module_upload_submit_success">Uploaded, awaiting review</string>
-    <string name="module_upload_submit_success_count">Uploaded %1$d module(s), awaiting review</string>
+    <string name="module_upload_submit_success">Uploaded — it enters the index automatically once the checks pass</string>
+    <string name="module_upload_submit_success_count">Uploaded %1$d module(s) — they enter the index automatically once the checks pass</string>
     <string name="module_upload_result_pr">Pull request: %1$s</string>
     <string name="module_upload_limit_too_many">At most %1$d modules can be uploaded at once</string>
     <string name="module_upload_limit_single_too_big">One of the zips is larger than the server allows (%1$s)</string>

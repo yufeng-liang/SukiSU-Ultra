@@ -52,6 +52,8 @@ import com.sukisu.ultra.ui.component.material.TopBarBackButton
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.ultra.ui.component.statustag.StatusTag
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.MineModule
+import com.sukisu.ultra.ui.util.UpdateEligibility
 
 /**
  * Material 风格的上传列表，与 [ModuleUploadListMiuix] 同一份状态、同一组规则。
@@ -70,6 +72,10 @@ fun ModuleUploadListMaterial(
     onUseArchived: (UploadRow) -> Unit,
     onPickZip: () -> Unit,
     onOpenArchiveSettings: () -> Unit,
+    /** 「我的模块」：服务端 `GET /mine` 的结果，与主列表共用同一套状态机。 */
+    mine: MineState,
+    /** 为「我的模块」的某一行挑包；与主列表共用同一个单行 SAF 启动器与同一道闸门。 */
+    onPickForMine: (MineModule) -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val visible = state.visibleRows
@@ -231,6 +237,17 @@ fun ModuleUploadListMaterial(
                 )
             }
 
+            // 「我的模块」紧跟挑包入口：两块是同一件事的两半——手里有 zip 就从上面进，
+            // 只是给已收录的模块发新版本就点下面这一行，挑完包带着模块 id 直接进表单。
+            item {
+                MineSectionMaterial(
+                    mine = mine,
+                    picking = state.pickingFor != null,
+                    pickingId = state.pickingFor,
+                    onPick = onPickForMine,
+                )
+            }
+
             if (visible.isEmpty()) {
                 item {
                     Text(
@@ -267,6 +284,127 @@ fun ModuleUploadListMaterial(
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
+}
+
+/**
+ * 「我的模块」：已经收录的模块 + 一键发新版本。
+ *
+ * 投稿的主路径其实是这一块：用户手里通常只剩新版 zip，早年的包早丢了；从这里挑包会带着
+ * 模块 id 回表单，服务端不必再人工核对「这个包是谁的版本」。
+ */
+@Composable
+private fun MineSectionMaterial(
+    mine: MineState,
+    /** 有任意一行正在挑包（全局闸门生效中）。 */
+    picking: Boolean,
+    /** 正在挑包的那一行（模块 id）；与主列表共用同一道闸门。 */
+    pickingId: String?,
+    onPick: (MineModule) -> Unit,
+) {
+    // 常态提示按状态取，一次只显示一句；message 那类一次性补充说明由外层用 Toast 消化，
+    // 不在这里重复。顺序即优先级：先答「能不能用」，再答「为什么是空的」。
+    val status = when {
+        mine.loading -> R.string.module_upload_mine_loading
+        mine.needVerify -> R.string.module_upload_mine_need_verify
+        mine.failed -> R.string.module_upload_mine_failed
+        // 降级时服务端也回空列表，但语义是「索引读不到」。说成「你没投过」会让人重投一遍。
+        mine.degraded -> R.string.module_upload_mine_degraded
+        mine.modules.isEmpty() -> R.string.module_upload_mine_empty
+        else -> null
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 20.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.module_upload_mine_entry_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            modifier = Modifier.padding(top = 2.dp),
+            text = stringResource(R.string.module_upload_mine_entry_summary),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (status != null) {
+            Row(
+                modifier = Modifier.padding(top = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (mine.loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                }
+                Text(
+                    text = stringResource(status),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        // 失败或降级时手上可能还有一份旧名单：留着比清空好，上面那句提示已经说明它没过期。
+        if (mine.modules.isNotEmpty()) {
+            SegmentedColumn(
+                modifier = Modifier.padding(top = 8.dp),
+                content = mine.modules.map { module ->
+                    {
+                        MineRowMaterial(
+                            module = module,
+                            picking = picking,
+                            pickingThis = pickingId == module.id,
+                            onPick = { onPick(module) },
+                        )
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun MineRowMaterial(
+    module: MineModule,
+    /** 有任意一行正在挑包：其余行的按钮一起禁掉（闸门本来就是全局的）。 */
+    picking: Boolean,
+    /** 正在挑的就是这一行。 */
+    pickingThis: Boolean,
+    onPick: () -> Unit,
+) {
+    SegmentedListItem(
+        headlineContent = {
+            Text(
+                text = module.name.ifBlank { module.id },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        supportingContent = {
+            Text(
+                // 索引里 name 可能是空的（老条目），id 一定在；版本号缺了就只留 id。
+                text = if (module.version.isBlank()) module.id else "${module.id}, ${module.version}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        trailingContent = {
+            if (pickingThis) {
+                // 与主列表同一件事：系统选择器回来之前要有反馈，否则用户会以为没点上。
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            } else {
+                TextButton(onClick = onPick, enabled = !picking) {
+                    Text(stringResource(R.string.module_upload_mine_update))
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -307,13 +445,22 @@ private fun UploadRowCardMaterial(
                 )
                 StatusPillMaterial(row.status, row.checking)
             }
-            Text(
-                text = "${row.version}, ${row.author}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f, fill = false),
+                    text = "${row.version}, ${row.author}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // 归属只在服务端明确答过（MINE / NOT_MINE）时才显示：UNKNOWN 是「没问出来」，
+                // 挂个「不知道」的牌子只会让用户以为要自己判断，而这件事本来就该由服务端说了算。
+                OwnershipTagMaterial(row.eligibility)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (!row.enabled) {
                     StatusTag(
@@ -351,6 +498,24 @@ private fun UploadRowCardMaterial(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 归属那一格单独补一句解释：牌子只写「你的模块 / 别人的模块」，
+                // 展开的人想知道的是「所以这一版我还能不能发」。UNKNOWN 不说话。
+                val ownershipSummary = when (row.eligibility) {
+                    UpdateEligibility.MINE -> R.string.module_upload_ownership_mine_summary
+                    UpdateEligibility.NOT_MINE -> R.string.module_upload_ownership_not_mine_summary
+                    UpdateEligibility.UNKNOWN -> null
+                }
+                if (ownershipSummary != null) {
+                    Text(
+                        text = stringResource(ownershipSummary),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (row.eligibility == UpdateEligibility.NOT_MINE) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
                 if (row.description.isNotBlank()) {
                     Text(
                         text = row.description,
@@ -429,4 +594,33 @@ private fun StatusPillMaterial(status: CheckStatus?, checking: Boolean) {
         contentColor = content,
         backgroundColor = background,
     )
+}
+
+/**
+ * 归属标签：这一版归不归当前这个酷安账号。
+ *
+ * 与 [StatusPillMaterial] 是两件事，必须分开显示：收录状态回答「要不要传」，
+ * 归属回答「传了算不算你的」。把两者挤进同一个牌子，会出现「已收录 + 蓝色」
+ * 这种反过来暗示「你能覆盖它」的配色。
+ *
+ * [UpdateEligibility.UNKNOWN] 什么都不画：那是「没问出来」（没核实 UID、服务端没开归属
+ * 判定、网络不通），画一个「未知」的牌子等于把一次没问到的事变成用户要自己判断的事。
+ */
+@Composable
+private fun OwnershipTagMaterial(eligibility: UpdateEligibility) {
+    when (eligibility) {
+        UpdateEligibility.MINE -> StatusTag(
+            label = stringResource(R.string.module_upload_ownership_mine),
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            backgroundColor = MaterialTheme.colorScheme.primaryContainer,
+        )
+
+        UpdateEligibility.NOT_MINE -> StatusTag(
+            label = stringResource(R.string.module_upload_ownership_not_mine),
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            backgroundColor = MaterialTheme.colorScheme.errorContainer,
+        )
+
+        UpdateEligibility.UNKNOWN -> Unit
+    }
 }

@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.screen.upload
 
 import android.content.Context
 import android.net.Uri
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sukisu.ultra.R
@@ -18,12 +19,16 @@ import com.sukisu.ultra.ui.screen.module.ModuleContributionEntry
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.BatchSubmitResult
 import com.sukisu.ultra.ui.util.BatchZip
+import com.sukisu.ultra.ui.util.CheckAnswer
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ContributionBatch
 import com.sukisu.ultra.ui.util.CoolapkUidLookup
+import com.sukisu.ultra.ui.util.MineModule
+import com.sukisu.ultra.ui.util.MineResult
 import com.sukisu.ultra.ui.util.ModuleContribution
 import com.sukisu.ultra.ui.util.SessionCheck
 import com.sukisu.ultra.ui.util.SessionGrant
+import com.sukisu.ultra.ui.util.UpdateEligibility
 import com.sukisu.ultra.ui.util.UploadSession
 import com.sukisu.ultra.ui.util.formatFileSize
 import com.sukisu.ultra.ui.util.makeNonce
@@ -45,6 +50,33 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
+
+/**
+ * 「我投过的模块」（`GET /mine`）的状态。
+ *
+ * 为什么不是一个 `List<MineModule>` 加一个可空错误串：`/mine` 的三个落点
+ * （[MineResult.Ok] / [MineResult.NeedVerify] / [MineResult.Failed]）对用户意味着
+ * **完全不同的下一步**——「真的一枚都没投过」要引导去投第一枚，「令牌失效」要引导
+ * 重新验证，「拉不下来」只要重试。压成「空列表 + 一句加载失败」，用户就分不清
+ * 自己该做什么。
+ *
+ * [degraded] 尤其不能和「空列表」混为一谈：[degraded] 为真时服务端回的就是空列表，
+ * 但那是**索引读不到**，不是「你没有模块」。把它显示成后者，用户会以为投稿丢了，
+ * 然后重投一遍。
+ */
+@Immutable
+data class MineState(
+    val loading: Boolean = false,
+    val modules: List<MineModule> = emptyList(),
+    /** 服务端明确说索引读不到：这一份列表不完整，不能当成「全部」。 */
+    val degraded: Boolean = false,
+    /** 没有令牌，或令牌已失效：需要重新核实酷安 UID。 */
+    val needVerify: Boolean = false,
+    /** 网络/服务端故障：同一份状态重试即可，不需要重新验证。 */
+    val failed: Boolean = false,
+    /** 一次性的补充说明（例如「已经有名单，但这次没刷新成功」）；常态提示由界面按上面的标志取。 */
+    val message: String? = null,
+)
 
 /**
  * 「模块上传」的唯一状态源：列表页与表单页共用。
@@ -71,12 +103,24 @@ class ModuleUploadViewModel(
     private val _formState = MutableStateFlow(ModuleUploadFormState())
     val formState: StateFlow<ModuleUploadFormState> = _formState.asStateFlow()
 
+    private val _mineState = MutableStateFlow(MineState())
+    val mineState: StateFlow<MineState> = _mineState.asStateFlow()
+
     private var checkJob: Job? = null
     private var loadJob: Job? = null
     private var lookupJob: Job? = null
+    private var mineJob: Job? = null
 
     /** 已经问过服务端的 id。与「查了但没问出来」（UNKNOWN）区分开，避免刷新时重复查。 */
     private val checkedIds = mutableSetOf<String>()
+
+    /**
+     * 屏幕上那些归属结论是「照哪个 UID 问出来的」。
+     *
+     * 归属是 (版本, UID) 的二元答案：UID 一换，手上已经问到的答案就全部过期了。
+     * 换个号继续沿用前一个号的「是你的」，等于把上一个人的权限借给下一个人看。
+     */
+    private var eligibilityUid: String = ""
 
     private var entered = false
 
@@ -233,11 +277,16 @@ class ModuleUploadViewModel(
         val query = chunk.mapNotNull { row ->
             ModuleContributionEntry.checkableVersionCode(row.versionCode)?.let { row.id to it }
         }
+        val uid = listQueryUid()
+        syncEligibilityUid(uid)
         val result = if (query.isEmpty()) {
             emptyMap()
         } else {
             try {
-                ModuleContribution.checkBatch(query)
+                // 带上 uid：服务端拿它算 `update_eligible`（这一版更新权归不归我）。
+                // 不带的话服务端照常回收录状态，但归属恒为 null —— 「一键更新」
+                // 这条路正是靠归属拦「不是你的模块」，不传等于闸门是空的。
+                ModuleContribution.checkBatch(query, uid)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -252,7 +301,16 @@ class ModuleUploadViewModel(
                 rows = state.rows.map { row ->
                     val asked = queried[row.id]
                     if (asked != null && asked.versionCode == row.versionCode) {
-                        row.copy(status = result[row.id] ?: CheckStatus.UNKNOWN, checking = false)
+                        // 一个 id 的那一格可能整个缺失（整批失败 / 服务端漏回）：那里是
+                        // 「不知道」，不是「不是你的」—— CheckAnswer.UNKNOWN 的
+                        // eligibility 就是 UNKNOWN，不会让归属闸拦下任何东西。
+                        val answer = result[row.id] ?: CheckAnswer.UNKNOWN
+                        row.copy(
+                            status = answer.status,
+                            eligibility = answer.eligibility,
+                            eligibilityReason = answer.reason,
+                            checking = false,
+                        )
                     } else {
                         row
                     }
@@ -261,11 +319,63 @@ class ModuleUploadViewModel(
         }
     }
 
+    /**
+     * 列表页问归属时用的 UID。
+     *
+     * 优先级：表单里**核实过**的那个（用户刚刚证明了自己是谁）→ 手里这张有效令牌
+     * 绑的那个（服务端签发时就绑定了，比任何本地记录硬）→ 上次核实通过时记下的那串。
+     * 都没有就回空串：服务端见空 uid 会把 `update_eligible` 回成 null（UNKNOWN），
+     * 归属闸保持「不知道」，而不是拿一个没核实过的号去问出个假答案。
+     */
+    private fun listQueryUid(): String {
+        verifiedFormUid().takeIf { it.isNotEmpty() }?.let { return it }
+        val session = _formState.value.session?.takeIf { it.validAt(System.currentTimeMillis()) }
+        if (session != null && session.uid.isNotBlank()) return session.uid.trim()
+        return ModuleUploadPrefs.lastUid().trim()
+    }
+
+    /** 表单里那一串「已经核实过」的 UID；没核实（含正在核实）就是空串。 */
+    private fun verifiedFormUid(): String {
+        val form = _formState.value
+        return if (form.uidState is CoolapkUidState.Verified) form.uid.trim() else ""
+    }
+
     private fun markChecking(ids: List<String>, checking: Boolean) {
         val idSet = ids.toSet()
         _listState.update { state ->
             state.copy(
                 rows = state.rows.map { if (it.id in idSet) it.copy(checking = checking) else it }
+            )
+        }
+    }
+
+    /**
+     * 换了 UID：把已经问到的归属结论全部作废。
+     *
+     * 为什么只作废 [UploadRow.eligibility] / [UploadZip.eligibility] 而不动 `status`：
+     * 收录状态与「谁问的」无关，换个号再问一遍答案一模一样；归属才是那个会跟着人
+     * 变的答案。空串**不**算换人——那是「还不知道是谁」，拿它去覆盖已经问到的答案
+     * 只会把列表上「是你的」标签抹成「不知道」（表单还没核实完时就会这样）。
+     */
+    private fun syncEligibilityUid(uid: String) {
+        val who = uid.trim()
+        if (who.isEmpty() || who == eligibilityUid) return
+        eligibilityUid = who
+        val unknown = UpdateEligibility.UNKNOWN
+        _listState.update { state ->
+            state.copy(
+                rows = state.rows.map {
+                    if (it.eligibility == unknown && it.eligibilityReason.isEmpty()) it
+                    else it.copy(eligibility = unknown, eligibilityReason = "")
+                }
+            )
+        }
+        _formState.update { state ->
+            state.copy(
+                items = state.items.map {
+                    if (it.eligibility == unknown && it.eligibilityReason.isEmpty()) it
+                    else it.copy(eligibility = unknown, eligibilityReason = "")
+                }
             )
         }
     }
@@ -647,8 +757,13 @@ class ModuleUploadViewModel(
         }
         if (query.isEmpty()) return
         viewModelScope.launch {
+            // 表单这条路只认「刚刚核实过」的号：输入框里那串数字在核实通过之前
+            // 只是用户的自称，拿它去问归属，服务端会按一个还没被证明的身份回答，
+            // 而归属是会**拦提交**的答案（NOT_MINE 一票否决）——宁可这里回 UNKNOWN。
+            val uid = verifiedFormUid()
+            syncEligibilityUid(uid)
             val result = try {
-                ModuleContribution.checkBatch(query)
+                ModuleContribution.checkBatch(query, uid)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -662,7 +777,13 @@ class ModuleUploadViewModel(
                         // 上一版那次查询的结论不能落到它头上。
                         val asked = byPath[item.path]
                         if (asked != null && item.versionCode == asked.versionCode) {
-                            item.copy(status = result[item.id] ?: CheckStatus.UNKNOWN, checking = false)
+                            val answer = result[item.id] ?: CheckAnswer.UNKNOWN
+                            item.copy(
+                                status = answer.status,
+                                eligibility = answer.eligibility,
+                                eligibilityReason = answer.reason,
+                                checking = false,
+                            )
                         } else {
                             item
                         }
@@ -670,6 +791,24 @@ class ModuleUploadViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * 归属只能带「核实过」的号去问，而核实是异步的：用户从列表挑包进表单时，
+     * 那一趟 [checkManual] 可能还落在「正在核实」上，只能不带 uid 发出去
+     * （服务端回 null → UNKNOWN）。核实一通过就得补问一次，否则「一键更新」
+     * 这条路上归属闸永远是空的 —— 而它正是为这条路加的。
+     *
+     * 只补问还是 UNKNOWN 的那几枚：已经有结论的不重复问。
+     */
+    private fun recheckEligibility() {
+        if (verifiedFormUid().isEmpty()) return
+        val pending = _formState.value.items.filter {
+            // 正在查的那几枚不用补：它们那一趟回来就会自己落答案，这里再发一次是同一批重复请求。
+            !it.checking && it.eligibility == UpdateEligibility.UNKNOWN
+        }
+        if (pending.isEmpty()) return
+        checkManual(pending)
     }
 
     private fun postMessage(text: String) {
@@ -751,6 +890,8 @@ class ModuleUploadViewModel(
                     uidState = CoolapkUidState.Verified(session.nickname),
                 )
             }
+            // 号可能刚换过：手里那几枚包的归属是照上一个号问的，补问一次。
+            recheckEligibility()
             return
         }
         _formState.update { it.copy(uid = cleaned, uidState = CoolapkUidState.Checking) }
@@ -779,7 +920,11 @@ class ModuleUploadViewModel(
         // 结果回来时用户可能已经改了输入：只认当前输入仍然是这次查的那个 UID 的结论。
         if (_formState.value.uid != uid) return
         _formState.update { it.copy(uidState = result.toState()) }
-        if (result is CoolapkUidLookup.Verified) ModuleUploadPrefs.rememberUid(uid)
+        if (result is CoolapkUidLookup.Verified) {
+            ModuleUploadPrefs.rememberUid(uid)
+            // 刚核实通过：之前那一趟 checkBatch 因为没有可信 uid 只能回 UNKNOWN，补问。
+            recheckEligibility()
+        }
     }
 
     fun setConsent(checked: Boolean) {
@@ -936,6 +1081,76 @@ class ModuleUploadViewModel(
                 runCatching { ModuleContribution.revokeSession(token) }
             }
         }
+    }
+
+    // ── 我投过的模块（GET /mine）────────────────────────────────────────────
+
+    /**
+     * 拉「我投过的模块」。
+     *
+     * 没有有效令牌时**不发请求**，直接落到 [MineState.needVerify]：服务端对没带令牌的
+     * 请求只会回 `ok:false`（也就是 NeedVerify），发出去只是多等一次超时再得到同一个结论。
+     *
+     * 四个落点各自对应的界面动作不同，所以状态里不是一句「加载失败」而是四个标志
+     * （见 [MineState] 的注释）——把「读不到索引」显示成「你没有模块」，用户会重投一遍。
+     */
+    fun refreshMine() {
+        if (mineJob?.isActive == true) return
+        val token = ModuleUploadPrefs.readSession()?.token?.takeIf { it.isNotBlank() }
+        if (token == null) {
+            mineJob?.cancel()
+            _mineState.value = MineState(needVerify = true)
+            return
+        }
+        _mineState.update {
+            it.copy(loading = true, needVerify = false, failed = false, message = null)
+        }
+        mineJob = viewModelScope.launch {
+            val result = try {
+                ModuleContribution.fetchMine(token)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                MineResult.Failed
+            }
+            if (!isActive) return@launch
+            _mineState.update { state ->
+                when (result) {
+                    // degraded 时服务端回的就是空列表，但语义是「索引读不到」而不是
+                    // 「一枚都没投过」：modules 照实落（空），degraded 单独带出去，
+                    // 绝不能在列表为空时把它抹成 false。
+                    is MineResult.Ok -> state.copy(
+                        loading = false,
+                        modules = result.modules,
+                        degraded = result.degraded,
+                        needVerify = false,
+                        failed = false,
+                    )
+
+                    MineResult.NeedVerify -> state.copy(
+                        loading = false,
+                        degraded = false,
+                        needVerify = true,
+                        failed = false,
+                    )
+
+                    // 失败不清空已有名单：网络抖一次不该让用户眼前一空；
+                    // 但手里明明有一份旧名单时要说一句「这份没刷新」，否则它静默过期。
+                    MineResult.Failed -> state.copy(
+                        loading = false,
+                        needVerify = false,
+                        failed = true,
+                        message = state.modules.takeIf { it.isNotEmpty() }
+                            ?.let { res.getString(R.string.module_upload_mine_failed) },
+                    )
+                }
+            }
+        }
+    }
+
+    /** 已经弹过的那句补充说明别留到下一次。 */
+    fun consumeMineMessage() {
+        _mineState.update { if (it.message == null) it else it.copy(message = null) }
     }
 
     /**
@@ -1103,6 +1318,12 @@ class ModuleUploadViewModel(
 
         // 只有服务端明说「这枚口令用过」才换 nonce（code 优先，与旧入口同一条规则）：
         // 其余失败换掉会让用户刚写进签名的那串立刻作废。
+        //
+        // 这里是**按码精确比对**，不是「凡是失败就换」，也不是「凡是 403 就换」：
+        // Worker 的归属拒绝回的是 `not_owner`（`eligibility` 为 false 时那一条），
+        // 它必须落进「不换」—— 对着一次归属拒绝去重掷 nonce 再发一遍，不但白烧一次
+        // 整包上传，还会把用户刚写进签名的那串作废，而真正该做的是换一个自己的模块
+        // 或换 UID。同理 `restricted`、等级不足之类的码也不该触发轮换。
         val proofUsed = result.code == PROOF_USED_CODE
         val message = when {
             result.code == ModuleContribution.CLIENT_TIMEOUT_CODE ->
@@ -1174,6 +1395,11 @@ private fun Module.toRow(previous: List<UploadRow>, archived: Set<String>): Uplo
         metamodule = metamodule,
         status = old?.status,
         checking = old?.checking == true,
+        // 归属必须跟着透传：`ksud module list` 每刷新一次都会重建行对象，
+        // 不透传就等于每次刷新把已经问到的归属答案扔掉，列表上的归属标签
+        // 与「一键更新」的归属闸都会退回「不知道」。
+        eligibility = old?.eligibility ?: UpdateEligibility.UNKNOWN,
+        eligibilityReason = old?.eligibilityReason.orEmpty(),
         archived = ModuleZipArchive.safeId(id) in archived,
     )
 }

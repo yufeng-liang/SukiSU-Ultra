@@ -971,7 +971,7 @@
     <string name="module_contribution_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载。请勿上传包含个人隐私、密钥等敏感信息的内容。</string>
     <string name="module_contribution_consent_required">请先勾选确认</string>
     <string name="module_contribution_submitting">正在提交…</string>
-    <string name="module_contribution_success">已提交，等待审核</string>
+    <string name="module_contribution_success">已提交，自动审核通过后进索引</string>
     <string name="module_contribution_failed">提交失败</string>
     <string name="module_contribution_unknown">无法确认是否已收录</string>
     <string name="module_contribution_settings_title">模块投稿</string>
@@ -1119,6 +1119,18 @@
     <string name="module_upload_status_not_checked">还没查</string>
     <string name="module_upload_status_not_checked_summary">还没查过，点「继续查」或刷新。</string>
     <string name="module_upload_checking">正在查询…</string>
+    <string name="module_upload_ownership_mine">你的模块</string>
+    <string name="module_upload_ownership_mine_summary">这个模块是你投的，可以发新版本。</string>
+    <string name="module_upload_ownership_not_mine">别人的模块</string>
+    <string name="module_upload_ownership_not_mine_summary">该模块已由其他上传者收录，只有原作者能发更新版本。</string>
+    <string name="module_upload_mine_entry_title">我的模块</string>
+    <string name="module_upload_mine_entry_summary">你投稿过的模块，发新版本不用再找包</string>
+    <string name="module_upload_mine_empty">你还没有投稿过模块</string>
+    <string name="module_upload_mine_degraded">索引暂时读不到，这里只列已记下的投稿。</string>
+    <string name="module_upload_mine_need_verify">需要先验证酷安账号</string>
+    <string name="module_upload_mine_failed">列表拉不下来，请重试。</string>
+    <string name="module_upload_mine_loading">正在加载…</string>
+    <string name="module_upload_mine_update">发新版本</string>
 
     <string name="module_upload_form_title">上传模块</string>
     <string name="module_upload_wall_add">添加</string>
@@ -1164,8 +1176,8 @@
     <string name="module_upload_submitting">正在上传…</string>
     <string name="module_upload_submitting_bytes">正在上传 %1$d 个模块，共 %2$s</string>
     <string name="module_upload_submit_timeout">上传超时。这串签名没有消耗，可以用同一串重试；若提示已经用过，App 会换一串。</string>
-    <string name="module_upload_submit_success">已上传，等待审核</string>
-    <string name="module_upload_submit_success_count">已上传 %1$d 枚，等待审核</string>
+    <string name="module_upload_submit_success">已上传，自动审核通过后进索引</string>
+    <string name="module_upload_submit_success_count">已上传 %1$d 枚，自动审核通过后进索引</string>
     <string name="module_upload_result_pr">PR：%1$s</string>
     <string name="module_upload_limit_too_many">一次最多上传 %1$d 个模块</string>
     <string name="module_upload_limit_single_too_big">其中一个 zip 超过服务端允许的大小（%1$s）</string>

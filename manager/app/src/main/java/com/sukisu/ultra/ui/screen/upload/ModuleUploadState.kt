@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.UpdateEligibility
 import com.sukisu.ultra.ui.util.UploadSession
 import com.sukisu.ultra.ui.util.makeNonce
 
@@ -30,6 +31,26 @@ data class UploadZip(
     /** 手选包自己的收录状态；null = 还没查，checking = 正在查。 */
     val status: CheckStatus? = null,
     val checking: Boolean = false,
+    /**
+     * 「要更新的这一版归不归当前这个酷安 UID」——与 [status] 是两件事，别合并。
+     *
+     * [status] 只回答「索引里有没有这一版」（谁都能看），归属回答「这一版是谁的」（只有
+     * 服务端知道，且要带着 UID 去问）。同一枚 `VERSION_UPDATE` 的包，原作者查到
+     * [UpdateEligibility.MINE] 就能发更新，非原作者查到 [UpdateEligibility.NOT_MINE]
+     * 必须被拦下——拦在本地而不是等服务端 403，
+     * 是因为那一趟会把整包传完才被拒，白耗用户的流量与时间。
+     *
+     * 默认 [UpdateEligibility.UNKNOWN]（不知道）而不是 `NOT_MINE`（不是你的）：
+     * 索引读不到、服务端没回这个字段的时段里，宁可放行后由服务端裁决，也不能让所有人都提交不了。
+     */
+    val eligibility: UpdateEligibility = UpdateEligibility.UNKNOWN,
+    /**
+     * 服务端对归属判断的原话（`reason` 字段），用来在界面上解释「为什么点不了」。
+     *
+     * 只做展示、不参与任何判据：判据只看 [eligibility]。留空是常态（`UNKNOWN` / `MINE`
+     * 时服务端不必解释），界面此时用本地兜底句，不替服务端编原因。
+     */
+    val eligibilityReason: String = "",
 )
 
 /** 列表里的一行。status 为 null 表示还没查（被上限截住或刚进页面）。 */
@@ -53,6 +74,16 @@ data class UploadRow(
      * 为 false 才退回手选。
      */
     val archived: Boolean = false,
+    /**
+     * 这一版的更新权归不归当前这个酷安 UID；语义与 [UploadZip.eligibility] 相同。
+     *
+     * 列表页也带着它，是为了让用户在挑包之前就看出「这枚是别人的」，而不是挑完、
+     * 查完、点提交才在按钮上方吃到一句拒绝。默认 [UpdateEligibility.UNKNOWN]：
+     * 列表里绝大多数行只是「看看」，不该因为没查过归属就渲染成别人的。
+     */
+    val eligibility: UpdateEligibility = UpdateEligibility.UNKNOWN,
+    /** 服务端对归属的原话；只做展示，规则层判据只看 [eligibility]。 */
+    val eligibilityReason: String = "",
 )
 
 /** 当前在哪一屏。列表与表单共用同一个路由，靠这个状态切换。 */

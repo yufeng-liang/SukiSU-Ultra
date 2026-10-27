@@ -5,6 +5,7 @@ import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ContributionBatch
 import com.sukisu.ultra.ui.util.ProofItem
+import com.sukisu.ultra.ui.util.UpdateEligibility
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.text.Collator
 import com.sukisu.ultra.ui.util.formatFileSize
@@ -44,6 +45,13 @@ object ModuleUploadRules {
 
     /** 口令长度：12 位前缀 + `-` + 6 位 nonce。测试里钉住它，两套界面不必各自数一遍。 */
     const val PROOF_LENGTH = 19
+
+    /**
+     * 服务端没给归属原因（`reason` 为空）时的兜底句。
+     *
+     * 只陈述 [UpdateEligibility.NOT_MINE] 这一个事实，不猜它为什么不算你的。
+     */
+    private const val FALLBACK_OWNERSHIP_REASON = "该模块已由其他上传者收录，只有原作者能发更新版本"
 
     /** 列表里一行：模块 + 当前查到的状态（null = 还没查）。 */
     data class RowView(
@@ -236,8 +244,8 @@ object ModuleUploadRules {
     /**
      * 提交按钮的唯一判据。
      *
-     * 六道门缺一不可：每个包都有 sha、UID 核实通过、每个包都有合法出处、勾了确认、
-     * 「身份这一关」过了、当前不在提交中。
+     * 七道门缺一不可：每个包都有 sha、UID 核实通过、每个包都有合法出处、勾了确认、
+     * 「身份这一关」过了、当前不在提交中、归属上没有被服务端明确判给别人的包。
      *
      * 第五条是 `signatureValid || sessionActive` 二选一，不是两道都要：
      * - 手里有**有效的长期令牌**（[sessionActive]）：服务端认这张令牌，这一次不用改签名，
@@ -249,6 +257,15 @@ object ModuleUploadRules {
      *
      * 令牌这条路也**不是免检**：它只是把「每次改签名」换成「九十天一次」，令牌本身仍由
      * 服务端每次提交时核对（KV 里只存它的 sha256，且可以被吊销）。
+     *
+     * 第七道是**归属闸**：服务端明确回了「这一版已被别人收录」（[UpdateEligibility.NOT_MINE]）
+     * 时不许提交——更新权归原作者，非原作者传上去也会被服务端拒掉，本地拦下只是把一个必然失败
+     * 的请求提前到按钮上，省下一次整包上传。
+     *
+     * [UpdateEligibility.UNKNOWN]（不知道）**不拦**：服务端没回这个字段、索引读不到、
+     * 或者用户还没查过归属，都属于「不知道归谁」而不是「不是你的」。把它当拒绝，会让索引
+     * 抖动的时段里谁都提交不了、也没人能自救（界面上没有「重新问一次归属」这个按钮）。
+     * 不知道就放行，让真正握有权威的服务端去裁决——本屏只拦**已经知道**的那一种。
      */
     fun canSubmit(
         items: List<UploadZip>,
@@ -269,5 +286,25 @@ object ModuleUploadRules {
         // 已经收录的那一版不再重复投（要换内容走下架/更新那条路，不在本屏）。
         items.none { it.checking } &&
         items.none { it.status == CheckStatus.RECORDED } &&
-        items.all { sourceProblem(it.source) == SourceProblem.OK }
+        items.all { sourceProblem(it.source) == SourceProblem.OK } &&
+        // 归属闸：只要有一枚被服务端判成「别人的」，整批都不许发。
+        // 一批是原子提交（一个 PR、一次口令），放过这一枚等于让整批带着一次必然的拒绝走完全程。
+        items.none { it.eligibility.blocksSubmit }
+
+    /**
+     * 提交按钮上方那句「为什么点不了」的文案，没有归属问题时返回空串。
+     *
+     * 文案**优先用服务端原话**（即 `reason` 字段，[UploadZip.eligibilityReason]）：
+     * 那是唯一知道「这一版到底归谁、为什么不是你」的一方，本地替它编一句，说错了用户会
+     * 照着错的解释去猜。只有当服务端没给话（空串）时才退回中性兜底句——兜底句只说
+     * 「已由其他上传者收录」这个从 [UpdateEligibility.NOT_MINE] 本身就能确定的事实，
+     * 不添加任何原因。
+     *
+     * 只看第一枚 [UpdateEligibility.NOT_MINE]：`canSubmit` 已经把整批判死，多显示几屏
+     * 也改变不了「这一批发不出去」，用户先要解决的是手头最先挡路的那一枚。
+     */
+    fun ownershipBlockReason(items: List<UploadZip>): String {
+        val blocked = items.firstOrNull { it.eligibility.blocksSubmit } ?: return ""
+        return blocked.eligibilityReason.takeIf { it.isNotBlank() } ?: FALLBACK_OWNERSHIP_REASON
+    }
 }

@@ -73,10 +73,15 @@ object ModuleContributionEntry {
      *
      * 任何失败（含 [checkableVersionCode] 返回 null、网络异常）都返回 null，
      * 与 [CheckStatus.UNKNOWN] 在调用方是同一件事：静默。
+     *
+     * 这里只取收录状态、**丢掉归属**（`CheckAnswer.eligibility`）：这条路径是「模块列表里
+     * 顺手查一下收录没有」，没有表单也就没有已核实的酷安 UID 可传，服务端回的是
+     * `update_eligible: null`（不知道），拿它去决定「能不能提交」只会得到一个恒为 UNKNOWN
+     * 的假闸门。真正的归属判定在上传页（那里才有 UID），见 [ModuleUploadViewModel]。
      */
     suspend fun check(module: Module): CheckStatus? = withContext(Dispatchers.IO) {
         val versionCode = checkableVersionCode(module.versionCode) ?: return@withContext null
-        runCatching { ModuleContribution.checkRecorded(module.id, versionCode) }.getOrNull()
+        runCatching { ModuleContribution.checkRecorded(module.id, versionCode).status }.getOrNull()
     }
 
     /**

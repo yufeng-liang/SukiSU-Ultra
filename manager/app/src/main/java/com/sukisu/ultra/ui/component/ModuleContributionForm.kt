@@ -32,7 +32,7 @@ object ModuleContributionRules {
      * 只在 [CheckStatus.NEW] 时弹「分享这个模块吗？」。
      *
      * [CheckStatus.VERSION_UPDATE] 与 [CheckStatus.UNKNOWN] 都不弹：前者靠列表里的按钮
-     * （契约：它会进人工审核队列，不该拿弹窗打断一次普通升级），后者是"不知道"，
+     * （发了新版本就走投稿流程，不该拿弹窗打断一次普通升级），后者是"不知道"，
      * 弹出来等于拿猜的结果打扰用户。
      */
     fun showShareSnackbar(status: CheckStatus): Boolean = status == CheckStatus.NEW
@@ -92,8 +92,8 @@ object ModuleContributionRules {
  * 网络一抖就把提交入口永久关死，只能让用户重新打包 zip、重填必填项，
  * 而失败的这一次服务端很可能根本没收到。
  *
- * [Submitting] 期间禁止二次提交（连点会把同一个 zip 传两遍，审核队列里出现两条重复条目）；
- * [Success] 之后同样禁止——那一次已经进队列了，再点是重复条目。
+ * [Submitting] 期间禁止二次提交（连点会把同一个 zip 传两遍，仓库里出现两条重复条目）；
+ * [Success] 之后同样禁止——那一次已经提交出去了，再点就是重复条目。
  */
 sealed interface ContributionSubmitState {
     object Idle : ContributionSubmitState
@@ -207,12 +207,12 @@ data class ContributionForm(
      *
      * 两道门缺一不可：必填项填了、确认勾选了。
      *
-     * 另外要求当前**没在提交中**（连点会把同一个 zip 传两遍，审核队列里出现两条重复条目），
+     * 另外要求当前**没在提交中**（连点会把同一个 zip 传两遍，仓库里出现两条重复条目），
      * 但**只在** [ContributionSubmitState.Submitting] 时挡：失败之后必须还能再点一次。
      * 网络抖一下就永久禁用提交按钮，等于让用户关掉对话框从头走一遍（重新打包 zip、重新填必填项）。
      *
      * 成功（[ContributionSubmitState.Success]）之后仍不可再提交：
-     * 这一次已经进了审核队列，再点一次就是一条重复条目——要投另一个版本请重新打开对话框。
+     * 这一次已经提交出去了，再点一次就是一条重复条目——要投另一个版本请重新打开对话框。
      */
     val canSubmit: Boolean
         get() = requiredFilled && consentChecked && submitState !is ContributionSubmitState.Submitting &&

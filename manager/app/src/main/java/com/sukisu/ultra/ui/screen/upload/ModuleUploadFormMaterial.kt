@@ -97,6 +97,7 @@ fun ModuleUploadFormMaterial(
     )
     val canSubmit = state.canSubmit(limits)
     val blockers = remainingBlockers(state, limitProblem)
+    val ownershipBlock = ModuleUploadRules.ownershipBlockReason(state.items)
 
     ExpressiveScaffold(
         topBar = {
@@ -115,6 +116,7 @@ fun ModuleUploadFormMaterial(
                 canSubmit = canSubmit,
                 submitting = state.submitting,
                 blockers = blockers,
+                ownershipBlock = ownershipBlock,
                 onSubmit = onSubmit,
             )
         },
@@ -129,7 +131,12 @@ fun ModuleUploadFormMaterial(
             contentPadding = innerPadding,
         ) {
             item {
-                BatchSummaryMaterial(state = state, canSubmit = canSubmit, blockers = blockers)
+                BatchSummaryMaterial(
+                    state = state,
+                    canSubmit = canSubmit,
+                    blockers = blockers,
+                    ownershipBlock = ownershipBlock,
+                )
             }
 
             item {
@@ -327,6 +334,10 @@ fun ModuleUploadFormMaterial(
 /**
  * 还差几项才能提交。只数「用户还得动手」的项，判据与 [ModuleUploadRules.canSubmit] 一一对应，
  * 不新增规则 —— 这里只负责把「差什么」说清楚。
+ *
+ * 归属闸【不】计入这里：那一条用户动手也解决不了（模块已经记在别人名下），把它算进
+ * 「还差 N 项」等于派给他一件做不完的事。那一类由 [ModuleUploadRules.ownershipBlockReason]
+ * 单独出一句原话，界面上优先显示它。
  */
 private fun remainingBlockers(
     state: ModuleUploadFormState,
@@ -349,6 +360,7 @@ private fun BatchSummaryMaterial(
     state: ModuleUploadFormState,
     canSubmit: Boolean,
     blockers: Int,
+    ownershipBlock: String,
 ) {
     val accent = if (canSubmit) {
         MaterialTheme.colorScheme.primary
@@ -384,13 +396,13 @@ private fun BatchSummaryMaterial(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = if (canSubmit) {
-                        stringResource(R.string.module_upload_ready)
-                    } else {
-                        stringResource(R.string.module_upload_blockers, blockers)
-                    },
+                    text = submitHint(canSubmit, blockers, ownershipBlock),
                     style = MaterialTheme.typography.bodySmall,
-                    color = accent,
+                    color = if (ownershipBlock.isNotEmpty()) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        accent
+                    },
                 )
             }
         }
@@ -403,6 +415,7 @@ private fun SubmitBarMaterial(
     canSubmit: Boolean,
     submitting: Boolean,
     blockers: Int,
+    ownershipBlock: String,
     onSubmit: () -> Unit,
 ) {
     Surface(
@@ -418,16 +431,12 @@ private fun SubmitBarMaterial(
         ) {
             Text(
                 modifier = Modifier.weight(1f),
-                text = if (canSubmit) {
-                    stringResource(R.string.module_upload_ready)
-                } else {
-                    stringResource(R.string.module_upload_blockers, blockers)
-                },
+                text = submitHint(canSubmit, blockers, ownershipBlock),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (canSubmit) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                color = when {
+                    ownershipBlock.isNotEmpty() -> MaterialTheme.colorScheme.error
+                    canSubmit -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
             Button(

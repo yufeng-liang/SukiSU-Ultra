@@ -3,6 +3,7 @@ package com.sukisu.ultra.ui.screen.upload
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.UpdateEligibility
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -28,6 +29,8 @@ class ModuleUploadRulesTest {
         sha: String = "a".repeat(64),
         size: Long = 1024L,
         source: String = "https://www.coolapk.com/feed/1",
+        eligibility: UpdateEligibility = UpdateEligibility.UNKNOWN,
+        eligibilityReason: String = "",
     ) = UploadZip(
         path = "/tmp/$id.zip",
         fileName = "$id.zip",
@@ -40,6 +43,8 @@ class ModuleUploadRulesTest {
         sha256 = sha,
         sizeBytes = size,
         source = source,
+        eligibility = eligibility,
+        eligibilityReason = eligibilityReason,
     )
 
     private fun row(id: String, name: String = id, status: CheckStatus? = null) =
@@ -353,6 +358,66 @@ class ModuleUploadRulesTest {
         assertFalse(can(items = listOf(zip("a").copy(checking = true))))
         assertFalse(can(items = listOf(zip("a").copy(status = CheckStatus.RECORDED))))
         assertTrue(can(items = listOf(zip("a").copy(status = CheckStatus.NEW))))
+    }
+
+    @Test
+    fun `an upload the server says belongs to someone else never reaches submit`() {
+        fun can(items: List<UploadZip>) = ModuleUploadRules.canSubmit(
+            items = items,
+            uidVerified = true,
+            consent = true,
+            signatureValid = true,
+            submitting = false,
+            limitProblem = ModuleUploadRules.LimitProblem.NONE,
+        )
+
+        // 第七条门：服务端明确判给别人时，本地就该拦住 —— 否则用户传完几百 MB 才吃 403。
+        assertFalse(can(listOf(zip("a").copy(eligibility = UpdateEligibility.NOT_MINE))))
+        // 明确是自己的、或者根本没问出来（UNKNOWN），都照常放行。
+        // UNKNOWN 不许拦：它是「不知道」不是「不是你的」，索引抖动时拦了会让谁都没法提交。
+        assertTrue(can(listOf(zip("a").copy(eligibility = UpdateEligibility.MINE))))
+        assertTrue(can(listOf(zip("a").copy(eligibility = UpdateEligibility.UNKNOWN))))
+        // 一批里只要有一枚是别人的，整批不放行。
+        assertFalse(
+            can(
+                listOf(
+                    zip("a").copy(eligibility = UpdateEligibility.MINE),
+                    zip("b").copy(eligibility = UpdateEligibility.NOT_MINE),
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `ownership block reason quotes the server and never invents one`() {
+        val serverSays = "这个模块由 coolapk:1 收录，只有原作者能发更新版本"
+        // 服务端有原话就原样交给界面，本地不替它编原因。
+        assertEquals(
+            serverSays,
+            ModuleUploadRules.ownershipBlockReason(
+                listOf(
+                    zip("a").copy(
+                        eligibility = UpdateEligibility.NOT_MINE,
+                        eligibilityReason = serverSays,
+                    )
+                )
+            ),
+        )
+        // 服务端没给话（纯空白也算没给）：回落本地兜底句，绝不能返回空串让界面显示一片空白。
+        val fallback = ModuleUploadRules.ownershipBlockReason(
+            listOf(zip("a").copy(eligibility = UpdateEligibility.NOT_MINE, eligibilityReason = "   "))
+        )
+        assertTrue("兜底句不能说空话", fallback.isNotBlank())
+        assertTrue("兜底句要讲清楚为什么被拦", fallback.contains("原作者"))
+        // 没有归属问题时不该有理由 —— 界面据此决定这一行显示不显示。
+        assertEquals("", ModuleUploadRules.ownershipBlockReason(listOf(zip("a"))))
+        // MINE 即使带着一句残留的原话，也不该被界面当成「被拦」的理由。
+        assertEquals(
+            "",
+            ModuleUploadRules.ownershipBlockReason(
+                listOf(zip("a").copy(eligibility = UpdateEligibility.MINE, eligibilityReason = serverSays))
+            ),
+        )
     }
 
     // ── 杂项 ────────────────────────────────────────────────────────────────

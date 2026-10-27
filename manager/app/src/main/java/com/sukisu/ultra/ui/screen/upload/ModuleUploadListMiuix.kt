@@ -42,6 +42,8 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.MineModule
+import com.sukisu.ultra.ui.util.UpdateEligibility
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -82,6 +84,10 @@ fun ModuleUploadListMiuix(
     onUseArchived: (UploadRow) -> Unit,
     onPickZip: () -> Unit,
     onOpenArchiveSettings: () -> Unit,
+    /** 「我的模块」：服务端 `GET /mine` 的结果，与主列表共用同一套状态机。 */
+    mine: MineState,
+    /** 为「我的模块」的某一行挑包；与主列表共用同一个单行 SAF 启动器与同一道闸门。 */
+    onPickForMine: (MineModule) -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     val enableBlur = LocalEnableBlur.current
@@ -250,6 +256,17 @@ fun ModuleUploadListMiuix(
                 }
             }
 
+            // 「我的模块」紧跟挑包入口：两块是同一件事的两半——手里有 zip 就从上面进，
+            // 只是给已收录的模块发新版本就点下面这一行，挑完包带着模块 id 直接进表单。
+            item {
+                MineSectionMiuix(
+                    mine = mine,
+                    picking = state.pickingFor != null,
+                    pickingId = state.pickingFor,
+                    onPick = onPickForMine,
+                )
+            }
+
             if (visible.isEmpty()) {
                 item {
                     Text(
@@ -285,6 +302,129 @@ fun ModuleUploadListMiuix(
 
             item {
                 Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+/**
+ * 「我的模块」：已经收录的模块 + 一键发新版本（与 Material 那份同一份状态、同一道闸门）。
+ *
+ * 投稿的主路径其实是这一块：用户手里通常只剩新版 zip，早年的包早丢了；从这里挑包会带着
+ * 模块 id 回表单，服务端不必再人工核对「这个包是谁的版本」。
+ */
+@Composable
+private fun MineSectionMiuix(
+    mine: MineState,
+    /** 有任意一行正在挑包（全局闸门生效中）。 */
+    picking: Boolean,
+    /** 正在挑包的那一行（模块 id）；与主列表共用同一道闸门。 */
+    pickingId: String?,
+    onPick: (MineModule) -> Unit,
+) {
+    // 常态提示按状态取，一次只显示一句；message 那类一次性补充说明由外层用 Toast 消化，
+    // 不在这里重复。顺序即优先级：先答「能不能用」，再答「为什么是空的」。
+    val status = when {
+        mine.loading -> R.string.module_upload_mine_loading
+        mine.needVerify -> R.string.module_upload_mine_need_verify
+        mine.failed -> R.string.module_upload_mine_failed
+        // 降级时服务端也回空列表，但语义是「索引读不到」。说成「你没投过」会让人重投一遍。
+        mine.degraded -> R.string.module_upload_mine_degraded
+        mine.modules.isEmpty() -> R.string.module_upload_mine_empty
+        else -> null
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 20.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.module_upload_mine_entry_title),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = colorScheme.primary,
+        )
+        Text(
+            modifier = Modifier.padding(top = 2.dp),
+            text = stringResource(R.string.module_upload_mine_entry_summary),
+            fontSize = 12.sp,
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+        if (status != null) {
+            Row(
+                modifier = Modifier.padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (mine.loading) {
+                    CircularProgressIndicator(progress = null, size = 14.dp, strokeWidth = 2.dp)
+                }
+                Text(
+                    text = stringResource(status),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+            }
+        }
+        // 失败或降级时手上可能还有一份旧名单：留着比清空好，上面那句提示已经说明它没过期。
+        mine.modules.forEach { module ->
+            MineRowMiuix(
+                module = module,
+                picking = picking,
+                pickingThis = pickingId == module.id,
+                onPick = { onPick(module) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun MineRowMiuix(
+    module: MineModule,
+    /** 有任意一行正在挑包：其余行的按钮一起禁掉（闸门本来就是全局的）。 */
+    picking: Boolean,
+    /** 正在挑的就是这一行。 */
+    pickingThis: Boolean,
+    onPick: () -> Unit,
+) {
+    // 整卡不可点：挑包要弹系统选择器，整行都能触发的话误触成本太高。
+    Card(
+        modifier = Modifier
+            .padding(top = 8.dp)
+            .fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = module.name.ifBlank { module.id },
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    // 索引里 name 可能是空的（老条目），id 一定在；版本号缺了就只留 id。
+                    text = if (module.version.isBlank()) module.id else "${module.id}, ${module.version}",
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (pickingThis) {
+                // 与主列表同一件事：系统选择器回来之前要有反馈，否则用户会以为没点上。
+                CircularProgressIndicator(progress = null, size = 16.dp, strokeWidth = 2.dp)
+            } else {
+                TextButton(
+                    text = stringResource(R.string.module_upload_mine_update),
+                    onClick = onPick,
+                    enabled = !picking,
+                )
             }
         }
     }
@@ -380,6 +520,23 @@ private fun UploadRowCardMiuix(
                 if (!row.enabled) TagMiuix(stringResource(R.string.module_upload_tag_disabled))
                 if (row.remove) TagMiuix(stringResource(R.string.module_upload_tag_remove))
                 if (row.metamodule) TagMiuix(stringResource(R.string.module_upload_tag_metamodule))
+                // UNKNOWN 是「没问出来」（没核实 UID、服务端没开归属判定、网络不通），
+                // 画个牌子等于把一次没问到的事变成用户要自己判断的事，所以不画。
+                when (row.eligibility) {
+                    UpdateEligibility.MINE -> TagMiuix(
+                        stringResource(R.string.module_upload_ownership_mine),
+                        background = colorScheme.primaryContainer,
+                        content = colorScheme.onPrimaryContainer,
+                    )
+
+                    UpdateEligibility.NOT_MINE -> TagMiuix(
+                        stringResource(R.string.module_upload_ownership_not_mine),
+                        background = colorScheme.errorContainer,
+                        content = colorScheme.onErrorContainer,
+                    )
+
+                    UpdateEligibility.UNKNOWN -> Unit
+                }
             }
 
             if (expanded) {
@@ -395,6 +552,24 @@ private fun UploadRowCardMiuix(
                     fontSize = 12.sp,
                     color = colorScheme.onSurfaceVariantSummary,
                 )
+                // 归属那一格单独补一句解释：牌子只写「你的模块 / 别人的模块」，
+                // 展开的人想知道的是「所以这一版我还能不能发」。UNKNOWN 不说话。
+                val ownershipSummary = when (row.eligibility) {
+                    UpdateEligibility.MINE -> R.string.module_upload_ownership_mine_summary
+                    UpdateEligibility.NOT_MINE -> R.string.module_upload_ownership_not_mine_summary
+                    UpdateEligibility.UNKNOWN -> null
+                }
+                if (ownershipSummary != null) {
+                    Text(
+                        text = stringResource(ownershipSummary),
+                        fontSize = 12.sp,
+                        color = if (row.eligibility == UpdateEligibility.NOT_MINE) {
+                            colorScheme.error
+                        } else {
+                            colorScheme.onSurfaceVariantSummary
+                        },
+                    )
+                }
                 if (row.description.isNotBlank()) {
                     Text(
                         text = row.description,
@@ -478,14 +653,19 @@ private fun StatusPill(status: CheckStatus?, checking: Boolean) {
 }
 
 @Composable
-private fun TagMiuix(text: String) {
+private fun TagMiuix(
+    text: String,
+    /** 底色为 null 时用表面色：多数标签是中性信息，只有归属这类要分对错的才给彩色。 */
+    background: Color? = null,
+    content: Color? = null,
+) {
     Text(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(colorScheme.surfaceContainer)
+            .background(background ?: colorScheme.surfaceContainer)
             .padding(horizontal = 6.dp, vertical = 2.dp),
         text = text,
         fontSize = 10.sp,
-        color = colorScheme.onSurfaceVariantSummary,
+        color = content ?: colorScheme.onSurfaceVariantSummary,
     )
 }

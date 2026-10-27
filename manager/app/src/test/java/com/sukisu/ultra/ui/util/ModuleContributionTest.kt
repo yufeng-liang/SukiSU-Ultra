@@ -14,13 +14,13 @@ import org.junit.Test
  *
  * MockWebServer 不在 testImplementation 里（libs.versions.toml 没有 mockwebserver，
  * 且契约不让改 build.gradle.kts），所以这里测的是**从 HTTP 响应到结果的这一段纯函数**：
- * 通过反射调用私有的 readStatus / readSubmitResult / describe，喂进去构造好的
+ * 通过反射调用私有的 readAnswer / readSubmitResult / describe，喂进去构造好的
  * Response 与异常。真正走 socket 的那部分留给真机/集成验证。
  */
 class ModuleContributionTest {
 
-    private val readStatus = ModuleContribution::class.java
-        .getDeclaredMethod("readStatus", okhttp3.Response::class.java)
+    private val readAnswer = ModuleContribution::class.java
+        .getDeclaredMethod("readAnswer", okhttp3.Response::class.java)
         .apply { isAccessible = true }
 
     private val readSubmitResult = ModuleContribution::class.java
@@ -48,8 +48,12 @@ class ModuleContributionTest {
             .build()
     }
 
+    /** 只要状态时从完整答案里取那一位：解析只有一处，不给它长第二条分支。 */
     private fun statusOf(code: Int, bodyText: String): CheckStatus =
-        readStatus.invoke(ModuleContribution, response(code, bodyText)) as CheckStatus
+        answerOf(code, bodyText).status
+
+    private fun answerOf(code: Int, bodyText: String): CheckAnswer =
+        readAnswer.invoke(ModuleContribution, response(code, bodyText)) as CheckAnswer
 
     private fun submitOf(code: Int, bodyText: String): SubmitResult =
         readSubmitResult.invoke(ModuleContribution, response(code, bodyText)) as SubmitResult
@@ -344,6 +348,79 @@ class ModuleContributionTest {
     }
 
     @Test
+    fun `a uid is escaped like an id so it cannot inject a parameter`() {
+        // uid 是用户手输 / 从签名里读来的自由文本，服务端拿它算「这一版归不归你」。
+        // 拼接不过滤 = 谁都能把「不是你的」查成「是你的」，所以它必须走同一个转义器。
+        val url = ModuleContribution.checkUrl("awesome_module", 7, "1&uid=2&update_eligible=true")
+        // 钉真正的性质：整个查询串只有 id / versionCode / uid 三个参数。
+        // 数 `&` 比数某个词可靠 —— 注入成功后 `update_eligible=true` 里的词面仍在，
+        // 只是多出一个参数，按词面断言会漏判。
+        assertEquals("uid 后面不能再多出参数：$url", 3, url.split("&").size)
+        assertEquals("只能有一个 uid", 1, Regex("uid=").findAll(url).count())
+        assertFalse("原始 & 不该出现在查询串里：$url", url.contains("&update_eligible="))
+        assertTrue(url, url.contains("%26"))
+    }
+
+    @Test
+    fun `an empty uid is left out of the url entirely`() {
+        // 空 uid 不下发这个键：服务端把空串当「没给」，但请求里明写着 uid= 会诱使
+        // 下一个人以为「已经带上 uid 了，归属判不出来是服务端的问题」。
+        val url = ModuleContribution.checkUrl("awesome_module", 7)
+        assertFalse("没给 uid 就不该出现这个键：$url", url.contains("uid="))
+        assertFalse(ModuleContribution.checkUrl("awesome_module", 7, "   ").contains("uid="))
+    }
+
+    @Test
+    fun `update eligible is three states and null never becomes not mine`() {
+        // 这是整个归属闸的地基：把 JSON null / 键缺失误判成 false，就等于把「不知道」
+        // 当成「不是你的」，索引抖一下谁都提交不了；反过来把 false 读成 null，
+        // 一个本该拦住的「替别人发更新」会被放过去。
+        assertEquals(
+            UpdateEligibility.MINE,
+            answerOf(200, """{"status":"version_update","update_eligible":true}""").eligibility,
+        )
+        assertEquals(
+            UpdateEligibility.NOT_MINE,
+            answerOf(200, """{"status":"version_update","update_eligible":false}""").eligibility,
+        )
+        assertEquals(
+            UpdateEligibility.UNKNOWN,
+            answerOf(200, """{"status":"version_update","update_eligible":null}""").eligibility,
+        )
+        // 老 Worker 根本不回这一格：同样是「不知道」。
+        assertEquals(
+            UpdateEligibility.UNKNOWN,
+            answerOf(200, """{"status":"new"}""").eligibility,
+        )
+        // 字符串 "true" 之类的手艺不猜。
+        assertEquals(
+            UpdateEligibility.UNKNOWN,
+            answerOf(200, """{"status":"version_update","update_eligible":"true"}""").eligibility,
+        )
+        // 应答整个读不出来时，两个字段一起退回默认（status 未知、归属未知），
+        // 不会出现「状态是新的、归属却说不是你的」这种自相矛盾的半截答案。
+        assertEquals(CheckAnswer.UNKNOWN, answerOf(200, "not json"))
+        assertEquals(CheckAnswer.UNKNOWN, answerOf(503, """{"status":"new","update_eligible":false}"""))
+    }
+
+    @Test
+    fun `only not mine blocks submit and the reason is the servers own words`() {
+        // blocksSubmit 是闸门的唯一判据，UNKNOWN 一定不能拦（它表示「不知道」）。
+        assertTrue(UpdateEligibility.NOT_MINE.blocksSubmit)
+        assertFalse(UpdateEligibility.MINE.blocksSubmit)
+        assertFalse(UpdateEligibility.UNKNOWN.blocksSubmit)
+
+        // reason 原样透传，供界面直接显示 —— 本地不替服务端改写原因。
+        val answered = answerOf(
+            200,
+            """{"status":"version_update","update_eligible":false,"reason":"这个模块由别人先收录"}""",
+        )
+        assertEquals("这个模块由别人先收录", answered.reason)
+        // 服务端没给理由时是空串，由界面决定兜底文案；这里不编一个。
+        assertEquals("", answerOf(200, """{"status":"new"}""").reason)
+    }
+
+    @Test
     fun `a rejected id never reaches the network`() {
         // 白名单之外的 id 一律按 UNKNOWN 处理，不发起请求：
         // UNKNOWN 的语义就是"没问出来"，静默，绝不会被当成 NEW 去弹分享提示。
@@ -360,10 +437,13 @@ class ModuleContributionTest {
      * 所以用耗时来区分：DNS 解析失败要走几百毫秒以上，直接 return 是瞬时的。
      */
     private fun checkRecorded(id: String, versionCode: Int): CheckStatus {
+        // 签名里多了一个 uid（归属判定要用），这里显式传空串：本组用例只关心「id 不合格
+        // 就不该发请求」，不关心归属。
         val method = ModuleContribution::class.java.getDeclaredMethod(
             "checkRecorded",
             String::class.java,
             Int::class.javaPrimitiveType,
+            String::class.java,
             kotlin.coroutines.Continuation::class.java,
         ).apply { isAccessible = true }
         val started = System.nanoTime()
@@ -371,13 +451,14 @@ class ModuleContributionTest {
             ModuleContribution,
             id,
             versionCode,
+            "",
             DirectContinuation,
-        ) as? CheckStatus
+        ) as? CheckAnswer
         val elapsedMs = (System.nanoTime() - started) / 1_000_000L
         if (result == null) return CheckStatus.UNKNOWN
         // 被白名单挡掉的一定是瞬时的；真发过请求的不会比它更快。
         assertTrue("这个 id 不该发起网络请求（耗时 ${elapsedMs}ms）", elapsedMs < 5_000L)
-        return result
+        return result.status
     }
 
     private object DirectContinuation : kotlin.coroutines.Continuation<Any?> {
