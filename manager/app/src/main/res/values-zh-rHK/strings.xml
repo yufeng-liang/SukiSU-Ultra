@@ -377,7 +377,7 @@
     <string name="module_upload_mine_entry_summary">你投稿過的模組，發新版本不用再找包</string>
     <string name="module_upload_mine_empty">你還沒有投稿過模組</string>
     <string name="module_upload_mine_degraded">索引暫時讀不到，這裡只列已記下的投稿。</string>
-    <string name="module_upload_mine_need_verify">需要先驗證酷安帳號</string>
+    <string name="module_upload_mine_need_verify">需要先驗證酷安帳號 —— 揀一枚 zip 就會進到表單</string>
     <string name="module_upload_mine_failed">列表拉不下來，請重試。</string>
     <string name="module_upload_mine_loading">正在載入…</string>
     <string name="module_upload_mine_update">發新版本</string>

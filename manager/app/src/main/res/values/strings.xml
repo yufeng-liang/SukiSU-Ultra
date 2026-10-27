@@ -1146,7 +1146,7 @@
     <string name="module_upload_mine_entry_summary">Modules you have uploaded. Publishing a new version does not need the file again.</string>
     <string name="module_upload_mine_empty">You have not uploaded any module yet</string>
     <string name="module_upload_mine_degraded">The index cannot be read right now. Only the submissions already recorded are listed.</string>
-    <string name="module_upload_mine_need_verify">Verify your Coolapk account first</string>
+    <string name="module_upload_mine_need_verify">Verify your Coolapk account first — pick a zip to open the form</string>
     <string name="module_upload_mine_failed">Could not load the list. Please try again.</string>
     <string name="module_upload_mine_loading">Loading…</string>
     <string name="module_upload_mine_update">New version</string>

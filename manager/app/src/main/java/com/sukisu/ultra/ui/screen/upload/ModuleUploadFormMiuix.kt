@@ -169,8 +169,6 @@ fun ModuleUploadFormMiuix(
                 BatchSummaryMiuix(
                     state = state,
                     canSubmit = canSubmit,
-                    blockers = blockers,
-                    ownershipBlock = ownershipBlock,
                 )
             }
 
@@ -395,15 +393,12 @@ private fun remainingBlockersMiuix(
     return count
 }
 
-/** 顶部汇总：几枚、多大、能不能传 —— 一进屏就知道，不用滚到底。 */
+/** 顶部汇总：几枚、多大 —— 一进屏就知道这一批装了什么，不用滚到底。能不能传由底部提交栏说。 */
 @Composable
 private fun BatchSummaryMiuix(
     state: ModuleUploadFormState,
     canSubmit: Boolean,
-    blockers: Int,
-    ownershipBlock: String,
 ) {
-    val accent = if (canSubmit) colorScheme.primary else colorScheme.onSurfaceVariantSummary
     Card(
         modifier = Modifier
             .padding(top = 16.dp)
@@ -435,8 +430,7 @@ private fun BatchSummaryMiuix(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                // 数量与总量是同一条带格式的文案（不许新造字符串），整行按 titleMedium 立起来，
-                // 和下面那行小字提示差两级 —— 原来 15sp / 12sp 只差一级，两行读起来一样重。
+                // 数量与总量是同一条带格式的文案（不许新造字符串），整行按 16sp SemiBold 立起来。
                 Text(
                     text = stringResource(
                         R.string.module_upload_summary_count,
@@ -446,13 +440,8 @@ private fun BatchSummaryMiuix(
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(
-                    text = submitHint(canSubmit, blockers, ownershipBlock),
-                    fontSize = 12.sp,
-                    color = if (ownershipBlock.isNotEmpty()) colorScheme.error else accent,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // 这里原有一行 submitHint(...)，和底部常驻提交栏那行是同一句。提交栏钉在屏底、
+                // 从不离开视野，顶部再复读一遍只是噪音 —— 「为什么还不能传」只在按钮旁边说一次。
             }
         }
     }
@@ -985,7 +974,11 @@ private fun SectionLabelMiuix(icon: ImageVector, text: String) {
 /** 一行 `标签 / 取值`：标签列定宽，取值从同一条竖线起。 */
 @Composable
 private fun InfoLineMiuix(label: String, value: String, mono: Boolean = false) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+    // 同 Material 侧：76dp 标签列在英文下会被占满，没有间距时标签与取值会糊成一串。
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Text(
             modifier = Modifier.width(76.dp),
             text = label,

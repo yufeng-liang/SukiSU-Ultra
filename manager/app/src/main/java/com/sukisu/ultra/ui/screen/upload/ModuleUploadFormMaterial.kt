@@ -140,8 +140,6 @@ fun ModuleUploadFormMaterial(
                 BatchSummaryMaterial(
                     state = state,
                     canSubmit = canSubmit,
-                    blockers = blockers,
-                    ownershipBlock = ownershipBlock,
                 )
             }
 
@@ -369,13 +367,11 @@ private fun remainingBlockers(
     return count
 }
 
-/** 顶部汇总：几枚、多大、能不能传 —— 一进屏就知道，不用滚到底。 */
+/** 顶部汇总：几枚、多大 —— 一进屏就知道这一批装了什么，不用滚到底。能不能传由底部提交栏说。 */
 @Composable
 private fun BatchSummaryMaterial(
     state: ModuleUploadFormState,
     canSubmit: Boolean,
-    blockers: Int,
-    ownershipBlock: String,
 ) {
     val accent = if (canSubmit) {
         MaterialTheme.colorScheme.primary
@@ -425,15 +421,8 @@ private fun BatchSummaryMaterial(
                         )
                     }
                 }
-                Text(
-                    text = submitHint(canSubmit, blockers, ownershipBlock),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (ownershipBlock.isNotEmpty()) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        accent
-                    },
-                )
+                // 这里原有一行 submitHint(...)，和底部常驻提交栏那行是同一句。提交栏钉在屏底、
+                // 从不离开视野，顶部再复读一遍只是噪音 —— 「为什么还不能传」只在按钮旁边说一次。
             }
         }
     }
@@ -980,7 +969,12 @@ private fun InfoLineMaterial(
     mono: Boolean = false,
     compact: Boolean = false,
 ) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+    // 标签与取值之间必须留一道缝：76dp 的标签列在英文下会被 "Module name" 占满，
+    // 没有间距时渲染成 "Module nameQA Demo Module"，两个字段糊成一串。
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Text(
             modifier = Modifier.width(76.dp),
             text = label,

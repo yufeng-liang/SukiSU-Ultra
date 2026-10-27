@@ -1132,7 +1132,7 @@
     <string name="module_upload_mine_entry_summary">你投稿过的模块，发新版本不用再找包</string>
     <string name="module_upload_mine_empty">你还没有投稿过模块</string>
     <string name="module_upload_mine_degraded">索引暂时读不到，这里只列已记下的投稿。</string>
-    <string name="module_upload_mine_need_verify">需要先验证酷安账号</string>
+    <string name="module_upload_mine_need_verify">需要先验证酷安账号 —— 挑一枚 zip 就会进到表单</string>
     <string name="module_upload_mine_failed">列表拉不下来，请重试。</string>
     <string name="module_upload_mine_loading">正在加载…</string>
     <string name="module_upload_mine_update">发新版本</string>
