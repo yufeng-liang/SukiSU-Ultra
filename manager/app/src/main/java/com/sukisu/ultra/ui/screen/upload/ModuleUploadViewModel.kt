@@ -162,6 +162,10 @@ class ModuleUploadViewModel(
             )
         }
         loadModules(thenCheck = true, refreshing = true)
+        // 顶栏那个刷新按钮对整屏负责，不只对「已装模块」负责：同一屏上还摆着
+        // 「我的模块」，用户点完刷新看见那一块纹丝不动，只会以为刷新没生效。
+        // 两件事互不依赖（一个是本地扫描、一个是带令牌的 GET /mine），并行发即可。
+        refreshMine()
     }
 
     fun setFilter(filter: ModuleUploadRules.Filter) {

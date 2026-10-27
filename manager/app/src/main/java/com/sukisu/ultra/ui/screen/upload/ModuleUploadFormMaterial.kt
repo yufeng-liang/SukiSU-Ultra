@@ -30,6 +30,8 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,14 +50,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
@@ -157,19 +163,28 @@ fun ModuleUploadFormMaterial(
                     }
                     val index = state.items.indexOfFirst { it.path == state.selectedPath }
                     if (state.items.size > 1) {
-                        Text(
+                        // 「现在编辑的是第几枚」做成一行状态条：单独一条、压成小字，
+                        // 不与墙里的包名挤在一起，也不抢标题的位置。
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp),
-                            text = stringResource(
-                                R.string.module_upload_wall_editing,
-                                if (index >= 0) index + 1 else 1,
-                                state.items.size,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
+                                .padding(top = 10.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.module_upload_wall_editing,
+                                    if (index >= 0) index + 1 else 1,
+                                    state.items.size,
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 }
             }
@@ -191,7 +206,7 @@ fun ModuleUploadFormMaterial(
             item {
                 TonalCard(
                     modifier = Modifier
-                        .padding(top = 12.dp)
+                        .padding(top = 20.dp)
                         .fillMaxWidth(),
                 ) {
                     Column(
@@ -248,7 +263,7 @@ fun ModuleUploadFormMaterial(
             item {
                 TonalCard(
                     modifier = Modifier
-                        .padding(top = 12.dp)
+                        .padding(top = 20.dp)
                         .fillMaxWidth(),
                 ) {
                     // 整行可点：勾选框在左上、文字占三行时，只点那个小方块太窄。
@@ -386,15 +401,30 @@ private fun BatchSummaryMaterial(
                 tint = accent,
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(
-                        R.string.module_upload_summary_count,
-                        state.items.size,
-                        ModuleUploadRules.formatBytes(state.totalBytes),
-                    ),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                // 数量与总量拆成两级字重：数量是「这一批有几枚」，一进屏就要看到；总量只是附带。
+                // 资源串里两段用「 · 」连接（四套语言都是这个分隔符），拆不开就整句按一个重量
+                // 输出——不为了排版去猜别的语言用什么分隔符。
+                val summary = stringResource(
+                    R.string.module_upload_summary_count,
+                    state.items.size,
+                    ModuleUploadRules.formatBytes(state.totalBytes),
                 )
+                val parts = summary.split(" · ", limit = 2)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = parts[0],
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (parts.size == 2) {
+                        Text(
+                            modifier = Modifier.padding(start = 6.dp, bottom = 2.dp),
+                            text = parts[1],
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 Text(
                     text = submitHint(canSubmit, blockers, ownershipBlock),
                     style = MaterialTheme.typography.bodySmall,
@@ -435,9 +465,15 @@ private fun SubmitBarMaterial(
                 style = MaterialTheme.typography.bodySmall,
                 color = when {
                     ownershipBlock.isNotEmpty() -> MaterialTheme.colorScheme.error
+                    // 「还差 N 项」也是「现在传不了」，与归属被拦同一个观感：
+                    // 一律错误色，但不加红底块——这两句话本身已经够长，再垫一块红就成了警告横幅。
+                    !canSubmit && blockers > 0 -> MaterialTheme.colorScheme.error
                     canSubmit -> MaterialTheme.colorScheme.primary
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
+                // 提示最多两行：长文案再往下长，就会把提交按钮挤出屏幕。
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Button(
                 modifier = Modifier.height(48.dp),
@@ -469,8 +505,8 @@ private fun SubmitBarMaterial(
 @Composable
 private fun OutcomeMaterial(state: ModuleUploadFormState) {
     Column(
-        modifier = Modifier.padding(top = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.padding(top = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (state.submitting) {
             Row(
@@ -497,28 +533,82 @@ private fun OutcomeMaterial(state: ModuleUploadFormState) {
         }
 
         when (val outcome = state.outcome) {
-            is UploadOutcome.Failure -> Text(
-                text = outcome.message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
+            // 结果是一屏里唯一的「结论」，值得一块底色：只靠一行彩色小字说，
+            // 滚动时很容易被当成又一条说明文字。
+            is UploadOutcome.Failure -> OutcomeCardMaterial(
+                container = MaterialTheme.colorScheme.errorContainer,
+                content = MaterialTheme.colorScheme.onErrorContainer,
+                icon = Icons.Rounded.Warning,
+                title = outcome.message,
             )
 
-            is UploadOutcome.Success -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            is UploadOutcome.Success -> OutcomeCardMaterial(
+                container = MaterialTheme.colorScheme.primaryContainer,
+                content = MaterialTheme.colorScheme.onPrimaryContainer,
+                icon = Icons.Rounded.CheckCircle,
+                title = outcome.message,
+                prUrl = outcome.prUrl,
+            )
+
+            null -> Unit
+        }
+    }
+}
+
+/**
+ * 结果卡：图标与标题左对齐（不居中），PR 链接单独一行。
+ *
+ * 链接给的是「能点开」的样子：主色 + 下划线。点开走系统浏览器；没有能接的应用时
+ * 静默忽略 —— 一条结果链接不该把整屏崩掉。
+ */
+@Composable
+private fun OutcomeCardMaterial(
+    container: Color,
+    content: Color,
+    icon: ImageVector,
+    title: String,
+    prUrl: String? = null,
+) {
+    val uriHandler = LocalUriHandler.current
+    Surface(
+        color = container,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                modifier = Modifier.size(20.dp),
+                imageVector = icon,
+                contentDescription = null,
+                tint = content,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(
-                    text = outcome.message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = content,
                 )
-                outcome.prUrl?.let { url ->
+                if (prUrl != null) {
                     Text(
-                        text = stringResource(R.string.module_upload_result_pr, url),
-                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.clickable {
+                            runCatching { uriHandler.openUri(prUrl) }
+                        },
+                        text = stringResource(R.string.module_upload_result_pr, prUrl),
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
                     )
                 }
             }
-
-            null -> Unit
         }
     }
 }
@@ -534,7 +624,7 @@ private fun UploadZipCardMaterial(
     val problem = ModuleUploadRules.sourceProblem(item.source)
     TonalCard(
         modifier = Modifier
-            .padding(top = 12.dp)
+            .padding(top = 20.dp)
             .fillMaxWidth(),
     ) {
         Column(
@@ -544,8 +634,10 @@ private fun UploadZipCardMaterial(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     modifier = Modifier.weight(1f),
+                    // 包名压回 titleSmall：这一屏的主标题是顶栏与上面那句「几枚」，
+                    // 单个包名不该与它们同重；删除按钮跟在它同一行右侧。
                     text = item.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -572,6 +664,7 @@ private fun UploadZipCardMaterial(
                 InfoLineMaterial(
                     stringResource(R.string.module_contribution_version),
                     "${item.version} (${item.versionCode})",
+                    compact = true,
                 )
                 InfoLineMaterial(stringResource(R.string.module_contribution_name), item.name)
                 if (item.author.isNotBlank()) {
@@ -586,8 +679,14 @@ private fun UploadZipCardMaterial(
                 InfoLineMaterial(
                     stringResource(R.string.module_upload_size),
                     ModuleUploadRules.formatBytes(item.sizeBytes),
+                    compact = true,
                 )
-                InfoLineMaterial(stringResource(R.string.module_upload_sha), item.sha256, mono = true)
+                InfoLineMaterial(
+                    stringResource(R.string.module_upload_sha),
+                    item.sha256,
+                    mono = true,
+                    compact = true,
+                )
                 if (item.checking) {
                     Text(
                         modifier = Modifier.padding(top = 4.dp),
@@ -597,15 +696,19 @@ private fun UploadZipCardMaterial(
                     )
                 } else if (item.status != null) {
                     val copy = ModuleUploadRules.statusCopy(item.status)
+                    // 状态是叙述不是报错：「已收录」只说这一版仓库里已经有了，列表屏同一个
+                    // 状态也是中立色。真正拦住提交的原因由提交栏那行错误色去说，这里再红
+                    // 一次就成了「两处都在喊」，反而分不出哪句才是不能提交的理由。
                     Text(
                         modifier = Modifier.padding(top = 4.dp),
-                        text = stringResource(copy.title) + " · " + stringResource(copy.summary),
+                        text = stringResource(copy.title),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (item.status == com.sukisu.ultra.ui.util.CheckStatus.RECORDED) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = stringResource(copy.summary),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -661,7 +764,7 @@ private fun ProofSectionMaterial(
     val proof = state.proof
     TonalCard(
         modifier = Modifier
-            .padding(top = 12.dp)
+            .padding(top = 20.dp)
             .fillMaxWidth(),
     ) {
         Column(
@@ -781,17 +884,24 @@ private fun UidStatusRowMaterial(
             }
         }
 
-        CoolapkUidState.Checking -> Text(
-            text = stringResource(
-                if (state.sessionChecking) {
-                    R.string.module_upload_session_checking
-                } else {
-                    R.string.module_upload_uid_checking
-                },
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // 进行中也有自己的形态（转圈 + 次级色），三态才不只是「同一行字换了颜色」。
+        CoolapkUidState.Checking -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+            Text(
+                text = stringResource(
+                    if (state.sessionChecking) {
+                        R.string.module_upload_session_checking
+                    } else {
+                        R.string.module_upload_uid_checking
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         CoolapkUidState.NotFound -> Text(
             text = stringResource(R.string.module_upload_uid_not_found),
@@ -857,9 +967,19 @@ private fun SectionLabelMaterial(icon: ImageVector, text: String) {
     }
 }
 
-/** 一行 `标签 / 取值`：标签列定宽，取值从同一条竖线起。 */
+/**
+ * 一行 `标签 / 取值`：标签列定宽，取值从同一条竖线起。
+ *
+ * [compact] 给「版本 / 大小 / SHA」这类附带信息用：压到 labelSmall 并转成次级色，
+ * 与包名、来源这些要看的信息拉开一档 —— 七个字段同重时，谁都不是重点。
+ */
 @Composable
-private fun InfoLineMaterial(label: String, value: String, mono: Boolean = false) {
+private fun InfoLineMaterial(
+    label: String,
+    value: String,
+    mono: Boolean = false,
+    compact: Boolean = false,
+) {
     Row(modifier = Modifier.fillMaxWidth()) {
         Text(
             modifier = Modifier.width(76.dp),
@@ -872,7 +992,16 @@ private fun InfoLineMaterial(label: String, value: String, mono: Boolean = false
         Text(
             modifier = Modifier.weight(1f),
             text = value,
-            style = MaterialTheme.typography.bodySmall,
+            style = if (compact) {
+                MaterialTheme.typography.labelSmall
+            } else {
+                MaterialTheme.typography.bodySmall
+            },
+            color = if (compact) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
             fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
             maxLines = if (mono) 1 else 3,
             overflow = TextOverflow.Ellipsis,

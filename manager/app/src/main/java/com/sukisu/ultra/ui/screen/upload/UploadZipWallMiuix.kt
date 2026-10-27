@@ -1,7 +1,6 @@
 package com.sukisu.ultra.ui.screen.upload
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,25 +16,26 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.util.CheckStatus
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import kotlin.math.roundToInt
 
@@ -54,7 +55,7 @@ private val WALL_WIDTH = TILE_WIDTH * 3 + 40.dp
  *
  * 墙上不给「移除」：那是对当前枚的动作，放在下面详情卡上，避免小图标上再挤一个按钮。
  *
- * 一枚都没有时照样画墙，只画末尾那个「添加」空位 —— 它是全页唯一的加包入口，
+ * 一枚都没有时只画那个「添加」空位并居中 —— 它是全页唯一的加包入口，
  * 墙一旦整体不渲染，删掉最后一枚就把自己关在了外面。
  */
 @Composable
@@ -77,23 +78,36 @@ fun UploadZipWallMiuix(
         // 靠近两端时列表没那么多余量，系统会贴边停下，不会抛。
         listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx.roundToInt())
     }
-    LazyRow(
-        state = listState,
-        modifier = Modifier.width(WALL_WIDTH),
-        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        items(items.size, key = { items[it].path }) { index ->
-            val item = items[index]
-            ZipTileMiuix(
-                item = item,
-                selected = item.path == selectedPath,
-                enabled = enabled,
-                onClick = { onSelect(item.path) },
-            )
-        }
-        item {
+    if (items.isEmpty()) {
+        // 一枚都没有时墙只剩末尾那个「添加」空位：它是全页唯一的加包入口，
+        // 墙一旦整体不渲染，删掉最后一枚就把自己关在了外面。
+        // 单枚时也不再塞进 LazyRow 的左端 —— 居中摆出来的空位才读得出「这里可以加一包」。
+        Row(
+            modifier = Modifier.width(WALL_WIDTH),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             AddTileMiuix(enabled = enabled, onClick = onPickMore)
+        }
+    } else {
+        LazyRow(
+            state = listState,
+            modifier = Modifier.width(WALL_WIDTH),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(items.size, key = { items[it].path }) { index ->
+                val item = items[index]
+                ZipTileMiuix(
+                    item = item,
+                    selected = item.path == selectedPath,
+                    enabled = enabled,
+                    onClick = { onSelect(item.path) },
+                )
+            }
+            item {
+                AddTileMiuix(enabled = enabled, onClick = onPickMore)
+            }
         }
     }
 }
@@ -136,13 +150,11 @@ private fun ZipTileMiuix(
                     .background(colorScheme.surfaceContainer),
                 contentAlignment = Alignment.Center,
             ) {
-                Image(
-                    imageVector = Icons.Rounded.FolderZip,
+                Icon(
+                    imageVector = MiuixIcons.File,
                     contentDescription = null,
-                    colorFilter = ColorFilter.tint(
-                        if (selected) colorScheme.primary else colorScheme.onSurfaceVariantSummary,
-                    ),
                     modifier = Modifier.size(26.dp),
+                    tint = if (selected) colorScheme.primary else colorScheme.onSurfaceVariantSummary,
                 )
             }
             ZipBadgeMiuix(
@@ -153,8 +165,12 @@ private fun ZipTileMiuix(
         Text(
             text = item.name.ifBlank { item.id },
             fontSize = 11.sp,
+            // 未选中的枚整体已经压到六成不透明，名字再退一档次要色，
+            // 视线自然落在中间那张上，不必靠加粗去抢。
+            color = if (selected) colorScheme.onSurface else colorScheme.onSurfaceVariantSummary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -205,18 +221,20 @@ private fun AddTileMiuix(enabled: Boolean, onClick: () -> Unit) {
                 .clip(RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Image(
-                imageVector = Icons.Rounded.Add,
+            Icon(
+                imageVector = MiuixIcons.Add,
                 contentDescription = null,
-                colorFilter = ColorFilter.tint(colorScheme.onSurfaceVariantSummary),
                 modifier = Modifier.size(22.dp),
+                tint = colorScheme.onSurfaceVariantSummary,
             )
         }
         Text(
             text = stringResource(R.string.module_upload_wall_add),
             fontSize = 11.sp,
+            color = colorScheme.onSurfaceVariantSummary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
     }
 }

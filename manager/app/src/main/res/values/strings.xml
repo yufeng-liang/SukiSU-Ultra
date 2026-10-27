@@ -1088,13 +1088,18 @@
     <string name="module_upload_filter_recorded">Listed</string>
     <string name="module_upload_filter_unknown">Unknown</string>
     <string name="module_upload_search_hint">Search modules</string>
+    <string name="module_upload_search_clear">Clear search</string>
     <string name="module_upload_refresh">Refresh</string>
     <string name="module_upload_continue_check">Check more</string>
 
-    <string name="module_upload_check_progress">Checked %1$d, %2$d left</string>
+    <string name="module_upload_progress_checked">Checked %1$d of %2$d</string>
     <string name="module_upload_continue_hint">Showing the first %1$d modules</string>
+    <string name="module_upload_section_installed">Installed on this device</string>
     <string name="module_upload_empty">No installed modules</string>
     <string name="module_upload_empty_filtered">No modules match this filter</string>
+    <string name="module_upload_empty_filtered_action">Clear filter and search</string>
+    <string name="module_upload_empty_filtered_summary">Try a different filter, or clear the search word.</string>
+    <string name="module_upload_empty_summary">Refresh to scan again, or pick a zip above — uploading does not wait for this list.</string>
     <string name="module_upload_tag_disabled">Disabled</string>
     <string name="module_upload_tag_remove">Marked for removal</string>
     <string name="module_upload_tag_metamodule">META</string>

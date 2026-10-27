@@ -4,6 +4,7 @@ import android.content.ClipData
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,10 +26,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
-import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -40,11 +39,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -72,6 +73,10 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Close2
+import top.yukonga.miuix.kmp.icon.extended.File
+import top.yukonga.miuix.kmp.icon.extended.Ok
+import top.yukonga.miuix.kmp.icon.extended.UploadCloud
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -223,7 +228,7 @@ fun ModuleUploadFormMiuix(
             item {
                 Card(
                     modifier = Modifier
-                        .padding(top = 12.dp)
+                        .padding(top = 20.dp)
                         .fillMaxWidth(),
                 ) {
                     Column(
@@ -280,7 +285,7 @@ fun ModuleUploadFormMiuix(
             item {
                 Card(
                     modifier = Modifier
-                        .padding(top = 12.dp)
+                        .padding(top = 16.dp)
                         .fillMaxWidth(),
                 ) {
                     // 整行可点：勾选框在左上、文字占三行时，只点那个小方块太窄。
@@ -401,36 +406,52 @@ private fun BatchSummaryMiuix(
     val accent = if (canSubmit) colorScheme.primary else colorScheme.onSurfaceVariantSummary
     Card(
         modifier = Modifier
-            .padding(top = 12.dp)
+            .padding(top = 16.dp)
             .fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(
-                modifier = Modifier.size(20.dp),
-                imageVector = Icons.Outlined.FolderZip,
-                contentDescription = null,
-                tint = accent,
-            )
-            Column(modifier = Modifier.weight(1f)) {
+            // 图标块延用列表行卡片那套语言（圆角块 + 淡底色）：两屏之间不换视觉习惯。
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    modifier = Modifier.size(18.dp),
+                    imageVector = MiuixIcons.File,
+                    contentDescription = null,
+                    tint = colorScheme.onSecondaryContainer,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                // 数量与总量是同一条带格式的文案（不许新造字符串），整行按 titleMedium 立起来，
+                // 和下面那行小字提示差两级 —— 原来 15sp / 12sp 只差一级，两行读起来一样重。
                 Text(
                     text = stringResource(
                         R.string.module_upload_summary_count,
                         state.items.size,
                         ModuleUploadRules.formatBytes(state.totalBytes),
                     ),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = submitHint(canSubmit, blockers, ownershipBlock),
                     fontSize = 12.sp,
                     color = if (ownershipBlock.isNotEmpty()) colorScheme.error else accent,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -460,11 +481,16 @@ private fun SubmitBarMiuix(
                 modifier = Modifier.weight(1f),
                 text = submitHint(canSubmit, blockers, ownershipBlock),
                 fontSize = 12.sp,
+                // 两道闸都算「现在不能传」，都用 error 色把原因顶出来：差 N 项与归属判决
+                // 对用户是同一件事——按钮是灰的。但不给底色，这两句本来就够长。
                 color = when {
-                    ownershipBlock.isNotEmpty() -> colorScheme.error
                     canSubmit -> colorScheme.primary
+                    ownershipBlock.isNotEmpty() || blockers > 0 -> colorScheme.error
                     else -> colorScheme.onSurfaceVariantSummary
                 },
+                // 长文案最多两行：宁可截断，也不能把提交按钮挤出屏幕。
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Button(
                 modifier = Modifier.height(48.dp),
@@ -476,7 +502,7 @@ private fun SubmitBarMiuix(
                     CircularProgressIndicator(progress = null, size = 18.dp, strokeWidth = 2.dp)
                 } else {
                     Icon(
-                        imageVector = Icons.Rounded.CloudUpload,
+                        imageVector = MiuixIcons.UploadCloud,
                         contentDescription = null,
                         modifier = Modifier.padding(end = 6.dp),
                     )
@@ -490,6 +516,7 @@ private fun SubmitBarMiuix(
 /** 提交中 / 出结果后的那一段。契约没有字节回调：只报总数，不编百分比。 */
 @Composable
 private fun OutcomeMiuix(state: ModuleUploadFormState) {
+    val uriHandler = LocalUriHandler.current
     Column(
         modifier = Modifier.padding(top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -519,24 +546,80 @@ private fun OutcomeMiuix(state: ModuleUploadFormState) {
         }
 
         when (val outcome = state.outcome) {
-            is UploadOutcome.Failure -> Text(
-                text = outcome.message,
-                fontSize = 13.sp,
-                color = colorScheme.error,
-            )
-
-            is UploadOutcome.Success -> Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = outcome.message,
-                    fontSize = 13.sp,
-                    color = colorScheme.primary,
-                )
-                outcome.prUrl?.let { url ->
-                    Text(
-                        text = stringResource(R.string.module_upload_result_pr, url),
-                        fontSize = 12.sp,
-                        color = colorScheme.primary,
+            // 失败：整条铺 errorContainer 底，✗ 图标与原因左对齐。原来只是一行红字，
+            // 掉在表单最底部跟校验提示长得一模一样，分不出「哪里填错了」和「传完了」。
+            is UploadOutcome.Failure -> Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.defaultColors(color = colorScheme.errorContainer),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(18.dp),
+                        imageVector = MiuixIcons.Close2,
+                        contentDescription = null,
+                        tint = colorScheme.onErrorContainer,
                     )
+                    Text(
+                        modifier = Modifier.weight(1f),
+                        text = outcome.message,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colorScheme.onErrorContainer,
+                    )
+                }
+            }
+
+            // 成功：primaryContainer 底 + 勾，PR 链接自成一行（不再是跟在标题屁股后面的小字）。
+            is UploadOutcome.Success -> Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.defaultColors(color = colorScheme.primaryContainer),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(18.dp),
+                        imageVector = MiuixIcons.Ok,
+                        contentDescription = null,
+                        tint = colorScheme.onPrimaryContainer,
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = outcome.message,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colorScheme.onPrimaryContainer,
+                        )
+                        outcome.prUrl?.let { url ->
+                            // 能点就直接开浏览器：URL 本来就在手里，没有为此新增回调参数。
+                            Text(
+                                modifier = Modifier.clickable {
+                                    runCatching { uriHandler.openUri(url) }
+                                },
+                                text = stringResource(R.string.module_upload_result_pr, url),
+                                fontSize = 12.sp,
+                                color = colorScheme.primary,
+                                textDecoration = TextDecoration.Underline,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -556,22 +639,36 @@ private fun UploadZipCardMiuix(
     val problem = ModuleUploadRules.sourceProblem(item.source)
     Card(
         modifier = Modifier
-            .padding(top = 12.dp)
+            .padding(top = 20.dp)
             .fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // 包名一行作主（titleSmall），版本与大小降成它下面那行弱信息：
+            // 这三件事原来各占一行、字重相同，读起来像三件并列的事，其实只有一件。
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
+                Column(
                     modifier = Modifier.weight(1f),
-                    text = item.name,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = item.name,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${item.version} (${item.versionCode}) · " +
+                            ModuleUploadRules.formatBytes(item.sizeBytes),
+                        fontSize = 11.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 TextButton(
                     text = stringResource(R.string.module_upload_remove),
                     onClick = onRemove,
@@ -594,10 +691,6 @@ private fun UploadZipCardMiuix(
             ) {
                 // 标签列固定 76dp：七个字段的取值从同一条竖线起，不再参差。
                 InfoLineMiuix(stringResource(R.string.module_contribution_id), item.id)
-                InfoLineMiuix(
-                    stringResource(R.string.module_contribution_version),
-                    "${item.version} (${item.versionCode})",
-                )
                 InfoLineMiuix(stringResource(R.string.module_contribution_name), item.name)
                 if (item.author.isNotBlank()) {
                     InfoLineMiuix(stringResource(R.string.module_contribution_author), item.author)
@@ -608,10 +701,6 @@ private fun UploadZipCardMiuix(
                         item.description,
                     )
                 }
-                InfoLineMiuix(
-                    stringResource(R.string.module_upload_size),
-                    ModuleUploadRules.formatBytes(item.sizeBytes),
-                )
                 InfoLineMiuix(stringResource(R.string.module_upload_sha), item.sha256, mono = true)
                 if (item.checking) {
                     Text(
@@ -622,15 +711,19 @@ private fun UploadZipCardMiuix(
                     )
                 } else if (item.status != null) {
                     val copy = ModuleUploadRules.statusCopy(item.status)
+                    // 状态是叙述不是报错：「已收录」只说这一版仓库里已经有了，列表屏同一个
+                    // 状态也是中立色。真正拦住提交的原因由提交栏那行错误色去说，这里再红
+                    // 一次就成了「两处都在喊」，反而分不出哪句才是不能提交的理由。
                     Text(
                         modifier = Modifier.padding(top = 4.dp),
-                        text = stringResource(copy.title) + " · " + stringResource(copy.summary),
+                        text = stringResource(copy.title),
                         fontSize = 12.sp,
-                        color = if (item.status == com.sukisu.ultra.ui.util.CheckStatus.RECORDED) {
-                            colorScheme.error
-                        } else {
-                            colorScheme.onSurfaceVariantSummary
-                        },
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = stringResource(copy.summary),
+                        fontSize = 11.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
                     )
                 }
             }
@@ -688,7 +781,7 @@ private fun ProofSectionMiuix(
     val proof = state.proof
     Card(
         modifier = Modifier
-            .padding(top = 12.dp)
+            .padding(top = 20.dp)
             .fillMaxWidth(),
     ) {
         Column(

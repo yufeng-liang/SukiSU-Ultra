@@ -32,7 +32,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.util.CheckStatus
 import kotlin.math.roundToInt
@@ -148,7 +147,9 @@ private fun ZipTileMaterial(
         }
         Text(
             text = item.name.ifBlank { item.id },
-            fontSize = 11.sp,
+            // 用主题的 labelSmall（而不是写死 11sp）：墙里的包名与表单里其他小字同一档字号，
+            // 换主题或改字体缩放时跟着一起动。
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -206,7 +207,7 @@ private fun AddTileMaterial(enabled: Boolean, onClick: () -> Unit) {
         }
         Text(
             text = stringResource(R.string.module_upload_wall_add),
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.screen.upload
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,17 +17,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -40,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
@@ -140,6 +149,25 @@ fun ModuleUploadListMaterial(
                     onValueChange = onQueryChange,
                     label = { Text(stringResource(R.string.module_upload_search_hint)) },
                     singleLine = true,
+                    // 前置放大镜只是给眼睛一个「这里是搜索」的落点；输入框的 label 已经说明了用途，
+                    // 再让它被读一遍是噪音，所以 contentDescription 留空。
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = null,
+                        )
+                    },
+                    // 有字才给清除按钮：空着也挂一个叉号，会让人以为点一下能刷新。
+                    trailingIcon = {
+                        if (state.query.isNotEmpty()) {
+                            IconButton(onClick = { onQueryChange("") }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = stringResource(R.string.module_upload_search_clear),
+                                )
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .padding(top = 12.dp)
                         .fillMaxWidth(),
@@ -147,10 +175,14 @@ fun ModuleUploadListMaterial(
             }
 
             item {
-                Row(
+                // 四个筛选项在 360dp 窄屏上放不下，原来的定宽 Row 会把最后两个裁掉一半。
+                // 换横向滚动；外层列表已经留了 16dp，这里不再叠 contentPadding，
+                // 否则筛选条和上下内容的左缘对不齐。
+                LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 0.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     val labels = listOf(
@@ -159,7 +191,7 @@ fun ModuleUploadListMaterial(
                         ModuleUploadRules.Filter.RECORDED to R.string.module_upload_filter_recorded,
                         ModuleUploadRules.Filter.UNKNOWN to R.string.module_upload_filter_unknown,
                     )
-                    labels.forEach { (filter, label) ->
+                    items(labels) { (filter, label) ->
                         FilterChip(
                             selected = state.filter == filter,
                             onClick = { onFilter(filter) },
@@ -169,49 +201,18 @@ fun ModuleUploadListMaterial(
                 }
             }
 
-            item {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (state.remaining > 0) {
-                            TextButton(onClick = onContinueCheck, enabled = !state.checking) {
-                                Text(stringResource(R.string.module_upload_continue_check))
-                            }
-                        }
-                        Spacer(Modifier.weight(1f))
-                        if (state.checking) {
-                            Text(
-                                text = stringResource(R.string.module_upload_checking),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else if (checked > 0) {
-                            Text(
-                                text = stringResource(
-                                    R.string.module_upload_check_progress,
-                                    checked,
-                                    state.remaining,
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    if (state.remaining > 0) {
-                        // 一次只查 200 条；剩下的靠「继续查」，这里说清楚为什么没查完。
-                        Text(
-                            text = stringResource(
-                                R.string.module_upload_continue_hint,
-                                ModuleUploadRules.CHECK_CAP,
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            // 查重进度：原来只有一行小字，看不出「还差多少」。改成进度条 + 计数并排。
+            // 一次都没查过、也不在查（checked == 0 && !checking）时整块不占位，
+            // 否则列表顶上会永远挂着一条空白的灰条。
+            if (checked > 0 || state.checking) {
+                item {
+                    CheckProgressMaterial(
+                        checked = checked,
+                        total = state.rows.size,
+                        checking = state.checking,
+                        remaining = state.remaining,
+                        onContinue = onContinueCheck,
+                    )
                 }
             }
 
@@ -248,37 +249,42 @@ fun ModuleUploadListMaterial(
                 )
             }
 
-            if (visible.isEmpty()) {
-                item {
-                    Text(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        text = stringResource(
-                            if (state.rows.isEmpty()) {
-                                R.string.module_upload_empty
-                            } else {
-                                R.string.module_upload_empty_filtered
-                            }
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            // 第三块「已装在本机」也补上标题：三块并列成同一级的分组，
+            // 而不是「两块有标题 + 一堆平铺卡片」。
+            item {
+                SectionHeaderMaterial(
+                    modifier = Modifier.padding(top = 20.dp),
+                    text = stringResource(R.string.module_upload_section_installed),
+                )
             }
 
-            items(visible, key = { it.id }) { row ->
-                UploadRowCardMaterial(
-                    row = row,
-                    expanded = state.expandedId == row.id,
-                    onToggle = { onToggleRow(row.id) },
-                    onPick = { onPickForRow(row) },
-                    onUseArchived = { onUseArchived(row) },
-                    // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
-                    // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
-                    picking = state.pickingFor != null,
-                    pickingThis = state.pickingFor == row.id,
-                )
+            if (visible.isEmpty()) {
+                item {
+                    EmptyStateMaterial(
+                        filtered = state.rows.isNotEmpty(),
+                        // 只组合既有回调：筛选与搜索词一起复位，不为这个按钮新增参数。
+                        onClear = {
+                            onFilter(ModuleUploadRules.Filter.ALL)
+                            onQueryChange("")
+                        },
+                    )
+                }
+            } else {
+                itemsIndexed(visible, key = { _, row -> row.id }) { index, row ->
+                    UploadRowCardMaterial(
+                        // 标题与第一张卡之间那 8dp 由标题自带，只有卡与卡之间才需要另算间距。
+                        modifier = Modifier.padding(top = if (index == 0) 0.dp else 12.dp),
+                        row = row,
+                        expanded = state.expandedId == row.id,
+                        onToggle = { onToggleRow(row.id) },
+                        onPick = { onPickForRow(row) },
+                        onUseArchived = { onUseArchived(row) },
+                        // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
+                        // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
+                        picking = state.pickingFor != null,
+                        pickingThis = state.pickingFor == row.id,
+                    )
+                }
             }
 
             item { Spacer(Modifier.height(24.dp)) }
@@ -318,21 +324,42 @@ private fun MineSectionMaterial(
             .fillMaxWidth()
             .padding(top = 20.dp),
     ) {
-        Text(
-            text = stringResource(R.string.module_upload_mine_entry_title),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
+        // 标题交给 SegmentedColumn 自己画（titleSmallEmphasized + 主色 + 左 16dp + 下 8dp），
+        // 与下一块「已装在本机」的标题共用同一副字号与缩进，三块才像同一级的分组。
+        // 失败或降级时手上可能还有一份旧名单：留着比清空好，下面那句提示已经说明它没过期。
+        SegmentedColumn(
+            title = stringResource(R.string.module_upload_mine_entry_title),
+            content = {
+                if (mine.modules.isEmpty()) {
+                    // 一条内容都没有时 SegmentedColumn 连标题一起不画，可「正在载入 / 你没投过」
+                    // 恰恰要靠标题说明这是哪一组。塞一条 visible = false 的行占位：
+                    // 它会被动画收成 0 高度，看不见也点不到。
+                    item(key = "mine-empty", visible = false) {
+                        Spacer(Modifier.height(0.dp))
+                    }
+                }
+                mine.modules.forEach { module ->
+                    item(key = module.id) {
+                        MineRowMaterial(
+                            module = module,
+                            picking = picking,
+                            pickingThis = pickingId == module.id,
+                            onPick = { onPick(module) },
+                        )
+                    }
+                }
+            },
         )
+        // 组内提示压成组下方的一行小字：每条状态各占一张卡片会把「我的模块」顶成一张表格。
         Text(
-            modifier = Modifier.padding(top = 2.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
             text = stringResource(R.string.module_upload_mine_entry_summary),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (status != null) {
             Row(
-                modifier = Modifier.padding(top = 6.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -345,22 +372,6 @@ private fun MineSectionMaterial(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-        // 失败或降级时手上可能还有一份旧名单：留着比清空好，上面那句提示已经说明它没过期。
-        if (mine.modules.isNotEmpty()) {
-            SegmentedColumn(
-                modifier = Modifier.padding(top = 8.dp),
-                content = mine.modules.map { module ->
-                    {
-                        MineRowMaterial(
-                            module = module,
-                            picking = picking,
-                            pickingThis = pickingId == module.id,
-                            onPick = { onPick(module) },
-                        )
-                    }
-                },
-            )
         }
     }
 }
@@ -387,7 +398,12 @@ private fun MineRowMaterial(
         supportingContent = {
             Text(
                 // 索引里 name 可能是空的（老条目），id 一定在；版本号缺了就只留 id。
-                text = if (module.version.isBlank()) module.id else "${module.id}, ${module.version}",
+                // 分隔符与主列表用同一个「·」，两处元信息的读法一致。
+                text = if (module.version.isBlank()) {
+                    module.id
+                } else {
+                    "${module.id} · ${module.version}"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -414,15 +430,17 @@ private fun UploadRowCardMaterial(
     onToggle: () -> Unit,
     onPick: () -> Unit,
     onUseArchived: () -> Unit,
+    modifier: Modifier = Modifier,
     /** 有任意一行正在挑包（全局闸门生效中）。 */
     picking: Boolean = false,
     /** 正在挑的就是这一行。 */
     pickingThis: Boolean = false,
 ) {
+    // 名字左缘：图标块 36dp + 12dp 间距。归属标签、标签行与展开区都缩进到这条竖线上，
+    // 一眼能看出它们说的是同一个模块，而不是三块互不相干的内容。
+    val indent = 48.dp
     TonalCard(
-        modifier = Modifier
-            .padding(top = 12.dp)
-            .fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         onClick = onToggle,
     ) {
         Column(
@@ -431,140 +449,329 @@ private fun UploadRowCardMaterial(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // 第一行：图标 + 名字 / 元信息 + 状态牌。状态牌与名字同高，
+            // 展开与否都不会把它挤到别处去。
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    modifier = Modifier.weight(1f),
-                    text = row.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                IconTile(Icons.Rounded.Extension, contentDescription = null)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = row.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    // 版本与作者之间用「·」：逗号会让「3.1.0, 作者」读成半句话；
+                    // 作者为空时只留版本，不出现孤零零的分隔符。
+                    val meta = listOf(row.version, row.author)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
+                    if (meta.isNotEmpty()) {
+                        Text(
+                            text = meta,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 StatusPillMaterial(row.status, row.checking)
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    modifier = Modifier.weight(1f, fill = false),
-                    text = "${row.version}, ${row.author}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                // 归属只在服务端明确答过（MINE / NOT_MINE）时才显示：UNKNOWN 是「没问出来」，
-                // 挂个「不知道」的牌子只会让用户以为要自己判断，而这件事本来就该由服务端说了算。
-                OwnershipTagMaterial(row.eligibility)
+            // 归属只在服务端明确答过（MINE / NOT_MINE）时才显示：UNKNOWN 是「没问出来」，
+            // 挂个「不知道」的牌子只会让用户以为要自己判断，而这件事本来就该由服务端说了算。
+            // 它单独占一行：收录状态回答「要不要传」，归属回答「传了算不算你的」，
+            // 两件事挤在同一行会互相暗示（「已收录 + 蓝色」看起来就像「你能覆盖它」）。
+            if (row.eligibility != UpdateEligibility.UNKNOWN) {
+                Row(modifier = Modifier.padding(start = indent)) {
+                    OwnershipTagMaterial(row.eligibility)
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (!row.enabled) {
-                    StatusTag(
-                        label = stringResource(R.string.module_upload_tag_disabled),
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        backgroundColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    )
-                }
-                if (row.remove) {
-                    StatusTag(
-                        label = stringResource(R.string.module_upload_tag_remove),
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        backgroundColor = MaterialTheme.colorScheme.errorContainer,
-                    )
-                }
-                if (row.metamodule) {
-                    StatusTag(
-                        label = stringResource(R.string.module_upload_tag_metamodule),
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        backgroundColor = MaterialTheme.colorScheme.primary,
-                    )
+            // 三个标签只在至少有一个为真时才占位，否则会白空出一行。
+            if (!row.enabled || row.remove || row.metamodule) {
+                Row(
+                    modifier = Modifier.padding(start = indent),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (!row.enabled) {
+                        StatusTag(
+                            label = stringResource(R.string.module_upload_tag_disabled),
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            backgroundColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        )
+                    }
+                    if (row.remove) {
+                        StatusTag(
+                            label = stringResource(R.string.module_upload_tag_remove),
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            backgroundColor = MaterialTheme.colorScheme.errorContainer,
+                        )
+                    }
+                    if (row.metamodule) {
+                        StatusTag(
+                            label = stringResource(R.string.module_upload_tag_metamodule),
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            backgroundColor = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
 
             if (expanded) {
                 val copy = ModuleUploadRules.statusCopy(row.status)
-                Text(
-                    modifier = Modifier.padding(top = 2.dp),
-                    text = stringResource(copy.title),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = stringResource(copy.summary),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                // 归属那一格单独补一句解释：牌子只写「你的模块 / 别人的模块」，
-                // 展开的人想知道的是「所以这一版我还能不能发」。UNKNOWN 不说话。
-                val ownershipSummary = when (row.eligibility) {
-                    UpdateEligibility.MINE -> R.string.module_upload_ownership_mine_summary
-                    UpdateEligibility.NOT_MINE -> R.string.module_upload_ownership_not_mine_summary
-                    UpdateEligibility.UNKNOWN -> null
-                }
-                if (ownershipSummary != null) {
+                // 展开区整体缩进到名字左缘：它是这一行的补充说明，不是卡片的第二栏。
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = indent, top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    // 结论在前、解释在后：标题加 Medium 字重，与下面那一堆 bodySmall 拉开重量差。
                     Text(
-                        text = stringResource(ownershipSummary),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (row.eligibility == UpdateEligibility.NOT_MINE) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        text = stringResource(copy.title),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
                     )
-                }
-                if (row.description.isNotBlank()) {
                     Text(
-                        text = row.description,
+                        text = stringResource(copy.summary),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
                     )
-                }
-                // 安装时留存了原始包就直接给一条捷径：绝大多数用户根本不知道自己的 zip 放哪。
-                if (row.archived) {
-                    TextButton(onClick = onUseArchived, enabled = !picking) {
-                        Text(stringResource(R.string.module_upload_use_archived_zip))
+                    // 归属那一格单独补一句解释：牌子只写「你的模块 / 别人的模块」，
+                    // 展开的人想知道的是「所以这一版我还能不能发」。UNKNOWN 不说话。
+                    val ownershipSummary = when (row.eligibility) {
+                        UpdateEligibility.MINE -> R.string.module_upload_ownership_mine_summary
+                        UpdateEligibility.NOT_MINE -> R.string.module_upload_ownership_not_mine_summary
+                        UpdateEligibility.UNKNOWN -> null
                     }
-                    Text(
-                        text = stringResource(R.string.module_upload_use_archived_zip_summary),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                // 挑包要弹系统选择器，回来之前这一行没有任何反馈，用户会以为没点上而反复点。
-                // 正在挑的那行转圈并把按钮禁掉，其余行一起禁用（闸门本来就是全局的）。
-                if (pickingThis) {
-                    Row(
-                        modifier = Modifier.padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    if (ownershipSummary != null) {
                         Text(
-                            text = stringResource(R.string.module_upload_picking),
+                            modifier = Modifier.padding(top = 2.dp),
+                            text = stringResource(ownershipSummary),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (row.eligibility == UpdateEligibility.NOT_MINE) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                         )
                     }
-                } else {
-                    TextButton(onClick = onPick, enabled = !picking) {
-                        Text(stringResource(R.string.module_upload_pick_original_zip))
+                    if (row.description.isNotBlank()) {
+                        Text(
+                            text = row.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    Text(
-                        text = stringResource(
-                            R.string.module_upload_pick_original_zip_summary,
-                            row.id,
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    // 安装时留存了原始包就直接给一条捷径：绝大多数用户根本不知道自己的 zip 放哪。
+                    // 按钮与它的说明是一对——说明解释按钮，中间不再隔 8dp 以上的空隙。
+                    if (row.archived) {
+                        RowActionMaterial(
+                            label = stringResource(R.string.module_upload_use_archived_zip),
+                            summary = stringResource(R.string.module_upload_use_archived_zip_summary),
+                            enabled = !picking,
+                            onClick = onUseArchived,
+                        )
+                    }
+                    // 挑包要弹系统选择器，回来之前这一行没有任何反馈，用户会以为没点上而反复点。
+                    // 正在挑的那行转圈并把按钮禁掉，其余行一起禁用（闸门本来就是全局的）。
+                    if (pickingThis) {
+                        Row(
+                            modifier = Modifier.padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Text(
+                                text = stringResource(R.string.module_upload_picking),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        RowActionMaterial(
+                            label = stringResource(R.string.module_upload_pick_original_zip),
+                            summary = stringResource(
+                                R.string.module_upload_pick_original_zip_summary,
+                                row.id,
+                            ),
+                            enabled = !picking,
+                            onClick = onPick,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 一个文字按钮 + 它自己的说明，成对紧贴。
+ *
+ * 说明是对按钮的解释，分开摆会让人先把两段都读完才明白哪个是按钮；按钮的左内边距压到 0，
+ * 标签文字与下面的说明才对在同一条竖线上。
+ */
+@Composable
+private fun RowActionMaterial(
+    label: String,
+    summary: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        TextButton(
+            onClick = onClick,
+            enabled = enabled,
+            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp),
+        ) {
+            Text(label)
+        }
+        Text(
+            text = summary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 分组标题。与 `SegmentedColumn` 里那副标题逐像素一致（同样的字重、主色、左 16dp 与下 8dp），
+ * 两个分组的标题才落在同一条竖线上，也就是同一个间距节奏。
+ *
+ * 单独抽出来是因为「已装在本机」这一组仍用可展开卡片，套不进 `SegmentedColumn`。
+ */
+@Composable
+private fun SectionHeaderMaterial(text: String, modifier: Modifier = Modifier) {
+    Text(
+        modifier = modifier.padding(start = 16.dp, bottom = 8.dp),
+        text = text,
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+
+/**
+ * 空态：图标 + 主文案 + 副说明，居中。
+ *
+ * 分两支：真的没有模块，与「筛选 / 搜索之后没有」。后者是用户自己缩窄的视野，
+ * 所以多给一个一键回到全量的出口——只组合既有回调，不新增参数。
+ */
+@Composable
+private fun EmptyStateMaterial(filtered: Boolean, onClear: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            modifier = Modifier.size(34.dp),
+            // 图标只是意象，压到 0.35 不透明度：空态是一个结论，不该跟主文案抢注意力。
+            imageVector = if (filtered) Icons.Rounded.SearchOff else Icons.Rounded.Extension,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+        )
+        Text(
+            text = stringResource(
+                if (filtered) {
+                    R.string.module_upload_empty_filtered
+                } else {
+                    R.string.module_upload_empty
+                }
+            ),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = stringResource(
+                if (filtered) {
+                    R.string.module_upload_empty_filtered_summary
+                } else {
+                    R.string.module_upload_empty_summary
+                }
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        if (filtered) {
+            TextButton(onClick = onClear) {
+                Text(stringResource(R.string.module_upload_empty_filtered_action))
+            }
+        }
+    }
+}
+
+/**
+ * 查重进度：进度条 + 一句计数，「继续查」与进度条同一行右对齐。
+ *
+ * 正在查（[checking]）时只说「在查」，查完才报「查了多少」——同一时刻只讲一件事，
+ * 不出现两行内容一样的提示。总数还不知道时给不确定进度条，比一个停在 0% 的条更诚实。
+ */
+@Composable
+private fun CheckProgressMaterial(
+    checked: Int,
+    total: Int,
+    checking: Boolean,
+    remaining: Int,
+    onContinue: () -> Unit,
+) {
+    val fraction = if (total > 0) checked.toFloat() / total else 0f
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (checking) {
+                        stringResource(R.string.module_upload_checking)
+                    } else {
+                        stringResource(R.string.module_upload_progress_checked, checked, total)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (checking && total == 0) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
                     )
                 }
             }
+            if (remaining > 0) {
+                TextButton(onClick = onContinue, enabled = !checking) {
+                    Text(stringResource(R.string.module_upload_continue_check))
+                }
+            }
+        }
+        if (remaining > 0) {
+            // 一次只查 200 条；剩下的靠「继续查」，这里说清楚为什么没查完。
+            Text(
+                modifier = Modifier.padding(top = 2.dp),
+                text = stringResource(
+                    R.string.module_upload_continue_hint,
+                    ModuleUploadRules.CHECK_CAP,
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
