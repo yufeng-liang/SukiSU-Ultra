@@ -114,6 +114,7 @@ import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.TopBarBackButton
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.ultra.ui.component.statustag.StatusTag
+import com.sukisu.ultra.ui.util.formatFileSize
 import com.sukisu.ultra.ui.util.formatRepoTime
 import com.sukisu.ultra.ui.util.isDownloadAvailable
 import com.sukisu.ultra.ui.util.rememberContentReady
@@ -912,15 +913,7 @@ private fun ReleaseAssetSegmentedItem(
     downloads: AssetDownloads,
 ) {
     val fileName = asset.name
-    val sizeText = remember(asset.size) {
-        val s = asset.size
-        when {
-            s >= 1024L * 1024L * 1024L -> String.format("%.1f GB", s / (1024f * 1024f * 1024f))
-            s >= 1024L * 1024L -> String.format("%.1f MB", s / (1024f * 1024f))
-            s >= 1024L -> String.format("%.0f KB", s / 1024f)
-            else -> "$s B"
-        }
-    }
+    val sizeText = remember(asset.size) { formatFileSize(asset.size) }
     val sizeAndDownloads =
         remember(sizeText, asset.downloadCount) { "$sizeText · ${asset.downloadCount} downloads" }
     val download = downloads.of(asset.downloadUrl)

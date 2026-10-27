@@ -7,6 +7,7 @@ import com.sukisu.ultra.ui.util.ContributionBatch
 import com.sukisu.ultra.ui.util.ProofItem
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.text.Collator
+import com.sukisu.ultra.ui.util.formatFileSize
 import java.util.Locale
 
 /**
@@ -223,13 +224,14 @@ object ModuleUploadRules {
     fun signatureStillValid(confirmedSetKey: String?, currentSetKey: String): Boolean =
         !confirmedSetKey.isNullOrEmpty() && confirmedSetKey == currentSetKey
 
-    /** 把字节数说成人话（表单上的大小、提交中的总量）。纯函数，不依赖 Android 资源。 */
-    fun formatBytes(bytes: Long): String {
-        if (bytes < 1024) return "$bytes B"
-        val kb = bytes / 1024.0
-        if (kb < 1024) return String.format(Locale.ROOT, "%.1f KiB", kb)
-        return String.format(Locale.ROOT, "%.1f MiB", kb / 1024.0)
-    }
+    /**
+     * 把字节数说成人话（表单上的大小、提交中的总量）。
+     *
+     * 直接转 [formatFileSize]：同一屏上「单个包 8.0 MiB、留存的包占了 8.0 MB」这种
+     * 双单位混排，用户会以为两处说的是不同东西。留这个壳只是为了让调用点与测试
+     * 继续按「规则层」的名字取用。
+     */
+    fun formatBytes(bytes: Long): String = formatFileSize(bytes)
 
     /**
      * 提交按钮的唯一判据。

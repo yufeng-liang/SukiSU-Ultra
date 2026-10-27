@@ -92,14 +92,15 @@ fun ModuleUploadScreen() {
 
     // 顶栏「更多」背后的小面板：留存开关 + 清理入口。用状态位而不是对话框句柄，
     // 因为它要显示实时占用（archivedCount / archivedBytes），必须跟着 state 重组。
-    var showArchiveSettings by remember { mutableStateOf(false) }
+    // 用 rememberSaveable：面板开着时被系统回收，回来不该自己关掉（与上面 pendingRowId 同理）。
+    var showArchiveSettings by rememberSaveable { mutableStateOf(false) }
 
     // 清理留存包是删数据，走一次确认；数字与容量在弹窗里说清楚，
     // 免得用户点完才发现「下次上传要手动挑包了」。
     val confirmDialog = rememberConfirmDialog()
     val scope = rememberCoroutineScope()
     var clearing by remember { mutableStateOf(false) }
-    val clearArchived: () -> Unit = {
+    val clearArchived: (onCancelled: () -> Unit) -> Unit = { onCancelled ->
         if (!clearing) {
             clearing = true
             scope.launch {
@@ -114,7 +115,31 @@ fun ModuleUploadScreen() {
                         confirm = context.getString(R.string.module_upload_clear_archived_zip),
                         dismiss = context.getString(R.string.cancel),
                     )
-                    if (result == ConfirmResult.Confirmed) viewModel.clearArchived()
+                    if (result == ConfirmResult.Confirmed) viewModel.clearArchived() else onCancelled()
+                } finally {
+                    clearing = false
+                }
+            }
+        }
+    }
+
+    // 只删「已卸载模块」遗留的包。与上面共用一个 clearing 闸门：两者改的是同一个目录，
+    // 允许并发只会让确认弹窗叠在一起、报数互相覆盖。
+    val clearOrphans: (onCancelled: () -> Unit) -> Unit = { onCancelled ->
+        if (!clearing) {
+            clearing = true
+            scope.launch {
+                try {
+                    val result = confirmDialog.awaitConfirm(
+                        title = context.getString(R.string.module_upload_clear_orphan_zip),
+                        content = context.getString(
+                            R.string.module_upload_clear_orphan_zip_confirm,
+                            listState.orphanCount,
+                        ),
+                        confirm = context.getString(R.string.module_upload_clear_orphan_zip),
+                        dismiss = context.getString(R.string.cancel),
+                    )
+                    if (result == ConfirmResult.Confirmed) viewModel.clearOrphanArchived() else onCancelled()
                 } finally {
                     clearing = false
                 }
@@ -196,8 +221,13 @@ fun ModuleUploadScreen() {
             onKeepZipChange = viewModel::setKeepModuleZip,
             onClearArchived = {
                 // 先收起面板再弹确认：两层对话框叠着会把「删多少个」挡住。
+                // 取消时把面板放回来，否则用户想改开关得重新点一次「更多」。
                 showArchiveSettings = false
-                clearArchived()
+                clearArchived { showArchiveSettings = true }
+            },
+            onClearOrphans = {
+                showArchiveSettings = false
+                clearOrphans { showArchiveSettings = true }
             },
             onDismissRequest = { showArchiveSettings = false },
         )

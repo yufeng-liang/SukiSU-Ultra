@@ -295,9 +295,8 @@ object BackupText {
         return java.time.temporal.ChronoUnit.DAYS.between(then, today)
     }
 
-    /** 字节数换成 MB，保留一位小数：用户看的是"96.0 MB 对 8.0 MB"，不是 100663296。 */
-    private fun megabytes(bytes: Long): String =
-        java.util.Locale.US.let { locale -> String.format(locale, "%.1f MB", bytes / (1024.0 * 1024.0)) }
+    /** 字节数换成可读体积（见 [formatFileSize]）：用户看的是"96.0 MB 对 8.0 MB"，不是 100663296。 */
+    private fun megabytes(bytes: Long): String = formatFileSize(bytes)
 
     private fun shortHash(value: String): String =
         if (value.length <= HASH_PREFIX) value else value.take(HASH_PREFIX) + "…"

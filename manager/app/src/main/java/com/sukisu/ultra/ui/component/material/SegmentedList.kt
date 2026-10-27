@@ -441,19 +441,26 @@ fun SegmentedListItem(
 fun IconTile(
     icon: ImageVector,
     contentDescription: String?,
+    enabled: Boolean = true,
 ) {
+    // 行被禁用时文字会走 Material3 的 disabled 色（onSurface 38%），而这块图标的底色与
+    // 图标色是写死的，不跟着变 —— 同一行里就会「字灰、图标亮」，看着像图标还能点。
+    // 禁用时改用 Material3 的 disabled 令牌（容器 onSurface 12%、内容 38%），
+    // 默认 enabled = true 时两个分支取原值，行为与改动前逐像素一致。
+    val container = if (enabled) colorScheme.secondaryContainer else colorScheme.onSurface.copy(alpha = 0.12f)
+    val content = if (enabled) colorScheme.onSecondaryContainer else colorScheme.onSurface.copy(alpha = 0.38f)
     Box(
         modifier = Modifier
             .size(36.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(colorScheme.secondaryContainer),
+            .background(container),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             modifier = Modifier.size(20.dp),
-            tint = colorScheme.onSecondaryContainer,
+            tint = content,
         )
     }
 }

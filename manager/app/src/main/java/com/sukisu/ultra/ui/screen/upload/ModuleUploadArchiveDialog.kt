@@ -2,10 +2,13 @@ package com.sukisu.ultra.ui.screen.upload
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material3.AlertDialog
@@ -14,6 +17,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.LocalUiMode
@@ -22,7 +26,6 @@ import com.sukisu.ultra.ui.component.material.IconTile
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
 import com.sukisu.ultra.ui.component.material.SegmentedSwitchItem
-import com.sukisu.ultra.ui.util.formatFileSize
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -47,20 +50,31 @@ fun ModuleUploadArchiveDialog(
     state: ModuleUploadListState,
     onKeepZipChange: (Boolean) -> Unit,
     onClearArchived: () -> Unit,
+    onClearOrphans: () -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     val summary = archivedSummary(state)
-    val clearEnabled = state.archivedCount > 0
+    // 挑包途中不许清：那一行正在把留存包复制到 staging，清空会把它删掉。
+    val clearEnabled = state.archivedCount > 0 && state.pickingFor == null
+    // 只有真存在「已卸载模块的包」时才出现这一项：平时列表里少一行，比一直摆着一个
+    // 点不动的入口更干净。
+    val orphanEnabled = state.orphanCount > 0 && state.pickingFor == null
+    val orphanSummary = stringResource(R.string.module_upload_clear_orphan_zip_summary, state.orphanCount)
 
     if (LocalUiMode.current == UiMode.Miuix) {
         OverlayDialog(
             show = true,
             title = stringResource(R.string.module_upload_more),
             onDismissRequest = onDismissRequest,
+            // 纵向留 24dp（内容区只补左右）：否则表单和底部按钮会贴住对话框上下边框。
+            // 不传的话默认 insideMargin 是 24dp，会和下面 Column 自带的 24dp 叠加成左右各 48dp。
+            insideMargin = DpSize(0.dp, 24.dp),
             content = {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(max = 460.dp)
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -96,6 +110,24 @@ fun ModuleUploadArchiveDialog(
                             onClick = onClearArchived,
                         )
                     }
+                    if (state.orphanCount > 0) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            ArrowPreference(
+                                title = stringResource(R.string.module_upload_clear_orphan_zip),
+                                summary = orphanSummary,
+                                startAction = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CleaningServices,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        tint = colorScheme.onBackground,
+                                    )
+                                },
+                                enabled = orphanEnabled,
+                                onClick = onClearOrphans,
+                            )
+                        }
+                    }
                     MiuixTextButton(
                         text = stringResource(R.string.close),
                         onClick = onDismissRequest,
@@ -112,8 +144,8 @@ fun ModuleUploadArchiveDialog(
             text = {
                 SegmentedColumn(
                     modifier = Modifier.fillMaxWidth(),
-                    content = listOf(
-                        {
+                    content = buildList {
+                        add {
                             SegmentedSwitchItem(
                                 icon = Icons.Rounded.FolderZip,
                                 title = stringResource(R.string.module_upload_keep_zip),
@@ -121,8 +153,8 @@ fun ModuleUploadArchiveDialog(
                                 checked = state.keepZip,
                                 onCheckedChange = onKeepZipChange,
                             )
-                        },
-                        {
+                        }
+                        add {
                             SegmentedListItem(
                                 onClick = if (clearEnabled) onClearArchived else null,
                                 enabled = clearEnabled,
@@ -131,11 +163,26 @@ fun ModuleUploadArchiveDialog(
                                 },
                                 supportingContent = { Text(summary) },
                                 leadingContent = {
-                                    IconTile(Icons.Rounded.DeleteOutline, null)
+                                    IconTile(Icons.Rounded.DeleteOutline, null, enabled = clearEnabled)
                                 },
                             )
-                        },
-                    ),
+                        }
+                        if (state.orphanCount > 0) {
+                            add {
+                                SegmentedListItem(
+                                    onClick = if (orphanEnabled) onClearOrphans else null,
+                                    enabled = orphanEnabled,
+                                    headlineContent = {
+                                        Text(stringResource(R.string.module_upload_clear_orphan_zip))
+                                    },
+                                    supportingContent = { Text(orphanSummary) },
+                                    leadingContent = {
+                                        IconTile(Icons.Rounded.CleaningServices, null, enabled = orphanEnabled)
+                                    },
+                                )
+                            }
+                        }
+                    },
                 )
             },
             confirmButton = {

@@ -88,6 +88,13 @@ data class ModuleUploadListState(
      */
     val archivedCount: Int = 0,
     val archivedBytes: Long = 0L,
+    /**
+     * 其中已经不属于任何已安装模块的那几份（卸载后遗留）。
+     *
+     * 这些包在列表里没有行可以点「用留存的包」，只会白占空间；给它们一个单独的清理入口，
+     * 用户就不必为了回收它们而「清空全部」、连带删掉还想留的那些。
+     */
+    val orphanCount: Int = 0,
 ) {
     /** 界面直接渲染的那一份（筛选 + 搜索 + 排序）。 */
     val visibleRows: List<UploadRow>

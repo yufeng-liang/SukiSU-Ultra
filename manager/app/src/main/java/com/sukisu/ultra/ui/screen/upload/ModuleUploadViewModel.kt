@@ -83,6 +83,18 @@ class ModuleUploadViewModel(
     /** 提交批次号；结果回来时对不上就丢弃（见 [submit]）。 */
     private var submitGeneration = 0
 
+    /**
+     * 留存目录的世代号：每次「清空留存包」+1。
+     *
+     * [loadModules] 的快照（ids/usage）是在 IO 线程上读的，读的过程中用户可能已经点了
+     * 「清空留存包」。没有这个号的话，那份在清空前读出来的快照会在清空之后落地，
+     * 把刚归零的计数与 archived 标记又填回去——界面显示「已留存 3 个」，
+     * 而磁盘上明明已经空了，点进去只会得到「包已不在」。
+     *
+     * 只在主线程读写（ViewModel 的 update 与启动协程都在主线程），不需要额外同步。
+     */
+    private var archiveEpoch = 0
+
     // ── 列表 ────────────────────────────────────────────────────────────────
 
     /** 进入页面：拉模块列表 + 服务端限制，然后开查。重复进入不重跑。 */
@@ -127,13 +139,24 @@ class ModuleUploadViewModel(
     private fun loadModules(thenCheck: Boolean, refreshing: Boolean = false) {
         loadJob?.cancel()
         _listState.update { it.copy(loading = it.rows.isEmpty(), refreshing = refreshing) }
+        val epoch = archiveEpoch
         loadJob = viewModelScope.launch {
             val (modules, archived, usage) = withContext(Dispatchers.IO) {
                 val modules = repo.getModules().getOrElse { emptyList() }
                 Triple(modules, archive.ids(), archive.usage())
             }
+            // 读快照期间用户清空了留存包：这份快照已经过期，落地只会把计数填回去。
+            // 但两个进行中标志必须复位——清空流程不碰它们，早退不还回去的话，
+            // 下拉刷新的转圈会一直挂在界面上。
+            if (epoch != archiveEpoch) {
+                _listState.update { it.copy(loading = false, refreshing = false) }
+                return@launch
+            }
             _listState.update {
                 val rows = modules.map { module -> module.toRow(it.rows, archived) }
+                // 留存了、但对应模块已经不在安装列表里的那几份：没有行可以复用它们，
+                // 单独计数给「只清理这些」的入口用，别让用户为回收它们而清空全部。
+                val installed = modules.mapTo(mutableSetOf()) { module -> ModuleZipArchive.safeId(module.id) }
                 it.copy(
                     loading = false,
                     refreshing = false,
@@ -142,6 +165,7 @@ class ModuleUploadViewModel(
                     keepZip = settings.keepModuleZip,
                     archivedCount = usage.entries,
                     archivedBytes = usage.totalBytes,
+                    orphanCount = archived.count { id -> id !in installed },
                 )
             }
             if (thenCheck) checkPending()
@@ -337,6 +361,22 @@ class ModuleUploadViewModel(
                                     result.zip.id,
                                 )
                             )
+                        } else if (result.zip.versionCode != row.versionCode) {
+                            // 留存的那份不是当前装着的这一版。真实路径有三条：用户在终端用
+                            // `ksud module install` 升过级（不走 flashModule，归档不触发）、
+                            // 备份恢复（archiveSource = false，故意不覆盖）、留存开关关着
+                            // 的那段时间升过级。放过去就是把旧版当新版投，而入口文案明确
+                            // 说「安装这个模块时已自动留存」，暗示它就是当前这版。
+                            File(result.zip.path).delete()
+                            postMessage(
+                                res.getString(
+                                    R.string.module_upload_archived_version_mismatch,
+                                    result.zip.version,
+                                    result.zip.versionCode,
+                                    row.version,
+                                    row.versionCode,
+                                )
+                            )
                         } else {
                             addToForm(listOf(result.zip))
                         }
@@ -384,19 +424,66 @@ class ModuleUploadViewModel(
      *
      * 清完要让界面立刻反映「占用 0 / 没有包可复用」，所以重算 usage 与标记，
      * 而不是等下次刷新。
+     *
+     * 两条约束：
+     * - 正在为某一行挑包时不许清：挑包流程会把留存包复制到 staging，清空与它抢同一个
+     *   目录，可能删掉刚被打开的那份（用户点了「用留存包」，结果拿到「包已不在」）。
+     * - [archiveEpoch] 先加：清空前就已经在飞的那次 [loadModules] 拿的是旧快照，
+     *   落地时必须作废，否则「已清空」的界面会被填回旧计数。
      */
     fun clearArchived() {
+        if (_listState.value.pickingFor != null) return
+        // 清空前先记下「当前还装着哪些模块」：清空后 survivors 里若还有它们之外的包，
+        // 说明有文件没删掉，那些孤儿计数得如实反映出来。
+        val installed = _listState.value.rows.mapTo(mutableSetOf()) { row -> ModuleZipArchive.safeId(row.id) }
+        archiveEpoch++
         viewModelScope.launch {
-            val freed = withContext(Dispatchers.IO) {
-                val usage = archive.usage()
-                archive.clear()
-                usage.totalBytes
+            val cleared = withContext(Dispatchers.IO) {
+                val clearedBytes = archive.clear()
+                // 删不掉的文件（被占用等）会留在目录里：报数要按清空后的实际统计，
+                // 而不是清空前 stat 出来的那个数；archived 标记也只留还给得出包的那些。
+                Triple(clearedBytes, archive.ids(), archive.usage())
+            }
+            val (freed, survivors, remaining) = cleared
+            _listState.update { state ->
+                state.copy(
+                    rows = state.rows.map { row -> row.copy(archived = ModuleZipArchive.safeId(row.id) in survivors) },
+                    archivedCount = remaining.entries,
+                    archivedBytes = remaining.totalBytes,
+                    // 不能硬置 0：删不掉的文件（被占用等）会留在目录里，那些孤儿包
+                    // 仍然存在，计数得跟着 survivors 走，否则入口消失、包还占着空间。
+                    orphanCount = survivors.count { id -> id !in installed },
+                    message = res.getString(
+                        R.string.module_upload_clear_archived_zip_done,
+                        formatFileSize(freed),
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * 只回收「已卸载模块」遗留的那几份留存包，动也不动当前还装着的那些。
+     *
+     * 与 [clearArchived] 同一组约束（挑包途中不动、[archiveEpoch] 先加），因为两者删的是
+     * 同一个目录；区别只在保留集合——这里把当前安装的 id 全留下，用户点完还能继续用。
+     */
+    fun clearOrphanArchived() {
+        if (_listState.value.pickingFor != null) return
+        val installed = _listState.value.rows.mapTo(mutableSetOf()) { row -> ModuleZipArchive.safeId(row.id) }
+        archiveEpoch++
+        viewModelScope.launch {
+            val (freed, survivors, remaining) = withContext(Dispatchers.IO) {
+                val freedBytes = archive.clearExcept(installed)
+                // 与 clearArchived 同理：报数按删完的实际统计，而不是删之前算的那个。
+                Triple(freedBytes, archive.ids(), archive.usage())
             }
             _listState.update { state ->
                 state.copy(
-                    rows = state.rows.map { row -> row.copy(archived = false) },
-                    archivedCount = 0,
-                    archivedBytes = 0L,
+                    rows = state.rows.map { row -> row.copy(archived = ModuleZipArchive.safeId(row.id) in survivors) },
+                    archivedCount = remaining.entries,
+                    archivedBytes = remaining.totalBytes,
+                    orphanCount = survivors.count { id -> id !in installed },
                     message = res.getString(
                         R.string.module_upload_clear_archived_zip_done,
                         formatFileSize(freed),
@@ -453,6 +540,7 @@ class ModuleUploadViewModel(
     private fun stageTooBigMessage(result: ModuleUploadStaging.Result.TooBig): String =
         res.getString(
             R.string.module_upload_stage_too_big,
+            ModuleUploadRules.formatBytes(result.sizeBytes),
             ModuleUploadRules.formatBytes(result.maxBytes),
         )
 

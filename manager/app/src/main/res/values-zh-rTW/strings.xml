@@ -280,6 +280,7 @@
     <string name="settings_auto_delete_module_zip_summary">安裝成功後自動刪除模組壓縮檔，包含手動選擇、模組更新及從倉庫下載的</string>
     <string name="module_zip_deleted">已刪除模組壓縮檔：%1$s</string>
     <string name="module_zip_delete_failed">! 刪除模組壓縮檔失敗：%1$s</string>
+    <string name="module_zip_archive_failed">! 無法留存這個模組壓縮檔；之後上傳時得手動挑選</string>
     <string name="menu_sort">排序</string>
     <string name="sort_by_name">應用名</string>
     <string name="sort_by_package_name">套件名</string>
@@ -740,6 +741,7 @@
     <string name="module_upload_pick_zip_summary">從儲存空間選擇一個或多個模組原始 zip</string>
     <string name="module_upload_pick_original_zip">選擇這個模組的原始 zip</string>
     <string name="module_upload_pick_original_zip_summary">zip 裡的模組 ID 必須是 %1$s</string>
+    <string name="module_upload_picking">正在等待檔案選擇器…</string>
     <string name="module_upload_use_archived_zip">用安裝時留存的包</string>
     <string name="module_upload_use_archived_zip_summary">安裝這個模組時已自動留存，不用再去儲存空間找</string>
     <string name="module_upload_archived_missing">「%1$s」留存的包已不在了（被清理或讀不出），請手動選擇</string>
@@ -751,6 +753,10 @@
     <string name="module_upload_clear_archived_zip_summary_empty">還沒有留存任何包</string>
     <string name="module_upload_clear_archived_zip_confirm">刪掉留存的 %1$d 個包（%2$s）？下次上傳就得手動挑包了。</string>
     <string name="module_upload_clear_archived_zip_done">已釋放 %1$s</string>
+    <string name="module_upload_clear_orphan_zip">清理已卸載模組的留存包</string>
+    <string name="module_upload_clear_orphan_zip_summary">已留存的包裡有 %1$d 個屬於已經卸載的模組，再也用不上了</string>
+    <string name="module_upload_clear_orphan_zip_confirm">刪掉這 %1$d 個屬於已卸載模組的留存包？還裝著的模組的包會保留。</string>
+    <string name="module_upload_archived_version_mismatch">留存的是 %1$s（%2$d），而目前裝著的是 %3$s（%4$d），沒有加入</string>
     <string name="module_upload_id_mismatch">這個 zip 是模組「%2$s」的，不是「%1$s」，沒有加入上傳。</string>
     <string name="module_upload_unreadable_prop">讀不出這個 zip 裡的 module.prop（不是模組 zip，或 id/name 為空）</string>
     <string name="module_upload_unreadable_prop_count">有 %1$d 個 zip 讀不出 module.prop，已略過</string>
@@ -816,7 +822,7 @@
     <string name="module_upload_result_pr">PR：%1$s</string>
     <string name="module_upload_limit_too_many">一次最多上傳 %1$d 個模組</string>
     <string name="module_upload_limit_single_too_big">其中一個 zip 超過伺服器允許的大小（%1$s）</string>
-    <string name="module_upload_stage_too_big">這個包超過伺服器單枚上限（%1$s）；請換小包</string>
+    <string name="module_upload_stage_too_big">這個包有 %1$s，超過伺服器單枚上限（%2$s）；請換小包</string>
     <string name="module_upload_limit_total_too_big">整批超過伺服器允許的大小（%1$s）</string>
     <string name="module_upload_limit_unknown">暫時拿不到伺服器上限，先不能提交</string>
     <string name="module_upload_turnstile_title">人機驗證</string>

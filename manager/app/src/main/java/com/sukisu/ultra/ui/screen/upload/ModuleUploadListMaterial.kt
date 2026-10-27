@@ -101,7 +101,13 @@ fun ModuleUploadListMaterial(
                     }
                     // 留存开关与清理入口都在这个菜单背后：两件事都只跟「占空间」有关，
                     // 顶栏也不该为此多摆一个开关。
-                    IconButton(onClick = onOpenArchiveSettings) {
+                    // 载入完成前先禁掉：面板里的开关初值来自 settings，而列表状态里的
+                    // keepZip 默认是 true —— 这一小段窗口里打开面板会显示一个用户其实
+                    // 已经关掉的开关，点一下反而把设置写成 true。
+                    IconButton(
+                        onClick = onOpenArchiveSettings,
+                        enabled = !state.loading && !state.refreshing,
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.MoreVert,
                             contentDescription = stringResource(R.string.module_upload_more),
@@ -251,6 +257,10 @@ fun ModuleUploadListMaterial(
                     onToggle = { onToggleRow(row.id) },
                     onPick = { onPickForRow(row) },
                     onUseArchived = { onUseArchived(row) },
+                    // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
+                    // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
+                    picking = state.pickingFor != null,
+                    pickingThis = state.pickingFor == row.id,
                 )
             }
 
@@ -266,6 +276,10 @@ private fun UploadRowCardMaterial(
     onToggle: () -> Unit,
     onPick: () -> Unit,
     onUseArchived: () -> Unit,
+    /** 有任意一行正在挑包（全局闸门生效中）。 */
+    picking: Boolean = false,
+    /** 正在挑的就是这一行。 */
+    pickingThis: Boolean = false,
 ) {
     TonalCard(
         modifier = Modifier
@@ -348,7 +362,7 @@ private fun UploadRowCardMaterial(
                 }
                 // 安装时留存了原始包就直接给一条捷径：绝大多数用户根本不知道自己的 zip 放哪。
                 if (row.archived) {
-                    TextButton(onClick = onUseArchived) {
+                    TextButton(onClick = onUseArchived, enabled = !picking) {
                         Text(stringResource(R.string.module_upload_use_archived_zip))
                     }
                     Text(
@@ -357,17 +371,34 @@ private fun UploadRowCardMaterial(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onPick) {
-                    Text(stringResource(R.string.module_upload_pick_original_zip))
+                // 挑包要弹系统选择器，回来之前这一行没有任何反馈，用户会以为没点上而反复点。
+                // 正在挑的那行转圈并把按钮禁掉，其余行一起禁用（闸门本来就是全局的）。
+                if (pickingThis) {
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Text(
+                            text = stringResource(R.string.module_upload_picking),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    TextButton(onClick = onPick, enabled = !picking) {
+                        Text(stringResource(R.string.module_upload_pick_original_zip))
+                    }
+                    Text(
+                        text = stringResource(
+                            R.string.module_upload_pick_original_zip_summary,
+                            row.id,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Text(
-                    text = stringResource(
-                        R.string.module_upload_pick_original_zip_summary,
-                        row.id,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }

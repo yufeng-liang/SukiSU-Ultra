@@ -8,6 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 /**
  * 上传列表与表单的纯规则。
@@ -365,8 +366,25 @@ class ModuleUploadRulesTest {
 
     @Test
     fun `byte sizes are readable`() {
+        // 与 formatFileSize 同一套单位（KB/MB，不是 KiB/MiB）：界面上「包大小」与
+        // 「留存占用」并排显示，两套单位会让用户以为说的是不同东西。
         assertEquals("512 B", ModuleUploadRules.formatBytes(512))
-        assertEquals("1.0 KiB", ModuleUploadRules.formatBytes(1024))
-        assertEquals("2.0 MiB", ModuleUploadRules.formatBytes(2L * 1024 * 1024))
+        assertEquals("1 KB", ModuleUploadRules.formatBytes(1024))
+        assertEquals("2.0 MB", ModuleUploadRules.formatBytes(2L * 1024 * 1024))
+        assertEquals("1.0 GB", ModuleUploadRules.formatBytes(1024L * 1024 * 1024))
+    }
+
+    @Test
+    fun `byte sizes keep a dot decimal separator in every locale`() {
+        // 体积数字要跨语言可比：德语/法语默认 locale 会把小数点写成逗号。
+        val original = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.GERMANY)
+            assertEquals("2.0 MB", ModuleUploadRules.formatBytes(2L * 1024 * 1024))
+            Locale.setDefault(Locale.FRANCE)
+            assertEquals("2.0 MB", ModuleUploadRules.formatBytes(2L * 1024 * 1024))
+        } finally {
+            Locale.setDefault(original)
+        }
     }
 }

@@ -45,9 +45,7 @@ class ModuleZipArchive(
      *
      * 只 stat、不解压：用户只是想知道「占了多少」，没理由为此读一遍每个 zip 的 module.prop。
      */
-    data class Usage(val entries: Int, val totalBytes: Long) {
-        val isEmpty: Boolean get() = entries == 0
-    }
+    data class Usage(val entries: Int, val totalBytes: Long)
 
     /** 算一遍当前占用。目录不存在时是 (0, 0)，不是异常。 */
     fun usage(): Usage {
@@ -113,43 +111,82 @@ class ModuleZipArchive(
         source: File,
         now: Long = System.currentTimeMillis(),
         consumeSource: Boolean = false,
-    ): Entry? = runCatching {
-        if (!source.isFile || source.length() <= 0L) return null
-        val meta = ModuleProp.parseModuleProp(source) ?: return null
-        val target = fileFor(meta.id)
-        root.mkdirs()
-        if (!place(source, target, consumeSource)) return null
-        target.setLastModified(now)
-        prune()
-        Entry(
-            id = meta.id,
-            file = target,
-            meta = meta,
-            sizeBytes = target.length(),
-            storedAt = target.lastModified(),
-        )
-    }.getOrNull()
+        onFailure: (Throwable) -> Unit = {},
+    ): Entry? {
+        val entry = runCatching {
+            if (!source.isFile || source.length() <= 0L) return null
+            val meta = ModuleProp.parseModuleProp(source) ?: return null
+            val target = fileFor(meta.id)
+            root.mkdirs()
+            if (!place(source, target, consumeSource)) return null
+            target.setLastModified(now)
+            prune(keep = target)
+            // prune() 可能把刚存进去的那一份也淘汰掉（单包就超过总上限时）：
+            // 文件都没了还返回一个 Entry，等于让调用方以为留存成功、点开却失败。
+            if (!target.isFile) return null
+            Entry(
+                id = meta.id,
+                file = target,
+                meta = meta,
+                sizeBytes = target.length(),
+                storedAt = target.lastModified(),
+            )
+        }
+        return entry.getOrElse { error ->
+            // 本类不引 android.util.Log（要能在纯 JVM 单测里跑），失败原因交给调用方处理。
+            onFailure(error)
+            null
+        }
+    }
 
     /**
      * 把 [source] 落到 [target]，成功返回 true。
      *
-     * 先删旧目标：同一模块重装就是覆盖，而「重命名到一个已存在的文件」在各平台上行为不一致
-     * （POSIX 覆盖、Windows 失败），不能指望它。写侧一律走临时名再改名，装到一半被杀掉时
-     * 不会留下一个「名字对但内容半截」的包。
+     * 写侧一律先落临时名再改名，装到一半被杀掉时不会留下一个「名字对但内容半截」的包。
+     * 临时名与备份名都不以 `.zip` 结尾，[ids]/[usage]/[prune] 的 `.zip` 过滤天然把它们
+     * 排除在外，不会污染计数与淘汰。
+     *
+     * 顶掉旧包时先把它改名成备份、新包就位后再删备份：任何一步失败都能把旧包还回去。
+     * 旧版直接 `target.delete()` 再写，复制失败就等于「旧包没了、新包也没到」。
      */
     private fun place(source: File, target: File, consumeSource: Boolean): Boolean {
-        if (target.exists() && !target.delete()) {
-            // 删不掉旧的（极罕见）：别覆盖出半个文件，放弃这次留存。
-            return false
-        }
-        if (consumeSource && source.renameTo(target)) return true
-        val temp = File.createTempFile("incoming-", ".zip", root)
+        val temp = File.createTempFile("incoming-", PART_SUFFIX, root)
         return try {
-            source.copyTo(temp, overwrite = true)
-            temp.renameTo(target)
+            // 先把 createTempFile 建出来的空文件删掉：Windows 上 renameTo 到一个已存在的
+            // 目标会直接失败（POSIX 则是覆盖），留着它会让下面的改名恒走复制分支，
+            // 「搬走源文件」的语义就悄悄退化成「复制」，源文件留在原地。
+            temp.delete()
+            // consumeSource 优先走改名（同一分区比再读一遍几十 MB 便宜）；
+            // 移动失败（跨文件系统等）退回复制，不改变语义。
+            val staged = if (consumeSource && source.renameTo(temp)) {
+                true
+            } else {
+                source.copyTo(temp, overwrite = true)
+                temp.isFile && temp.length() > 0L
+            }
+            staged && replace(temp, target)
+        } catch (e: Throwable) {
+            false
         } finally {
             if (temp.exists()) runCatching { temp.delete() }
         }
+    }
+
+    /** 用已写好的 [temp] 顶掉 [target]；失败时把旧包恢复回去。 */
+    private fun replace(temp: File, target: File): Boolean {
+        val backup = File(root, target.name + BACKUP_SUFFIX)
+        val hadTarget = target.exists()
+        if (hadTarget) {
+            runCatching { backup.delete() }
+            if (!target.renameTo(backup)) return false
+        }
+        if (temp.renameTo(target)) {
+            runCatching { backup.delete() }
+            return true
+        }
+        // 新包没就位：把旧包还回去，别让这次留存把上一份也一起弄丢。
+        if (hadTarget) runCatching { backup.renameTo(target) }
+        return false
     }
 
     /** 丢掉这个 id 留存的包（用户在 App 里清了数据、或留存包被判废时）。 */
@@ -159,8 +196,12 @@ class ModuleZipArchive(
      * 按上限淘汰：条目数或总字节超了，就从最后修改时间最早的那份开始删。
      *
      * 用 lastModified 而不是另存一份时间戳：文件本身就是唯一事实来源，重装会刷新它。
+     *
+     * [keep] 是刚存进来的那一份：哪怕它一份就超过了总上限，也不能当场淘汰——否则
+     * 用户刚装完的包立刻消失，而 [store] 返回的 Entry 指向一个已经不存在的文件。
+     * 真装不下就让它成为唯一的幸存者，下一次存别的包时再按最旧淘汰。
      */
-    fun prune() {
+    fun prune(keep: File? = null) {
         val files = runCatching {
             root.listFiles { file -> file.isFile && file.name.endsWith(".zip") }
                 ?.sortedBy { it.lastModified() }
@@ -169,6 +210,8 @@ class ModuleZipArchive(
         var count = files.size
         for (file in files) {
             if (count <= limits.maxEntries && total <= limits.maxTotalBytes) break
+            // 只剩它自己时就别再删了：留存目录空着也不比「留着这一份」更符合预期。
+            if (keep != null && file == keep && count <= 1) break
             val size = file.length()
             if (runCatching { file.delete() }.getOrDefault(false)) {
                 count--
@@ -177,11 +220,46 @@ class ModuleZipArchive(
         }
     }
 
-    /** 清空整个留存目录（设置里「清掉留存的原始包」用得上）。 */
-    fun clear() {
+    /**
+     * 清空整个留存目录，返回**实际**释放的字节数。
+     *
+     * 返回值是逐份累加删成功的那些，而不是清空前 stat 一遍的总和：删不掉的（被占用、
+     * 权限异常）不该算进「已释放」，否则用户看到的数字和实际腾出的空间对不上。
+     */
+    fun clear(): Long {
+        var freed = 0L
         runCatching {
-            root.listFiles()?.forEach { file -> if (file.isFile) file.delete() }
+            root.listFiles()?.forEach { file ->
+                if (!file.isFile) return@forEach
+                val size = file.length()
+                if (runCatching { file.delete() }.getOrDefault(false)) freed += size
+            }
         }
+        return freed
+    }
+
+    /**
+     * 删掉所有不属于 [keep] 的留存包，返回**实际**释放的字节数。
+     *
+     * 为什么需要它：留存的包按 id 落盘，与「当前装着哪些模块」无关。用户卸载一个模块后，
+     * 那份包既没有列表行可以点「用留存的包」，也不会被 [prune] 主动淘汰（它只在超上限时
+     * 才动手），于是一直占着空间，用户唯一的出路是「清空全部」——连带删掉他还想留的那些。
+     * 这个方法给出第三条路：只回收已卸载模块的那几份。
+     *
+     * [keep] 传的是「当前安装的模块 id」，调用方负责先过 [safeId]；这里再比一次文件名形态，
+     * 免得 `a/b` 与 `a_b` 这类被压过字符的 id 认错。
+     */
+    fun clearExcept(keep: Set<String>): Long {
+        var freed = 0L
+        runCatching {
+            root.listFiles()?.forEach { file ->
+                if (!file.isFile || !file.name.endsWith(".zip")) return@forEach
+                if (file.name.removeSuffix(".zip") in keep) return@forEach
+                val size = file.length()
+                if (runCatching { file.delete() }.getOrDefault(false)) freed += size
+            }
+        }
+        return freed
     }
 
     private fun fileFor(id: String): File = File(root, fileNameFor(id))
@@ -189,6 +267,12 @@ class ModuleZipArchive(
     companion object {
         /** 留存目录名（filesDir 下）。备份规则里要排除它，见 res/xml/backup_rules.xml。 */
         const val DIR_NAME = "module_zips"
+
+        /** 落盘临时名后缀。刻意不以 `.zip` 结尾：`.zip` 过滤会把它当正式条目。 */
+        private const val PART_SUFFIX = ".part"
+
+        /** 顶掉旧包时的备份名后缀，同上。 */
+        private const val BACKUP_SUFFIX = ".bak"
 
         /**
          * 把 id 里不能进文件名的字符压成 `_`。

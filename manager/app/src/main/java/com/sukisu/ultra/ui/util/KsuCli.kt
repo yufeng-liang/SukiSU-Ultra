@@ -27,7 +27,6 @@ import com.sukisu.ultra.data.modulezip.ModuleZipArchive
 import com.sukisu.ultra.data.registry.DownloadVerificationException
 import com.sukisu.ultra.data.registry.RegistryDownloadStore
 import com.sukisu.ultra.data.registry.copyForInstall
-import com.sukisu.ultra.data.repository.isKeepModuleZipEnabled
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.screen.susfs.util.SuSFSConfig
 import okhttp3.OkHttpClient
@@ -332,10 +331,11 @@ fun flashModule(
     /**
      * 装成功后要不要把这份 zip 留一份给上传页用。
      *
-     * 默认读设置（[isKeepModuleZipEnabled]，默认开）；备份恢复那条路显式传 false——
-     * 它装的是重打过的包，不能覆盖作者原始包。
+     * 不给默认值：默认值会在这里读一次设置（SharedPreferences 的磁盘 I/O），而默认参数
+     * 在**每次调用**时求值、且发生在任何显式传参之前——备份恢复那条路明明传了 false，
+     * 也要先白读一遍。由调用方显式决定（见 FlashUtils / KsuModuleRestorer）。
      */
-    archiveSource: Boolean = isKeepModuleZipEnabled(),
+    archiveSource: Boolean,
 ): FlashResult {
     // Registry downloads live in app-private storage and carry their expected size + SHA-256;
     // the exact copy handed to ksud is re-hashed right before installing.
@@ -371,7 +371,15 @@ fun flashModule(
             // 授权已经随进程失效，事后再让他找一遍路径是不现实的。consumeSource = true 让
             // 归档把这份临时副本改名搬走（同一个 cacheDir/filesDir 分区，比再复制几十 MB 便宜）；
             // 留存是 best-effort，失败只是「上传时得手动挑」，绝不能影响这次安装的结论。
-            ModuleZipArchive.default().store(file, consumeSource = true)
+            //
+            // 但失败必须说出来：跟「装完删源」一起开时，留存失败等于两头落空——原文件删了、
+            // 留存也没有，用户下次上传只能凭记忆找包。静默失败让这件事无从察觉。
+            val kept = ModuleZipArchive.default().store(
+                file,
+                consumeSource = true,
+                onFailure = { e -> Log.w("KernelSU", "module zip not kept: ${e.message}") },
+            )
+            if (kept == null) onStdout(ksuApp.getString(R.string.module_zip_archive_failed))
         }
         if (shouldDeleteSourceAfterInstall(deleteSourceOnSuccess, result.isSuccess)) {
             val name = runCatching { uri.getFileName(ksuApp) }.getOrNull()

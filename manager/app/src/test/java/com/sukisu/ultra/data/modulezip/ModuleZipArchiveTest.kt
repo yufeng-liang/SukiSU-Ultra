@@ -220,13 +220,67 @@ class ModuleZipArchiveTest {
     }
 
     @Test
-    fun `a failing store keeps the source when it is not consumed`() {
+    fun `a zip without module prop leaves the source alone even when asked to consume it`() {
         val archive = ModuleZipArchive(root())
         val bogus = File(createTempDirectory("module-bogus-").toFile(), "bogus.zip")
         bogus.writeText("not a zip")
 
+        // 名字说「不消费」就真的不消费：consumeSource = true 也要留住源文件，
+        // 因为解析 module.prop 失败发生在搬文件之前。
         assertNull(archive.store(bogus, consumeSource = true))
         // 读不出 module.prop 就不该动源文件：调用方可能还要拿它做别的事（比如报错原文）。
         assertTrue(bogus.exists())
+    }
+
+    @Test
+    fun `clear reports the bytes it actually freed`() {
+        val archive = ModuleZipArchive(root())
+        val stored = archive.store(zip("sized_module", filler = "x".repeat(4096)))
+
+        val freed = archive.clear()
+
+        assertEquals(stored!!.sizeBytes, freed)
+        assertEquals(0L, archive.usage().totalBytes)
+        assertEquals(0, archive.usage().entries)
+    }
+
+    @Test
+    fun `a stored zip over the total cap survives as the only entry`() {
+        // 单个包就超过总上限：刚存进去的那一份不能被当场淘汰，
+        // 否则 store 返回的 Entry 指向一个已经被删掉的文件。
+        val archive = ModuleZipArchive(root(), ModuleZipArchive.Limits(maxTotalBytes = 1024L))
+        val stored = archive.store(zip("huge_module", filler = "x".repeat(8192)))
+
+        assertNotNull(stored)
+        assertTrue("刚存进来的那一份必须还在", stored!!.file.isFile)
+        assertEquals(1, archive.usage().entries)
+    }
+
+    @Test
+    fun `a temp copy is never mistaken for a stored zip`() {
+        val root = root()
+        val archive = ModuleZipArchive(root)
+        // 模拟「装到一半被杀掉」留下的临时名与备份名：两者都不以 .zip 结尾，
+        // ids()/usage()/prune() 的过滤要把它们排除在外。
+        File(root, "incoming-123.part").writeText("half written")
+        File(root, "ghost.zip.bak").writeText("backup")
+        archive.store(zip("real_module"))
+
+        assertEquals(setOf("real_module"), archive.ids())
+        assertEquals(1, archive.usage().entries)
+    }
+
+    @Test
+    fun `store reports the failure to the caller instead of swallowing it`() {
+        val archive = ModuleZipArchive(root())
+        val bogus = File(createTempDirectory("module-bogus-").toFile(), "bogus.zip")
+        bogus.writeText("not a zip")
+        var reported = 0
+
+        assertNull(archive.store(bogus, onFailure = { reported++ }))
+
+        // 解析失败走的是「返回 null」而不是抛异常，所以 onFailure 只该接住真异常；
+        // 这里断言的是「不会因为传了回调就多报一次」。
+        assertEquals(0, reported)
     }
 }

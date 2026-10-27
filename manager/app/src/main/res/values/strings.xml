@@ -221,6 +221,7 @@
     <string name="settings_auto_delete_module_zip_summary">Automatically delete module zips after a successful installation, including updates, repository installs and files you picked manually.</string>
     <string name="module_zip_deleted">Module zip deleted: %1$s</string>
     <string name="module_zip_delete_failed">! Failed to delete module zip: %1$s</string>
+    <string name="module_zip_archive_failed">! Could not keep a copy of this module zip; you will have to pick it manually to upload</string>
     <string name="grant_root_failed">Failed to grant Root!</string>
     <string name="home_pr_build_warning">This is a PR debug build. Do NOT use it in production!</string>
     <string name="home_pr_kernel_warning">The kernel was built with PR signature support. This is not a production kernel!</string>
@@ -1101,6 +1102,7 @@
     <string name="module_upload_pick_zip_summary">Pick one or more original module zips from storage</string>
     <string name="module_upload_pick_original_zip">Choose this module\'s original zip</string>
     <string name="module_upload_pick_original_zip_summary">The zip must contain this module id: %1$s</string>
+    <string name="module_upload_picking">Waiting for the file picker…</string>
     <string name="module_upload_use_archived_zip">Use the zip kept at install time</string>
     <string name="module_upload_use_archived_zip_summary">Kept automatically when this module was installed, no need to look for it in storage</string>
     <string name="module_upload_archived_missing">The kept zip for \"%1$s\" is gone (evicted or unreadable), please choose it manually</string>
@@ -1112,6 +1114,10 @@
     <string name="module_upload_clear_archived_zip_summary_empty">Nothing kept yet</string>
     <string name="module_upload_clear_archived_zip_confirm">Delete the %1$d kept zips (%2$s)? Next time you will have to pick the zip manually.</string>
     <string name="module_upload_clear_archived_zip_done">Freed %1$s</string>
+    <string name="module_upload_clear_orphan_zip">Clear the zips of uninstalled modules</string>
+    <string name="module_upload_clear_orphan_zip_summary">%1$d of the kept zips belong to modules that are no longer installed, so they can never be reused</string>
+    <string name="module_upload_clear_orphan_zip_confirm">Delete the %1$d kept zips that belong to uninstalled modules? The zips of installed modules stay.</string>
+    <string name="module_upload_archived_version_mismatch">The kept zip is %1$s (%2$d), but the installed version is %3$s (%4$d). It was not added.</string>
     <string name="module_upload_id_mismatch">That zip is for module \"%2$s\", not \"%1$s\", so it was not added.</string>
     <string name="module_upload_unreadable_prop">Cannot read module.prop from this zip (not a module zip, or id/name is empty)</string>
     <string name="module_upload_unreadable_prop_count">%1$d zips have no readable module.prop and were skipped</string>
@@ -1177,7 +1183,7 @@
     <string name="module_upload_result_pr">Pull request: %1$s</string>
     <string name="module_upload_limit_too_many">At most %1$d modules can be uploaded at once</string>
     <string name="module_upload_limit_single_too_big">One of the zips is larger than the server allows (%1$s)</string>
-    <string name="module_upload_stage_too_big">This zip is over the server limit for one zip (%1$s); pick a smaller one</string>
+    <string name="module_upload_stage_too_big">This zip is %1$s, over the server limit for one zip (%2$s); pick a smaller one</string>
     <string name="module_upload_limit_total_too_big">The batch is larger than the server allows (%1$s)</string>
     <string name="module_upload_limit_unknown">Couldn\'t read the server limits; upload is disabled for now</string>
     <string name="module_upload_turnstile_title">Human verification</string>

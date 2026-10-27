@@ -32,6 +32,7 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.data.backup.BackupRepository
 import com.sukisu.ultra.ui.util.BackupNotifier
 import com.sukisu.ultra.data.repository.isAutoDeleteModuleZipEnabled
+import com.sukisu.ultra.data.repository.isKeepModuleZipEnabled
 import com.sukisu.ultra.ui.util.FlashResult
 import com.sukisu.ultra.ui.util.LkmSelection
 import com.sukisu.ultra.ui.util.downloadBoot
@@ -127,7 +128,13 @@ fun flashModulesSequentially(
 ): FlashResult {
     var needsReboot = false
     for (uri in uris) {
-        flashModule(uri, onStdout, onStderr, deleteSourceOnSuccess = deleteInstalledZips).apply {
+        flashModule(
+            uri,
+            onStdout,
+            onStderr,
+            deleteSourceOnSuccess = deleteInstalledZips,
+            archiveSource = isKeepModuleZipEnabled(),
+        ).apply {
             needsReboot = needsReboot || showReboot
             if (code != 0) {
                 return FlashResult(code, err, needsReboot)

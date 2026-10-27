@@ -92,6 +92,7 @@ import com.sukisu.ultra.ui.component.miuix.deferredTopPadding
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.theme.isInDarkTheme
 import com.sukisu.ultra.ui.util.BlurredBar
+import com.sukisu.ultra.ui.util.formatFileSize
 import com.sukisu.ultra.ui.util.formatRepoTime
 import com.sukisu.ultra.ui.util.isDownloadAvailable
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
@@ -961,13 +962,7 @@ fun ReleasesPage(
                                         val fileName = asset.name
                                         stringResource(R.string.module_downloading)
                                         val sizeText = remember(asset.size) {
-                                            val s = asset.size
-                                            when {
-                                                s >= 1024L * 1024L * 1024L -> String.format("%.1f GB", s / (1024f * 1024f * 1024f))
-                                                s >= 1024L * 1024L -> String.format("%.1f MB", s / (1024f * 1024f))
-                                                s >= 1024L -> String.format("%.0f KB", s / 1024f)
-                                                else -> "$s B"
-                                            }
+                                            formatFileSize(asset.size)
                                         }
                                         val sizeAndDownloads =
                                             remember(sizeText, asset.downloadCount) { "$sizeText · ${asset.downloadCount} downloads" }
