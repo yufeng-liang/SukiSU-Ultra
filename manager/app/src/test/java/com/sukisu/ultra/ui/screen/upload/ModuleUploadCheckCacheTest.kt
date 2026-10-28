@@ -82,15 +82,19 @@ class ModuleUploadCheckCacheTest {
 
     @Test
     fun `one bad entry never takes the others down`() {
+        // 时刻要对着 TTL 算，不能凭「看着旧」：
+        // `now - at >= ttl` 才算过期，所以 at 必须比 now 早整整半小时以上。
+        // good 距 now 只差半分钟（有效），expired 差 50 分钟（过期）。
+        val now = 5_000_000L
         val blob = """
             {"schema":1,"entries":[
-              {"id":"good","vc":1,"st":"RECORDED","uid":"1","el":"MINE","rs":"","at":1000},
-              {"id":"bad_status","vc":1,"st":"收录了","uid":"1","el":"MINE","rs":"","at":1000},
-              {"id":"","vc":1,"st":"NEW","uid":"1","el":"UNKNOWN","rs":"","at":1000},
-              {"id":"expired","vc":1,"st":"NEW","uid":"1","el":"UNKNOWN","rs":"","at":1}
+              {"id":"good","vc":1,"st":"RECORDED","uid":"1","el":"MINE","rs":"","at":4970000},
+              {"id":"bad_status","vc":1,"st":"收录了","uid":"1","el":"MINE","rs":"","at":4970000},
+              {"id":"","vc":1,"st":"NEW","uid":"1","el":"UNKNOWN","rs":"","at":4970000},
+              {"id":"expired","vc":1,"st":"NEW","uid":"1","el":"UNKNOWN","rs":"","at":2000000}
             ]}
         """.trimIndent()
-        val decoded = ModuleUploadCheckCache.decode(blob, now = 2_000L)
+        val decoded = ModuleUploadCheckCache.decode(blob, now = now)
         assertEquals(setOf("good"), decoded.keys)
         // 枚举名不认识的归属退回 UNKNOWN，而不是丢掉整条（收录状态仍然是有效的）。
         val unknownEligibility = """
