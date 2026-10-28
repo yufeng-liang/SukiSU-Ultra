@@ -204,12 +204,11 @@ $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])
 ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
 ccflags-y += -DKSU_VERSION_FULL=\"$(KSU_VERSION_FULL)\"
 
-KSU_IS_PR_BUILD ?= 0
-ifeq ($(KSU_IS_PR_BUILD),0)
-KSU_PACKAGE_NAME ?= com.sukisu.ultra
-else
-KSU_PACKAGE_NAME ?= com.sukisu.ultra.pr
-endif
+# 管理器包名不再在这里写字面量：默认值来自仓库根的 manager-package.properties
+# （单一真源），KSU_IS_PR_BUILD 的默认值与 PR 分支的选择也在 manager-package.mk 里。
+# 命令行传 KSU_PACKAGE_NAME=... 仍然优先。详见 kernel/manager-package.mk。
+include $(dir $(lastword $(MAKEFILE_LIST)))manager-package.mk
+
 KSU_EXPECTED_SIZE ?= 0x35c
 KSU_EXPECTED_HASH ?= 947ae944f3de4ed4c21a7e4f7953ecf351bfa2b36239da37a34111ad29993eef
 
@@ -258,7 +257,7 @@ endif
 
 # 第二签名槽（fork 自有，上游 2dedd26b #987 删过这一段）：槽 1 是官方证书、槽 2 是 fork 证书，
 # 两边刷完内核都开箱被认成管理器。上游换成的运行时动态授权名单补不了这一步——它要求设备上已经
-# 有一个能取到 root 的管理器，而 fork 与官方同为 com.sukisu.ultra、装不下共存。三条 workflow
+# 有一个能取到 root 的管理器，而 fork 的 APK 用的是自己的证书、走的正是槽 2。三条 workflow
 # 仍在透传这两个变量（build-lkm/ddk-lkm 的 EXTRA_ARGS、build-manager 用 secrets.KEYSTORE 填槽 2），
 # 少了下面这段它们会安静地变成空传：apk_sign.c 的 #ifdef 不成立，编译与打包都不报错。
 ifdef KSU_EXPECTED_SIZE2

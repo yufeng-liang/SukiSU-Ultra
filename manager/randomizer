@@ -29,3 +29,9 @@ find . -type f -exec sed -i \
 
 # add -spoofed on tags
 sed -i -e '/fun getGitDescribe(): String {/,/^    }/ s/\.trim()$/.trim() + "-spoofed"/' build.gradle.kts
+
+# 包名默认值在仓库根的单一真源里（不在 ./manager 下，上面的 find 扫不到）
+sed -i \
+    -e "s/^KSU_MANAGER_PACKAGE_NAME=.*/KSU_MANAGER_PACKAGE_NAME=$word1.$word2.$word3/" \
+    -e "s/^KSU_MANAGER_PACKAGE_NAME_PR=.*/KSU_MANAGER_PACKAGE_NAME_PR=$word1.$word2.$word3.pr/" \
+    ../manager-package.properties

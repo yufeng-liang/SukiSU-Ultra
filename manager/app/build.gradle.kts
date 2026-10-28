@@ -25,10 +25,40 @@ val managerVersionCode = rootProject.extra["managerVersionCode"] as Int
 val managerVersionName = rootProject.extra["managerVersionName"] as String
 
 val isPrBuild = project.findProperty("IS_PR_BUILD")?.toString()?.toBoolean() ?: false
-val defaultManagerPackageName = if (isPrBuild) "com.sukisu.ultra.pr" else "com.sukisu.ultra"
+
+/**
+ * 包名默认值的唯一来源是仓库根的 manager-package.properties。
+ *
+ * 这里刻意不写 "com.xxx" 字面量：内核编译期宏 KSU_PACKAGE_NAME 必须与
+ * applicationId 逐字节相同，两处各留一份默认值就是"只改一半"的全部来源。
+ * 同一份文件还被 kernel/manager-package.mk 与 userspace/ksud/build.rs 读取。
+ */
+val managerPackageSingleSource = rootProject.file("../manager-package.properties")
+
+fun managerPackageSingleSourceProperty(key: String): String {
+    require(managerPackageSingleSource.isFile) {
+        "找不到包名单一真源 ${managerPackageSingleSource.absolutePath}；" +
+            "请从仓库根构建，或用 -PKSU_PACKAGE_NAME=<package> 显式指定"
+    }
+    val properties = java.util.Properties()
+    managerPackageSingleSource.reader(Charsets.UTF_8).use { properties.load(it) }
+    return properties.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: error("${managerPackageSingleSource.name} 缺少 $key")
+}
+
+val defaultManagerPackageName = managerPackageSingleSourceProperty(
+    if (isPrBuild) "KSU_MANAGER_PACKAGE_NAME_PR" else "KSU_MANAGER_PACKAGE_NAME"
+)
 val defaultManagerName = if (isPrBuild) "SukiSU PR" else "SukiSU"
 val managerPackageName = project.findProperty("KSU_PACKAGE_NAME")?.toString() ?: defaultManagerPackageName
 val managerName = project.findProperty("KSU_NAME")?.toString() ?: defaultManagerName
+
+// CI 一致性校验入口：打印 Gradle 真正会写进 APK 的 applicationId，
+// 由 scripts/check_manager_package.py 与内核侧取值逐字节比对。
+tasks.register("printManagerPackageName") {
+    description = "Print the effective applicationId for the CI package-name check"
+    doLast { println(managerPackageName) }
+}
 
 apksign {
     storeFileProperty = "KEYSTORE_FILE"
@@ -63,6 +93,8 @@ val baseCFlags = listOf(
 val baseCppFlags = baseCFlags + "-fno-rtti"
 
 android {
+    // 这是源码命名空间（R 类 / 编译期包名），与安装到系统里的包名（applicationId）无关，
+    // 保持不动即可。安装包名见仓库根 manager-package.properties。
     namespace = "com.sukisu.ultra"
 
     buildTypes {

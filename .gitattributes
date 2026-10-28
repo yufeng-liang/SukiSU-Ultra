@@ -1,1 +1,9 @@
 *.bat eol=crlf
+
+# 管理器包名的单一真源会被 GNU make include、Java Properties、shell source
+# 三种解析器消费。make 不会剥掉 \r，CRLF 检出会让内核里编译进
+# "com.yufeng.sukisu.ultra\r"，而 Python/shell 侧会把 \r 规范化掉，
+# 表现为"构建全绿、装机后永远拿不到管理器身份"。必须钉死 LF。
+manager-package.properties text eol=lf
+kernel/manager-package.mk text eol=lf
+scripts/check_manager_package.py text eol=lf

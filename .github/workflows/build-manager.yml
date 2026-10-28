@@ -15,6 +15,8 @@ on:
       - '.github/riscv64-cargo.toml'
       - 'repack_apk.py'
       - 'split_apk_by_arch.py'
+      - 'scripts/check_manager_package.py'
+      - 'manager-package.properties'
       - 'manager/**'
       - 'kernel/**'
       - 'userspace/**'
@@ -34,6 +36,8 @@ on:
       - '.github/riscv64-cargo.toml'
       - 'repack_apk.py'
       - 'split_apk_by_arch.py'
+      - 'scripts/check_manager_package.py'
+      - 'manager-package.properties'
       - 'manager/**'
       - 'kernel/**'
       - 'userspace/**'
@@ -155,8 +159,40 @@ jobs:
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "KernelSU version code: $VERSION_CODE (main commits: $COMMIT_COUNT)"
 
+  # ------------------------------------------------------------
+  # 包名一致性闸门（必须在任何编译之前跑）
+  #
+  # 不变式：内核编译进去的 KSU_PACKAGE_NAME 必须与 manager APK 的
+  # applicationId 逐字节相同，否则 throne_tracker 永远匹配不到管理器，
+  # app 只能以 preview 模式运行（看起来"能装、能用"，只是内核功能全灰）。
+  # 唯一来源是仓库根的 manager-package.properties；本 job 断言：
+  #   1) 文件本身合法，且 PR 变体 == 基础包名 + ".pr"
+  #   2) kernel/manager-package.mk 用真实 make 求值出的两个取值
+  #   3) Gradle 真实 applicationId（:app:printManagerPackageName）与之相同
+  # ------------------------------------------------------------
+  verify-package-name:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Verify manager package single source
+        run: python3 scripts/check_manager_package.py --gradle
+
   build-lkm:
-    needs: [generate-key, determine-version]
+    needs: [generate-key, determine-version, verify-package-name]
     uses: ./.github/workflows/build-lkm.yml
     with:
       # Slot 1 is left empty on purpose: Kbuild then falls back to the default
@@ -199,11 +235,12 @@ jobs:
   # ------------------------------------------------------------
 
   build-manager:
-    needs: [generate-key, build-ksud]
+    needs: [generate-key, build-ksud, verify-package-name]
 
     if: always() &&
         needs.generate-key.result == 'success' &&
-        needs.build-ksud.result == 'success'
+        needs.build-ksud.result == 'success' &&
+        needs.verify-package-name.result == 'success'
 
     runs-on: ubuntu-latest
 
@@ -284,6 +321,14 @@ jobs:
             -e "s/io_sukisu_ultra/${word4}_${word2}_${word3}/g" \
             -e "s/com_sukisu_ultra/${word1}_${word2}_${word3}/g" \
             {} +
+
+          # 包名默认值已收敛到仓库根的 manager-package.properties，它不在 ./manager
+          # 下、上面的 find 扫不到，必须单独改写；否则 spoofed 变体会和正式包同包名，
+          # 既不能共存，也失去了"伪装"的意义。
+          sed -i \
+            -e "s/^KSU_MANAGER_PACKAGE_NAME=.*/KSU_MANAGER_PACKAGE_NAME=$word1.$word2.$word3/" \
+            -e "s/^KSU_MANAGER_PACKAGE_NAME_PR=.*/KSU_MANAGER_PACKAGE_NAME_PR=$word1.$word2.$word3.pr/" \
+            ../manager-package.properties
 
           # Add -spoofed to getGitDescribe().
           sed -i \

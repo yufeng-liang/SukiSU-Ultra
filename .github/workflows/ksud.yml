@@ -61,8 +61,10 @@ jobs:
       env:
         ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
       run: |
+        # PR 变体的包名同样来自仓库根的 manager-package.properties（build.rs 读取），
+        # 这里只声明"这是 PR 构建"，不再写字面量，避免与内核侧取值各写一份。
         if [ "${{ github.event_name }}" = "pull_request" ]; then
-          export KSU_PACKAGE_NAME="com.sukisu.ultra.pr"
+          export KSU_IS_PR_BUILD=1
         fi
         if [ "${{ inputs.target }}" = riscv64-linux-android ]; then
           source .github/scripts/setup-rust-build.sh riscv64-linux-android 35

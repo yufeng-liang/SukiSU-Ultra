@@ -222,6 +222,34 @@ fn assemble_bootstrap() {
     }
 }
 
+/// 包名单一真源，相对于 `CARGO_MANIFEST_DIR`（= userspace/ksud）。
+///
+/// 这里不写默认字面量：内核宏 `KSU_PACKAGE_NAME` 与 manager 的 applicationId
+/// 必须逐字节一致，任何一处"顺手写死"都会在只改一半时静默失效。
+const MANAGER_PACKAGE_SINGLE_SOURCE: &str = "../../manager-package.properties";
+
+/// 从单一真源读取包名；`key` 为 `KSU_MANAGER_PACKAGE_NAME` 或 `KSU_MANAGER_PACKAGE_NAME_PR`。
+fn manager_package_name(key: &str) -> String {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let path = Path::new(&manifest_dir).join(MANAGER_PACKAGE_SINGLE_SOURCE);
+    let text = fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "cannot read the manager package single source {}: {error}; \
+             build from the repository root or set KSU_PACKAGE_NAME explicitly",
+            path.display()
+        )
+    });
+    println!("cargo:rerun-if-changed={}", path.display());
+
+    let prefix = format!("{key}=");
+    text.lines()
+        .filter_map(|line| line.trim().strip_prefix(&prefix))
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| panic!("{key} not found in {}", path.display()))
+}
+
 fn main() {
     assemble_bootstrap();
 
@@ -233,8 +261,15 @@ fn main() {
             (0, "0.0.0".to_string())
         }
     };
+    println!("cargo:rerun-if-env-changed=KSU_PACKAGE_NAME");
+    println!("cargo:rerun-if-env-changed=KSU_IS_PR_BUILD");
     if env::var("KSU_PACKAGE_NAME").is_err() {
-        println!("cargo:rustc-env=KSU_PACKAGE_NAME=com.sukisu.ultra");
+        // PR 构建用 .pr 变体；与 Kbuild 的 KSU_IS_PR_BUILD 语义保持一致。
+        let key = match env::var("KSU_IS_PR_BUILD").as_deref() {
+            Ok("1") | Ok("true") => "KSU_MANAGER_PACKAGE_NAME_PR",
+            _ => "KSU_MANAGER_PACKAGE_NAME",
+        };
+        println!("cargo:rustc-env=KSU_PACKAGE_NAME={}", manager_package_name(key));
     }
     println!("cargo:rustc-env=VERSION_CODE={code}");
     println!("cargo:rustc-env=VERSION_NAME={name}");
