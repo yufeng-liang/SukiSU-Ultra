@@ -33,6 +33,11 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -173,7 +178,7 @@ fun ModuleUploadFormMaterial(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 10.dp)
+                                .padding(top = 12.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                 .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -310,9 +315,13 @@ fun ModuleUploadFormMaterial(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
-                            if (state.uidVerified &&
-                                (state.signatureValid || state.sessionMatchesUid) &&
-                                !state.consent
+                            // 提示是补出来的（淡入 + 纵向展开），不是常驻再消失，视觉上少一次跳变。
+                            AnimatedVisibility(
+                                visible = state.uidVerified &&
+                                    (state.signatureValid || state.sessionMatchesUid) &&
+                                    !state.consent,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically(),
                             ) {
                                 Text(
                                     text = stringResource(R.string.module_upload_consent_required),
@@ -348,7 +357,7 @@ fun ModuleUploadFormMaterial(
                         else -> stringResource(R.string.module_upload_limit_unknown)
                     }
                     Text(
-                        modifier = Modifier.padding(top = 10.dp),
+                        modifier = Modifier.padding(top = 12.dp),
                         text = limitText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
