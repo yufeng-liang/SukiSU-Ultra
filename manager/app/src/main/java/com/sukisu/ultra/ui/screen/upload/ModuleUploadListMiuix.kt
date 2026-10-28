@@ -1,5 +1,7 @@
 package com.sukisu.ultra.ui.screen.upload
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -539,7 +541,8 @@ private fun FilterRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 10.dp)
+            // 与查重进度、组标题的 12dp 间距同一个节奏；10dp 是历史口径。
+            .padding(top = 12.dp)
             // 四个 chip 原来塞在一个固定 Row 里，360dp 窄屏会把最后两个裁掉一半；
             // 横滑之后 chip 再多也不挤，间距与选中态照旧。
             .horizontalScroll(rememberScrollState())
@@ -594,7 +597,8 @@ private fun CheckProgressMiuix(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 10.dp),
+            // 顶部节奏统一 12dp：与筛选行、挑包入口卡同一口径。
+            .padding(top = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -715,7 +719,10 @@ private fun UploadRowCardMiuix(
     Card(
         modifier = Modifier
             .padding(top = topGap)
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            // 展开区不是瞬移出来的：高度变化交给 animateContentSize 缓过去，
+            // 与上游仓库页同一套节奏（tween 300）。
+            .animateContentSize(animationSpec = tween(durationMillis = 300)),
         onClick = onToggle,
     ) {
         Column(

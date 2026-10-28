@@ -1,6 +1,11 @@
 package com.sukisu.ultra.ui.screen.upload
 
 import android.content.ClipData
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -284,7 +289,8 @@ fun ModuleUploadFormMiuix(
             item {
                 Card(
                     modifier = Modifier
-                        .padding(top = 16.dp)
+                        // 卡片间隔统一 20dp：与当前编辑卡、身份卡同一口径，16dp 是历史漂移。
+                        .padding(top = 20.dp)
                         .fillMaxWidth(),
                 ) {
                     // 整行可点：勾选框在左上、文字占三行时，只点那个小方块太窄。
@@ -316,9 +322,13 @@ fun ModuleUploadFormMiuix(
                                 color = colorScheme.onSurfaceVariantSummary,
                             )
                             // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
-                            if (state.uidVerified &&
-                                (state.signatureValid || state.sessionMatchesUid) &&
-                                !state.consent
+                            // 提示是补出来的（淡入 + 纵向展开），不是常驻再消失，视觉上少一次跳变。
+                            AnimatedVisibility(
+                                visible = state.uidVerified &&
+                                    (state.signatureValid || state.sessionMatchesUid) &&
+                                    !state.consent,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically(),
                             ) {
                                 Text(
                                     text = stringResource(R.string.module_upload_consent_required),
