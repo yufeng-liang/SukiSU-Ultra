@@ -62,7 +62,6 @@ import com.sukisu.ultra.ui.component.miuix.SearchPager
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.CheckStatus
-import com.sukisu.ultra.ui.util.MineModule
 import com.sukisu.ultra.ui.util.UpdateEligibility
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.Card
@@ -81,6 +80,7 @@ import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Filter
 import top.yukonga.miuix.kmp.icon.extended.Layers
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
+import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.UploadCloud
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -107,12 +107,14 @@ fun ModuleUploadListMiuix(
     onToggleRow: (String) -> Unit,
     onPickForRow: (UploadRow) -> Unit,
     onUseArchived: (UploadRow) -> Unit,
+    /** 找不到原始包时，用已安装的模块目录现打一份（见 ViewModel.stageFromInstalled）。 */
+    onRebuildFromInstalled: (UploadRow) -> Unit,
     onPickZip: () -> Unit,
     onOpenArchiveSettings: () -> Unit,
-    /** 「我的模块」：服务端 `GET /mine` 的结果，与主列表共用同一套状态机。 */
+    /** 上传记录（`GET /mine`）：只用来算每行的「上传更新」标签，列表本身不再展开它。 */
     mine: MineState,
-    /** 为「我的模块」的某一行挑包；与主列表共用同一个单行 SAF 启动器与同一道闸门。 */
-    onPickForMine: (MineModule) -> Unit,
+    /** 打开上传记录页。 */
+    onOpenHistory: () -> Unit,
 ) {
     val searchStatus = state.searchStatus
     val scrollBehavior = MiuixScrollBehavior()
@@ -121,6 +123,8 @@ fun ModuleUploadListMiuix(
     val barColor = if (backdrop != null) Color.Transparent else colorScheme.surface
     val visible = state.visibleRows
     val checked = state.rows.count { it.status != null }
+    // 每个模块投过的最新版本号；「上传更新」标签的判据之一（另一个是这一行的版本号）。
+    val uploadedMax = remember(mine.modules) { ModuleUploadRules.uploadedMaxVersions(mine.modules) }
     val density = LocalDensity.current
     // 顶栏收起时假搜索条跟着沉下去：与模块页/仓库页同一公式，展开搜索后由 SearchPager 接管。
     val dynamicTopPadding by remember(scrollBehavior) {
@@ -162,16 +166,29 @@ fun ModuleUploadListMiuix(
                         },
                         // 刷新放顶栏：列表一滚行内按钮就看不见了，空列表时那一行也只剩它一个。
                         actions = {
+                            // 上传记录：回答「我以前投过什么」，与「这一版收录了没有」是两件事。
+                            IconButton(onClick = onOpenHistory) {
+                                Icon(
+                                    imageVector = MiuixIcons.Notes,
+                                    contentDescription = stringResource(R.string.module_upload_history_open),
+                                    tint = colorScheme.onSurface,
+                                )
+                            }
+                            // 刷新期间图标原地转 + 置灰，与 Material 那套同一套表达。
+                            val spin = rememberSpinAngle(state.busy)
                             IconButton(
                                 onClick = onRefresh,
-                                enabled = !state.refreshing && !state.loading,
+                                enabled = !state.busy,
                             ) {
                                 Icon(
+                                    // rotationZ 走 graphicsLayer：在图层里读角度，
+                                    // 每帧只重绘这一层，不重组顶栏。
+                                    modifier = Modifier.graphicsLayer { rotationZ = spin.value },
                                     imageVector = MiuixIcons.Refresh,
                                     contentDescription = stringResource(R.string.module_upload_refresh),
                                     // Miuix 的 IconButton 不会按 enabled 调淡图标，禁用态与可点态长得
                                     // 一模一样，用户会以为没点上而反复点。这里手动换禁用色。
-                                    tint = if (state.refreshing || state.loading) {
+                                    tint = if (state.busy) {
                                         colorScheme.onSurfaceVariantSummary
                                     } else {
                                         colorScheme.onSurface
@@ -197,32 +214,49 @@ fun ModuleUploadListMiuix(
                         // 假搜索条三件套照仓库页抄：收起时可见可点（点它展开真搜索条），
                         // 展开时整体隐藏，并把自身位置写回 offsetY 供 SearchPager 定位。
                         bottomContent = {
-                            Box(
-                                modifier = Modifier
-                                    .alpha(if (searchStatus.isCollapsed()) 1f else 0f)
-                                    .onGloballyPositioned { coordinates ->
-                                        with(density) {
-                                            val newOffsetY = coordinates.positionInWindow().y.toDp()
-                                            if (searchStatus.offsetY != newOffsetY) {
-                                                handleSearchStatusChange(
-                                                    searchStatus.copy(offsetY = newOffsetY)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    .then(
-                                        if (searchStatus.isCollapsed()) {
-                                            Modifier.pointerInput(Unit) {
-                                                detectTapGestures {
+                            // 假搜索条 + 刷新进度条：后者是顶栏最底边那一条，
+                            // 槽位常驻 3dp、只在忙时画条，所以进度条出现/消失
+                            // 不会让整块顶栏改变高度（下面的列表也就不跟着跳）。
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Box(
+                                    modifier = Modifier
+                                        .alpha(if (searchStatus.isCollapsed()) 1f else 0f)
+                                        .onGloballyPositioned { coordinates ->
+                                            with(density) {
+                                                val newOffsetY = coordinates.positionInWindow().y.toDp()
+                                                if (searchStatus.offsetY != newOffsetY) {
                                                     handleSearchStatusChange(
-                                                        searchStatus.copy(current = SearchStatus.Status.EXPANDING)
+                                                        searchStatus.copy(offsetY = newOffsetY)
                                                     )
                                                 }
                                             }
-                                        } else Modifier,
-                                    ),
-                            ) {
-                                SearchBarFake(searchStatus.label, dynamicTopPadding)
+                                        }
+                                        .then(
+                                            if (searchStatus.isCollapsed()) {
+                                                Modifier.pointerInput(Unit) {
+                                                    detectTapGestures {
+                                                        handleSearchStatusChange(
+                                                            searchStatus.copy(current = SearchStatus.Status.EXPANDING)
+                                                        )
+                                                    }
+                                                }
+                                            } else Modifier,
+                                        ),
+                                ) {
+                                    SearchBarFake(searchStatus.label, dynamicTopPadding)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(3.dp),
+                                ) {
+                                    if (state.busy) {
+                                        LinearProgressIndicator(
+                                            progress = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                }
                             }
                         },
                     )
@@ -262,6 +296,12 @@ fun ModuleUploadListMiuix(
                                 onToggle = { onToggleRow(row.id) },
                                 onPick = { onPickForRow(row) },
                                 onUseArchived = { onUseArchived(row) },
+                                onRebuild = { onRebuildFromInstalled(row) },
+                                uploadUpdate = ModuleUploadRules.showsUploadUpdate(
+                                    row.versionCode,
+                                    row.status,
+                                    uploadedMax[row.id],
+                                ),
                                 // 闸门在 ViewModel 里是全局的，搜索结果里的挑包按钮同样照办。
                                 picking = state.pickingFor != null,
                                 pickingThis = state.pickingFor == row.id,
@@ -305,6 +345,7 @@ fun ModuleUploadListMiuix(
                             total = state.rows.size,
                             remaining = state.remaining,
                             checking = state.checking,
+                            fromCache = state.fromCache,
                             onContinue = onContinueCheck,
                         )
                     }
@@ -333,16 +374,7 @@ fun ModuleUploadListMiuix(
                     }
                 }
 
-                // 「我的模块」紧跟挑包入口：两块是同一件事的两半——手里有 zip 就从上面进，
-                // 只是给已收录的模块发新版本就点下面这一行，挑完包带着模块 id 直接进表单。
-                item {
-                    MineSectionMiuix(
-                        mine = mine,
-                        picking = state.pickingFor != null,
-                        pickingId = state.pickingFor,
-                        onPick = onPickForMine,
-                    )
-                }
+                // 「上传记录」不占这一页：它挪到了顶栏图标背后（见 onOpenHistory）。
 
                 // 已装模块这一组也给标题：上面两组都有名有姓，这一组裸着会读成「还没结束的上一组」。
                 item {
@@ -380,6 +412,12 @@ fun ModuleUploadListMiuix(
                             onToggle = { onToggleRow(row.id) },
                             onPick = { onPickForRow(row) },
                             onUseArchived = { onUseArchived(row) },
+                            onRebuild = { onRebuildFromInstalled(row) },
+                            uploadUpdate = ModuleUploadRules.showsUploadUpdate(
+                                row.versionCode,
+                                row.status,
+                                uploadedMax[row.id],
+                            ),
                             // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
                             // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
                             picking = state.pickingFor != null,
@@ -394,135 +432,6 @@ fun ModuleUploadListMiuix(
                     Spacer(Modifier.height(24.dp))
                 }
             }
-        }
-    }
-}
-
-/**
- * 「我的模块」：已经收录的模块 + 一键发新版本（与 Material 那份同一份状态、同一道闸门）。
- *
- * 投稿的主路径其实是这一块：用户手里通常只剩新版 zip，早年的包早丢了；从这里挑包会带着
- * 模块 id 回表单，服务端不必再人工核对「这个包是谁的版本」。
- */
-@Composable
-private fun MineSectionMiuix(
-    mine: MineState,
-    /** 有任意一行正在挑包（全局闸门生效中）。 */
-    picking: Boolean,
-    /** 正在挑包的那一行（模块 id）；与主列表共用同一道闸门。 */
-    pickingId: String?,
-    onPick: (MineModule) -> Unit,
-) {
-    // 常态提示按状态取，一次只显示一句；message 那类一次性补充说明由外层用 Toast 消化，
-    // 不在这里重复。顺序即优先级：先答「能不能用」，再答「为什么是空的」。
-    val status = when {
-        mine.loading -> R.string.module_upload_mine_loading
-        mine.needVerify -> R.string.module_upload_mine_need_verify
-        mine.failed -> R.string.module_upload_mine_failed
-        // 降级时服务端也回空列表，但语义是「索引读不到」。说成「你没投过」会让人重投一遍。
-        mine.degraded -> R.string.module_upload_mine_degraded
-        mine.modules.isEmpty() -> R.string.module_upload_mine_empty
-        else -> null
-    }
-
-    // 这一组也做成「标题 + 一块卡片」：与上下两组同一个语言。组内的提示只占一行小字，
-    // 不给每条提示各配一张卡 —— 提示是这一组的注释，不是独立内容。
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SmallTitle(
-            text = stringResource(R.string.module_upload_mine_entry_title),
-            modifier = Modifier.padding(top = 20.dp),
-            // 纵向内边距收成 0：间距由外部 modifier 和卡片自己给，默认值会把它叠成两倍。
-            insideMargin = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 0.dp),
-        )
-        Card(
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .fillMaxWidth(),
-            insideMargin = PaddingValues(0.dp),
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp),
-                    text = stringResource(R.string.module_upload_mine_entry_summary),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-                if (status != null) {
-                    Row(
-                        modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        if (mine.loading) {
-                            CircularProgressIndicator(progress = null, size = 14.dp, strokeWidth = 2.dp)
-                        }
-                        Text(
-                            text = stringResource(status),
-                            fontSize = 12.sp,
-                            color = colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                }
-                // 失败或降级时手上可能还有一份旧名单：留着比清空好，上面那句提示已经说明它没过期。
-                mine.modules.forEach { module ->
-                    MineRowMiuix(
-                        module = module,
-                        picking = picking,
-                        pickingThis = pickingId == module.id,
-                        onPick = { onPick(module) },
-                    )
-                }
-                // 组内最后一行与卡片底边之间留一点：否则按钮贴着圆角，看着像被切掉。
-                if (mine.modules.isNotEmpty()) Spacer(Modifier.height(4.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun MineRowMiuix(
-    module: MineModule,
-    /** 有任意一行正在挑包：其余行的按钮一起禁掉（闸门本来就是全局的）。 */
-    picking: Boolean,
-    /** 正在挑的就是这一行。 */
-    pickingThis: Boolean,
-    onPick: () -> Unit,
-) {
-    // 整卡不可点：挑包要弹系统选择器，整行都能触发的话误触成本太高。
-    // 现在这一行落在「我的模块」那张组卡里，只有右侧按钮可点，判据不变。
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = module.name.ifBlank { module.id },
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                // 索引里 name 可能是空的（老条目），id 一定在；版本号缺了就只留 id。
-                text = if (module.version.isBlank()) module.id else "${module.id} · ${module.version}",
-                fontSize = 12.sp,
-                color = colorScheme.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (pickingThis) {
-            // 与主列表同一件事：系统选择器回来之前要有反馈，否则用户会以为没点上。
-            CircularProgressIndicator(progress = null, size = 16.dp, strokeWidth = 2.dp)
-        } else {
-            TextButton(
-                text = stringResource(R.string.module_upload_mine_update),
-                onClick = onPick,
-                enabled = !picking,
-            )
         }
     }
 }
@@ -573,10 +482,14 @@ private fun FilterRow(
 }
 
 /**
- * 查重进度：一条进度条 + 「已查 N / 共 M」+ 右侧「继续查」。
+ * 查重进度：只在查询时出现的进度条 + 「已查 N / 共 M」+ 右侧「继续查」。
  *
- * 原先是「一行字 + 一个按钮」，看不出整体走没走完。数字只在条下面出现一次，
- * 不和按钮挤在同一行 —— 那是两个不同的问题（查到哪了 / 要不要接着查）。
+ * 条的位置一直占着（固定 4dp），只是不查询时**不画**：查完了还挂一条 100% 的条，
+ * 等于在已经完成的动作上一直闪一个进行中的信号；而把位置也一起收掉，会让查询结束的
+ * 那一刻下面所有卡片往上跳一截。
+ *
+ * [fromCache] 为真时那句话后面挂一句「缓存」：这批读数一条请求都没发（见
+ * [ModuleUploadCheckCache]），得让人知道它最多是半小时前的，而不是刚才那一刻的。
  */
 @Composable
 private fun CheckProgressMiuix(
@@ -584,16 +497,9 @@ private fun CheckProgressMiuix(
     total: Int,
     remaining: Int,
     checking: Boolean,
+    fromCache: Boolean,
     onContinue: () -> Unit,
 ) {
-    // 正在查时交给不确定态（条自己走）；列表还没回来时不做除法。
-    val progress = if (checking) {
-        null
-    } else if (total > 0) {
-        checked.toFloat() / total
-    } else {
-        0f
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -606,12 +512,25 @@ private fun CheckProgressMiuix(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+            Box(modifier = Modifier.fillMaxWidth().height(ProgressBarHeight)) {
+                if (checking) {
+                    LinearProgressIndicator(
+                        // 正在查时交给不确定态（条自己走）；查完这一格空着。
+                        progress = null,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
             Text(
-                text = if (checking) {
-                    stringResource(R.string.module_upload_checking)
-                } else {
-                    stringResource(R.string.module_upload_progress_checked, checked, total)
+                text = when {
+                    checking -> stringResource(R.string.module_upload_checking)
+                    fromCache -> stringResource(
+                        R.string.module_upload_progress_checked_cached,
+                        checked,
+                        total,
+                    )
+
+                    else -> stringResource(R.string.module_upload_progress_checked, checked, total)
                 },
                 fontSize = 12.sp,
                 color = colorScheme.onSurfaceVariantSummary,
@@ -637,6 +556,9 @@ private fun CheckProgressMiuix(
         }
     }
 }
+
+/** 进度条那一行的高度。查询与查完都占这么高，避免一次查询结束就顶动下面的内容。 */
+private val ProgressBarHeight = 4.dp
 
 /**
  * 空列表：图标 + 主文案 + 副说明。
@@ -703,6 +625,10 @@ private fun UploadRowCardMiuix(
     onToggle: () -> Unit,
     onPick: () -> Unit,
     onUseArchived: () -> Unit,
+    /** 用已安装的模块目录现打一份 zip（原始包已经没有时的那条路）。 */
+    onRebuild: () -> Unit,
+    /** 这个模块投过、而本地装着更新的版本：右侧显示「上传更新」。 */
+    uploadUpdate: Boolean = false,
     /** 有任意一行正在挑包（全局闸门生效中）。 */
     picking: Boolean = false,
     /** 正在挑的就是这一行。 */
@@ -755,7 +681,21 @@ private fun UploadRowCardMiuix(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                StatusPill(row.status, row.checking)
+                // 右侧两个标签：「上传更新」（你手里这版比投过的新）与收录状态
+                // （索引里有没有这一版）回答的是两件事，可以同时为真，所以并排而不是互相顶掉。
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (uploadUpdate) {
+                        TagMiuix(
+                            stringResource(R.string.module_upload_tag_upload_update),
+                            background = colorScheme.primaryContainer,
+                            content = colorScheme.onPrimaryContainer,
+                        )
+                    }
+                    StatusPill(row.status, row.checking)
+                }
             }
             // 归属单独一行：它回答「这一版我还能不能发」，比版本号重要，
             // 不该再挤在元信息行末尾。
@@ -801,18 +741,8 @@ private fun UploadRowCardMiuix(
                         .padding(start = nameIndent),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    val copy = ModuleUploadRules.statusCopy(row.status)
-                    Text(
-                        modifier = Modifier.padding(top = 2.dp),
-                        text = stringResource(copy.title),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        text = stringResource(copy.summary),
-                        fontSize = 12.sp,
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
+                    // 这里不再复述收录状态：右侧标签已经把结论说完了，
+                    // 展开区只留标签装不下的东西（归属解释、描述、能点的动作）。
                     // 归属那一格单独补一句解释：牌子只写「你的模块 / 别人的模块」，
                     // 展开的人想知道的是「所以这一版我还能不能发」。UNKNOWN 不说话。
                     val ownershipSummary = when (row.eligibility) {
@@ -887,6 +817,18 @@ private fun UploadRowCardMiuix(
                             color = colorScheme.onSurfaceVariantSummary,
                         )
                     }
+                    // 最后一条兜底路：原始包被「安装后删除模块压缩包」清掉、留存也没开时，
+                    // 就地按已安装的模块目录打一份。排在最后是有意的——重建包缺安装脚本。
+                    TextButton(
+                        text = stringResource(R.string.module_upload_rebuild_zip),
+                        onClick = onRebuild,
+                        enabled = !picking,
+                    )
+                    Text(
+                        text = stringResource(R.string.module_upload_rebuild_zip_summary),
+                        fontSize = 12.sp,
+                        color = colorScheme.onSurfaceVariantSummary,
+                    )
                 }
             }
         }
@@ -900,7 +842,7 @@ private fun UploadRowCardMiuix(
  * 与视觉重量才对得上；Miuix 没有现成的 IconTile，这里用 Box 拼一个。
  */
 @Composable
-private fun RowIconTileMiuix() {
+internal fun RowIconTileMiuix() {
     Box(
         modifier = Modifier
             .size(36.dp)
@@ -944,7 +886,7 @@ private fun StatusPill(status: CheckStatus?, checking: Boolean) {
 }
 
 @Composable
-private fun TagMiuix(
+internal fun TagMiuix(
     text: String,
     /** 底色为 null 时用表面色：多数标签是中性信息，只有归属这类要分对错的才给彩色。 */
     background: Color? = null,

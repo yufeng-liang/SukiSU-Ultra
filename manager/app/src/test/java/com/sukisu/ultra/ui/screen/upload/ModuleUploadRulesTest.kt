@@ -3,6 +3,7 @@ package com.sukisu.ultra.ui.screen.upload
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.MineModule
 import com.sukisu.ultra.ui.util.UpdateEligibility
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -451,5 +452,112 @@ class ModuleUploadRulesTest {
         } finally {
             Locale.setDefault(original)
         }
+    }
+
+    // ── 上传记录（/mine 归并）────────────────────────────────────────────────
+
+    private fun mine(
+        id: String = "module_a",
+        name: String = id,
+        author: String = "someone",
+        version: String = "1.0",
+        versionCode: Long = 1L,
+        time: Long = 0L,
+    ) = MineModule(
+        id = id,
+        name = name,
+        author = author,
+        version = version,
+        versionCode = versionCode,
+        sha256 = "a".repeat(64),
+        time = time,
+    )
+
+    @Test
+    fun `mine rows are merged per module with the newest version first`() {
+        // /mine 是扁平的：同一模块投过三版就是三行。归并后一模块一组，版本号大的在前。
+        val groups = ModuleUploadRules.groupMine(
+            listOf(
+                mine("a", versionCode = 1),
+                mine("b", versionCode = 7),
+                mine("a", versionCode = 3),
+                mine("a", versionCode = 2),
+            )
+        )
+
+        assertEquals(listOf("b", "a"), groups.map { it.id })
+        val a = groups.first { it.id == "a" }
+        assertEquals(listOf(3L, 2L, 1L), a.versions.map { it.versionCode })
+        assertEquals(3L, a.latestVersionCode)
+        // 最新那一版就是点开前显示的那一版，别在两处各推一次。
+        assertEquals(a.versions.first(), a.latest)
+    }
+
+    @Test
+    fun `same version code falls back to the newest upload time`() {
+        // 同一版重传过（sha 不同、服务端记了两行）：时间新的排前面。
+        val groups = ModuleUploadRules.groupMine(
+            listOf(
+                mine("a", versionCode = 2, time = 100L),
+                mine("a", versionCode = 2, time = 900L),
+            )
+        )
+        assertEquals(900L, groups.single().versions.first().time)
+    }
+
+    @Test
+    fun `a blank name on the newest row is filled from an older one`() {
+        // 索引里老条目可能缺名称：取第一个非空值，而不是无脑取第一行。
+        val groups = ModuleUploadRules.groupMine(
+            listOf(
+                mine("a", name = "", versionCode = 5),
+                mine("a", name = "实时网速", versionCode = 1),
+            )
+        )
+        assertEquals("实时网速", groups.single().name)
+        // 整组都没有名称时留空串：界面按 id 显示，规则层不替它编一个。
+        assertEquals("", ModuleUploadRules.groupMine(listOf(mine("b", name = ""))).single().name)
+    }
+
+    @Test
+    fun `an empty mine list produces no groups`() {
+        assertTrue(ModuleUploadRules.groupMine(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun `uploaded max keeps the highest version per module`() {
+        val max = ModuleUploadRules.uploadedMaxVersions(
+            listOf(mine("a", versionCode = 1), mine("a", versionCode = 4), mine("b", versionCode = 2))
+        )
+        assertEquals(mapOf("a" to 4L, "b" to 2L), max)
+        assertTrue(ModuleUploadRules.uploadedMaxVersions(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun `upload update needs a submission, a newer local copy and no recording`() {
+        // 三条缺一不可：投过、本地更新、这一版还没被收录。
+        assertTrue(ModuleUploadRules.showsUploadUpdate(5, CheckStatus.NEW, 4))
+        assertTrue(ModuleUploadRules.showsUploadUpdate(5, CheckStatus.VERSION_UPDATE, 4))
+        // 还没查（status == null）也照样提示：不知道收录没有，不等于已经收录了。
+        assertTrue(ModuleUploadRules.showsUploadUpdate(5, null, 4))
+        // 已经收录：没得传。
+        assertFalse(ModuleUploadRules.showsUploadUpdate(5, CheckStatus.RECORDED, 4))
+        // 同一版（本地不比投过的新）：不提示。
+        assertFalse(ModuleUploadRules.showsUploadUpdate(4, CheckStatus.NEW, 4))
+        // 没投过。
+        assertFalse(ModuleUploadRules.showsUploadUpdate(5, CheckStatus.NEW, null))
+        // 查不了：服务端读不到索引，仍然算「还没收录」，提示照出。
+        assertTrue(ModuleUploadRules.showsUploadUpdate(5, CheckStatus.UNKNOWN, 4))
+    }
+
+    @Test
+    fun `the top bar stays busy through every phase of a refresh`() {
+        val idle = ModuleUploadListState(loading = false)
+        assertFalse(idle.busy)
+        assertTrue(idle.copy(loading = true).busy)
+        assertTrue(idle.copy(refreshing = true).busy)
+        // 关键这一条：扫描结束、查询才刚开始时 refreshing 已经落回 false。
+        // 只看它的话，刷新键会在这里停转，用户会以为刷完了（或者以为没点上）。
+        assertTrue(idle.copy(checking = true).busy)
     }
 }

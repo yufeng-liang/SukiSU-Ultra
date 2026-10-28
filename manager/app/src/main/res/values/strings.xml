@@ -1103,6 +1103,7 @@
     <string name="module_upload_continue_check">Check more</string>
 
     <string name="module_upload_progress_checked">Checked %1$d of %2$d</string>
+    <string name="module_upload_progress_checked_cached">Checked %1$d of %2$d · cached</string>
     <string name="module_upload_continue_hint">Showing the first %1$d modules</string>
     <string name="module_upload_section_installed">Installed on this device</string>
     <string name="module_upload_empty">No installed modules</string>
@@ -1132,8 +1133,12 @@
     <string name="module_upload_clear_orphan_zip">Clear the zips of uninstalled modules</string>
     <string name="module_upload_clear_orphan_zip_summary">%1$d of the kept zips belong to modules that are no longer installed, so they can never be reused</string>
     <string name="module_upload_clear_orphan_zip_confirm">Delete the %1$d kept zips that belong to uninstalled modules? The zips of installed modules stay.</string>
-    <string name="module_upload_archived_version_mismatch">The kept zip is %1$s (%2$d), but the installed version is %3$s (%4$d). It was not added.</string>
-    <string name="module_upload_id_mismatch">That zip is for module \"%2$s\", not \"%1$s\", so it was not added.</string>
+    <string name="module_upload_archived_version_mismatch">The kept zip is %1$s (%2$d), but %3$s (%4$d) is installed. It was skipped — you can pick a zip of the installed version instead.</string>
+    <string name="module_upload_id_mismatch">This zip contains module \"%2$s\", but you are uploading \"%1$s\". Pick the right package and try again.</string>
+    <!-- The three below are only used by the confirm dialog for messages too long for a toast (ModuleUploadNoticeDialog). -->
+    <string name="module_upload_pick_wrong_title">Wrong zip</string>
+    <string name="module_upload_version_mismatch_title">Version mismatch</string>
+    <string name="module_upload_notice_ok">Got it</string>
     <string name="module_upload_unreadable_prop">Cannot read module.prop from this zip (not a module zip, or id/name is empty)</string>
     <string name="module_upload_unreadable_prop_count">%1$d zips have no readable module.prop and were skipped</string>
     <string name="module_upload_stage_failed">Could not copy the file, please try again</string>
@@ -1152,14 +1157,23 @@
     <string name="module_upload_ownership_mine_summary">You uploaded this module, so you can publish a new version.</string>
     <string name="module_upload_ownership_not_mine">Another uploader</string>
     <string name="module_upload_ownership_not_mine_summary">This module is already listed by another uploader. Only the original author can publish an update.</string>
-    <string name="module_upload_mine_entry_title">My modules</string>
-    <string name="module_upload_mine_entry_summary">Modules you have uploaded. Publishing a new version does not need the file again.</string>
-    <string name="module_upload_mine_empty">You have not uploaded any module yet</string>
+    <string name="module_upload_mine_entry_title">Upload history</string>
+    <string name="module_upload_mine_entry_summary">Your submitted versions, grouped by module</string>
+    <string name="module_upload_mine_empty">No upload recorded yet</string>
+    <string name="module_upload_mine_empty_summary">Once you install a module and upload a zip for it, every version you sent shows up here, grouped by module</string>
     <string name="module_upload_mine_degraded">The index cannot be read right now. Only the submissions already recorded are listed.</string>
-    <string name="module_upload_mine_need_verify">Verify your Coolapk account first — pick a zip to open the form</string>
+    <string name="module_upload_mine_need_verify">Verify your Coolapk account first; upload records appear after that</string>
     <string name="module_upload_mine_failed">Could not load the list. Please try again.</string>
     <string name="module_upload_mine_loading">Loading…</string>
     <string name="module_upload_mine_update">New version</string>
+    <string name="module_upload_history_open">Upload history</string>
+    <string name="module_upload_history_versions">%1$d version(s)</string>
+    <string name="module_upload_history_update_summary">Pick the newer zip for this module; uploading it replaces the version shown here</string>
+    <string name="module_upload_tag_upload_update">Upload update</string>
+    <string name="module_upload_rebuild_zip">No original zip? Rebuild from the installed module</string>
+    <string name="module_upload_rebuild_zip_summary">The rebuilt zip has no install script and is not identical to the author\'s release; use it only when the original zip is gone</string>
+    <string name="module_upload_rebuild_failed">Rebuild failed: the module directory cannot be read</string>
+    <string name="module_upload_rebuild_version_mismatch">The rebuilt zip is %1$s (%2$d), but %3$s (%4$d) is installed. It was skipped.</string>
 
     <string name="module_upload_form_title">Upload modules</string>
     <string name="module_upload_wall_add">Add</string>

@@ -67,6 +67,14 @@ fun SearchAppBar(
     navigationIcon: @Composable (() -> Unit)? = null,
     actions: @Composable (() -> Unit)? = null,
     scrollBehavior: TopAppBarScrollBehavior? = null,
+    /**
+     * 顶栏底边上的附加指示（目前只有上传列表的刷新进度条在用）。
+     *
+     * 放在这里而不是调用侧的 Column 里：`SearchAppBar` 自己就是一个 `Surface`，
+     * 顶栏的底色与圆角都在它内部 —— 在外面再包一层，进度条会落在底色外面。
+     * 默认空，占 0 高，不影响既有调用方。
+     */
+    bottomProgress: @Composable () -> Unit = {},
     defaultContent: @Composable BoxScope.(bottomPadding: Dp, closeSearch: () -> Unit) -> Unit = { _, _ -> },
     searchContent: @Composable BoxScope.(bottomPadding: Dp, closeSearch: () -> Unit) -> Unit = { _, _ -> }
 ) {
@@ -204,6 +212,8 @@ fun SearchAppBar(
                 inputField = inputField,
                 colors = SearchBarDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
             )
+
+            bottomProgress()
         }
     }
 

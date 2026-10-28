@@ -26,12 +26,12 @@ import com.sukisu.ultra.ui.util.formatFileSize
 import kotlinx.coroutines.launch
 
 /**
- * 「模块上传」路由的入口：一个路由、两屏（列表 / 表单）、两套主题。
+ * 「模块上传」路由的入口：一个路由、三屏（列表 / 表单 / 上传记录）、两套主题。
  *
  * 状态与网络都在 [ModuleUploadViewModel] 里，这里只做三件事：
  * 挑 zip 的 SAF 启动器、一次性提示（Toast）、按当前主题与步骤分派。
  *
- * 系统返回键：列表页退出这个路由；表单页回到列表（[BackHandler]），
+ * 系统返回键：列表页退出这个路由；表单页与上传记录页回到列表（[BackHandler]），
  * 与界面上的返回箭头一致——挑完一批还能接着挑，不用把已经选好的包丢掉。
  */
 @Composable
@@ -45,24 +45,28 @@ fun ModuleUploadScreen() {
     val listState by viewModel.listState.collectAsStateWithLifecycle()
     val formState by viewModel.formState.collectAsStateWithLifecycle()
     val mineState by viewModel.mineState.collectAsStateWithLifecycle()
+    // 挑错包 / 版本对不上这类长提示：单独一条通道，走确认框而不是 Toast。
+    // 名字带 upload 前缀是为了与下面表单自己的 formState.notice 分清（两者不是一回事）。
+    val uploadNotice by viewModel.notice.collectAsStateWithLifecycle()
 
     // 人机校验的 WebView 只在需要时弹出；它自己管生命周期。
     val turnstile = remember { WebViewTurnstileProvider() }
 
     LaunchedEffect(Unit) { viewModel.onEnter() }
 
-    // 「我的模块」只在列表页可见，所以要按「进入列表」来拉：初进、从表单返回、
-    // 投完一批回来都算；放在 Unit 里只拉一次，投完回来就还是旧名单。
+    // 上传记录页只在需要时拉一次：进列表时拉（列表行上的「上传更新」标签要它），
+    // 点进记录页时另有一次（[ModuleUploadViewModel.openHistory] 自己会刷）。
     LaunchedEffect(step) {
         if (step == UploadStep.LIST) viewModel.refreshMine()
     }
 
-    // 表单里系统返回 = 回列表（与左上角箭头同一件事），不是退出整个路由：
+    // 表单与记录页的系统返回 = 回列表（与左上角箭头同一件事），不是退出整个路由：
     // 直接 pop 会把这一批已选好的包和算好的 sha 一起丢掉。
-    BackHandler(enabled = step == UploadStep.FORM) { viewModel.backToList() }
+    BackHandler(enabled = step != UploadStep.LIST) { viewModel.backToList() }
 
-    // 一次性提示：staging 失败、id 不一致之类。用 Toast 是因为列表与表单的
+    // 一次性提示：复制失败、超过上限这类一句话能说完的。用 Toast 是因为列表与表单的
     // snackbar host 分属两套 Scaffold，而这类消息不需要「操作按钮」。
+    // 长的那些（挑错包、版本对不上）不走这里 —— 见下面的 [UploadNotice] 通道。
     LaunchedEffect(listState.message) {
         val message = listState.message ?: return@LaunchedEffect
         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -181,10 +185,11 @@ fun ModuleUploadScreen() {
                 onToggleRow = viewModel::toggleExpanded,
                 onPickForRow = pickForRow,
                 onUseArchived = useArchived,
+                onRebuildFromInstalled = viewModel::stageFromInstalled,
                 onPickZip = pickMany,
                 onOpenArchiveSettings = { showArchiveSettings = true },
                 mine = mineState,
-                onPickForMine = pickForMine,
+                onOpenHistory = viewModel::openHistory,
             )
 
             UiMode.Material -> ModuleUploadListMaterial(
@@ -198,9 +203,28 @@ fun ModuleUploadScreen() {
                 onToggleRow = viewModel::toggleExpanded,
                 onPickForRow = pickForRow,
                 onUseArchived = useArchived,
+                onRebuildFromInstalled = viewModel::stageFromInstalled,
                 onPickZip = pickMany,
                 onOpenArchiveSettings = { showArchiveSettings = true },
                 mine = mineState,
+                onOpenHistory = viewModel::openHistory,
+            )
+        }
+
+        UploadStep.HISTORY -> when (uiMode) {
+            UiMode.Miuix -> ModuleUploadHistoryMiuix(
+                state = listState,
+                mine = mineState,
+                onBack = viewModel::backToList,
+                onRefresh = viewModel::refreshMine,
+                onPickForMine = pickForMine,
+            )
+
+            UiMode.Material -> ModuleUploadHistoryMaterial(
+                state = listState,
+                mine = mineState,
+                onBack = viewModel::backToList,
+                onRefresh = viewModel::refreshMine,
                 onPickForMine = pickForMine,
             )
         }
@@ -261,6 +285,10 @@ fun ModuleUploadScreen() {
     }
 
     TurnstileDialog(turnstile)
+
+    // 放在最外层：挑包可能发生在列表页（为某一行挑）也可能发生在表单/记录页
+    // （为已收录的模块挑新版），而它是整屏级别的阻断提示，不该跟着某一屏走。
+    uploadNotice?.let { ModuleUploadNoticeDialog(notice = it, onDismiss = viewModel::dismissNotice) }
 }
 
 /** SAF 的 MIME 过滤。与契约一致，只收 `application/zip`。 */

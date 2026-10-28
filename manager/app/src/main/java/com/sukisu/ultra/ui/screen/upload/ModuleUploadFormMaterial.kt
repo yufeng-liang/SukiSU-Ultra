@@ -101,6 +101,9 @@ fun ModuleUploadFormMaterial(
     onSignatureConfirmedChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
 ) {
+    // 这一屏是钉住的小标题，与列表页/记录页的「随滚动收起」刻意不同：
+    // 底部已经钉了一条提交栏，可滚区域本来就窄；标题再收一次，填到一半的人会突然
+    // 失去「我在哪、怎么返回」这两个参照，而这两个参照在填表时比多出的 40dp 更重要。
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val limitProblem = ModuleUploadRules.limitProblem(
         count = state.items.size,

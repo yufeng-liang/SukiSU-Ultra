@@ -4,6 +4,7 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ContributionBatch
+import com.sukisu.ultra.ui.util.MineModule
 import com.sukisu.ultra.ui.util.ProofItem
 import com.sukisu.ultra.ui.util.UpdateEligibility
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -138,6 +139,76 @@ object ModuleUploadRules {
     /** 分批大小：服务端给了正数就用它，否则退回 8。 */
     fun checkChunkSize(limits: BatchLimits?): Int =
         limits?.maxModules?.takeIf { it > 0 } ?: FALLBACK_CHUNK_SIZE
+
+    // ── 上传记录（GET /mine）────────────────────────────────────────────────
+
+    /**
+     * 一个模块的全部上传记录。
+     *
+     * `/mine` 的每一行是一份**投稿**（模块 id + 版本 + 整包 sha），同一模块投过几版就有几行。
+     * 界面要的是「先看有哪些模块，点开再看这个模块投过哪几版」，所以先按 id 归并：
+     * 模块级的两个计数（版本数、最新版）在列表上就要能看到，展开才去画那几行明细。
+     */
+    data class MineGroup(
+        val id: String,
+        val name: String,
+        val author: String,
+        /** 这一模块投过的全部版本，版本号大的在前（同版本按时间新的在前）。 */
+        val versions: List<MineModule>,
+    ) {
+        /** 最新那一版；[versions] 为空时不存在，这里按非空保证。 */
+        val latest: MineModule get() = versions.first()
+
+        /** 最新版的 versionCode。用作「本地装的是不是更新」的判据。 */
+        val latestVersionCode: Long get() = latest.versionCode
+    }
+
+    /**
+     * 把 `/mine` 的扁平行归并成「模块 → 版本列表」。
+     *
+     * 只按 id 归并，不改任何字段：名称/作者取第一份非空值（索引里老条目可能缺名称，
+     * 而更新的一行又可能带着，取非空比取第一行更不容易空着）。
+     * 排序按最新版的 versionCode 倒序：上传记录是「最近干了什么」，不是通讯录。
+     */
+    fun groupMine(modules: List<MineModule>): List<MineGroup> {
+        if (modules.isEmpty()) return emptyList()
+        return modules.groupBy { it.id }
+            .map { (id, rows) ->
+                MineGroup(
+                    id = id,
+                    name = rows.firstOrNull { it.name.isNotBlank() }?.name.orEmpty(),
+                    author = rows.firstOrNull { it.author.isNotBlank() }?.author.orEmpty(),
+                    versions = rows.sortedWith(
+                        compareByDescending<MineModule> { it.versionCode }.thenByDescending { it.time }
+                    ),
+                )
+            }
+            .sortedWith(
+                compareByDescending<MineGroup> { it.latestVersionCode }
+                    .thenBy(Collator.getInstance(Locale.getDefault())) { it.name.ifBlank { it.id } }
+            )
+    }
+
+    /** 每个模块投稿过的最新 versionCode；给「上传更新」标签与列表做判据。 */
+    fun uploadedMaxVersions(modules: List<MineModule>): Map<String, Long> =
+        modules.groupBy { it.id }.mapValues { (_, rows) -> rows.maxOf { it.versionCode } }
+
+    /**
+     * 「上传更新」：这个模块是你投过的，而你本地装着的版本比投过的都新。
+     *
+     * 三个条件缺一不可：
+     * - 有投稿记录（[uploadedVersionCode] 非 null）—— 没投过就没有「更新」可言；
+     * - 本地版本号更大 —— 相等就是同一版，不提示；
+     * - 这一版还没被收录（`status != RECORDED`）—— 已经收录了就没得传，
+     *   这一条也顺手挡住了「别人已经替你传了同一版」的情况。
+     */
+    fun showsUploadUpdate(
+        localVersionCode: Long,
+        status: CheckStatus?,
+        uploadedVersionCode: Long?,
+    ): Boolean = uploadedVersionCode != null &&
+        status != CheckStatus.RECORDED &&
+        localVersionCode > uploadedVersionCode
 
     /** 单批上传的上限条数；界面据此提前拦下超量选择。 */
     fun maxModules(limits: BatchLimits?): Int =

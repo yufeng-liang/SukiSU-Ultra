@@ -45,3 +45,17 @@ fun formatSessionTime(context: android.content.Context, iso: String): String {
         DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL,
     )
 }
+
+/**
+ * 与 [formatSessionTime] 同一套排版，但输入是 epoch 毫秒（`/mine` 的 `time` 字段就是这种）。
+ *
+ * [millis] 为 0 表示索引没给这个时刻，返回空串让调用方整段不画，而不是排出一个 1970 年。
+ */
+fun formatEpochTime(context: android.content.Context, millis: Long): String {
+    if (millis <= 0L) return ""
+    return DateUtils.formatDateTime(
+        context,
+        millis,
+        DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_ABBREV_ALL,
+    )
+}

@@ -86,8 +86,11 @@ data class MineState(
  * 表单要拿到的是**同一批已经落进 staging 的文件**，拆成两个 ViewModel 就得把
  * 文件路径与 sha 在导航参数里来回搬，任何一次重组都可能搬丢。
  *
- * 收录状态只存在内存里（与旧投稿入口同一条理由）：索引随时在变，持久化会让
- * 「已收录」在用户重启 App 之前一直生效。
+ * 收录状态在这里只做「这一趟」的活数据，跨趟、跨进程复用走
+ * [ModuleUploadCheckCache]（30 分钟 TTL，手动刷新绕过）。早先这两件事是同一句话——
+ * 「索引随时在变，所以只放内存」——但那样每进一次页面就要把整张表重问一遍，
+ * 装上二十个模块就是三次请求，而进出这一页的频率远高于索引变化的频率。
+ * 现在改成「短期可信 + 过期即问」，代价是半小时内可能看到一个已经过时的「未收录」。
  */
 class ModuleUploadViewModel(
     private val repo: ModuleRepository = ModuleRepositoryImpl(),
@@ -106,6 +109,15 @@ class ModuleUploadViewModel(
 
     private val _mineState = MutableStateFlow(MineState())
     val mineState: StateFlow<MineState> = _mineState.asStateFlow()
+
+    /**
+     * 必须由用户确认一次的长提示（挑错包、版本对不上）。
+     *
+     * 与 [ModuleUploadListState.message] 分开：那条走 Toast，只给一句话说得完的结果。
+     * 这里的两条都要对照两个 id / 两个版本号读，Toast 既会被截断也会自己消失。
+     */
+    private val _notice = MutableStateFlow<UploadNotice?>(null)
+    val notice: StateFlow<UploadNotice?> = _notice.asStateFlow()
 
     private var checkJob: Job? = null
     private var loadJob: Job? = null
@@ -152,19 +164,21 @@ class ModuleUploadViewModel(
         loadModules(thenCheck = true)
     }
 
+    /**
+     * 手动刷新：**绕过缓存**重查一遍。这是用户能要求「就要此刻的结论」的唯一入口。
+     *
+     * 不再先把 status 清成 null：清掉之后整屏先变成一片「未查」，而这一趟要发的请求
+     * 一条都不会少。留着旧标签、只把 checking 打开，界面上是「这些正在重查」，
+     * 比「什么都不知道」诚实；查询失败的批也不会把已知的结论抹成「查不了」
+     * （见 [queryChunk] 对缺失那一格的处理）。
+     */
     fun refresh() {
         if (_listState.value.refreshing) return
         checkJob?.cancel()
         checkedIds.clear()
-        _listState.update {
-            it.copy(
-                rows = it.rows.map { row -> row.copy(status = null, checking = false) },
-                remaining = it.rows.size,
-            )
-        }
-        loadModules(thenCheck = true, refreshing = true)
-        // 顶栏那个刷新按钮对整屏负责，不只对「已装模块」负责：同一屏上还摆着
-        // 「我的模块」，用户点完刷新看见那一块纹丝不动，只会以为刷新没生效。
+        loadModules(thenCheck = true, refreshing = true, forceCheck = true)
+        // 顶栏那个刷新按钮对整屏负责，不只对「已装模块」负责：同一屏上还挂着
+        // 「上传更新」标签，而它读的是 /mine —— 只刷本地扫描的话，标签会停在旧结论上。
         // 两件事互不依赖（一个是本地扫描、一个是带令牌的 GET /mine），并行发即可。
         refreshMine()
     }
@@ -193,7 +207,32 @@ class ModuleUploadViewModel(
         _listState.update { it.copy(message = null) }
     }
 
-    private fun loadModules(thenCheck: Boolean, refreshing: Boolean = false) {
+    /**
+     * 弹一条要用户确认的长提示（挑错包 / 版本对不上）。
+     *
+     * 同一时刻只留一条：连着挑错两个包时后一条顶掉前一条 —— 两条说的是同一件事
+     * （这一个包不能用），叠着弹只会让用户点两次才回到表单。
+     */
+    private fun postNotice(title: String, body: String) {
+        _notice.value = UploadNotice(title, body)
+    }
+
+    /**
+     * 用户点了「知道了」。
+     *
+     * 与 [consumeNotice] 不是一回事：那条清的是**表单里**的一段一次性文本
+     * （提交相关的提醒），这条清的是列表层弹出的确认框。
+     */
+    fun dismissNotice() {
+        _notice.value = null
+    }
+
+    private fun loadModules(
+        thenCheck: Boolean,
+        refreshing: Boolean = false,
+        /** 查的时候要不要无视缓存（手动刷新）。 */
+        forceCheck: Boolean = false,
+    ) {
         loadJob?.cancel()
         _listState.update { it.copy(loading = it.rows.isEmpty(), refreshing = refreshing) }
         val epoch = archiveEpoch
@@ -225,27 +264,61 @@ class ModuleUploadViewModel(
                     orphanCount = archived.count { id -> id !in installed },
                 )
             }
-            if (thenCheck) checkPending()
+            if (thenCheck) startCheck(force = forceCheck)
         }
     }
 
     /**
      * 把还没查过的模块送去查，一次最多 [ModuleUploadRules.CHECK_CAP] 条。
      *
-     * 分批大小取服务端的 `maxModules`（拿不到就 8），同时最多两批在飞：
-     * 单批由服务端定大小，客户端只负责别把整张表一次性压上去。
-     * 任何一批失败都不改状态——失败就留在「查不了」，绝不猜成「未收录」。
+     * 「还没查过」现在有两种：缓存里没有（或已过期），以及这一趟还没问过。所以进页面
+     * 与点「继续查」走的是同一条路——先把缓存垫上，剩下的才发请求。
      */
     fun checkPending() {
+        startCheck(force = false)
+    }
+
+    /**
+     * 查询主体。
+     *
+     * [force] = true 时无视缓存、把所有行重问一遍（手动刷新那条路）；否则先拿
+     * [ModuleUploadCheckCache] 里没过期的结论垫上，只把剩下的送去服务端。
+     *
+     * 分批大小取服务端的 `maxModules`（拿不到就 8），同时最多两批在飞：
+     * 单批由服务端定大小，客户端只负责别把整张表一次性压上去。
+     * 任何一批失败都不改已知状态——没问到的仍留在「查不了」，绝不猜成「未收录」。
+     */
+    private fun startCheck(force: Boolean) {
         if (checkJob?.isActive == true) return
         checkJob = viewModelScope.launch {
-            _listState.update { it.copy(checking = true) }
+            // 这一趟的结论是不是全部来自缓存：只在「一条请求都没发」时成立。
+            var servedFromCache = false
             try {
+                val uid = listQueryUid()
+                syncEligibilityUid(uid)
+                // 缓存先垫：标签在这一刻就定下来，用户不必盯着空标签等网络。
+                // 全中的话下面直接返回，`checking` 连亮都不亮——那才是「没在查」。
+                val filled = if (force) 0 else applyCached(uid, System.currentTimeMillis())
+                // 手动刷新是「全部重问」，判据不能还是「没有结论的那些」：那时候每一行
+                // 都还挂着上一趟的旧标签，按 status == null 筛出来会是空集，一次请求都发不出去。
+                val rowsNow = _listState.value.rows
+                val candidates = if (force) {
+                    rowsNow
+                } else {
+                    rowsNow.filter { it.status == null && it.id !in checkedIds }
+                }
+                val pending = candidates.take(ModuleUploadRules.CHECK_CAP)
+                if (pending.isNotEmpty()) {
+                    // 真要发请求了：这批读数不再「全部来自缓存」。
+                    _listState.update { it.copy(checking = true, fromCache = false) }
+                }
+                // 上限即使这一趟一条都不查也得取：表单要靠它做提交前的本地预检，
+                // 拿不到就是 LIMITS_UNKNOWN（见 ModuleUploadRules.limitProblem）。
                 val limits = _listState.value.limits ?: fetchLimits()
-                val pending = _listState.value.rows
-                    .filter { it.status == null && it.id !in checkedIds }
-                    .take(ModuleUploadRules.CHECK_CAP)
-                if (pending.isEmpty()) return@launch
+                if (pending.isEmpty()) {
+                    servedFromCache = filled > 0
+                    return@launch
+                }
 
                 pending.forEach { row ->
                     checkedIds += row.id
@@ -257,7 +330,7 @@ class ModuleUploadViewModel(
                 coroutineScope {
                     pending.chunked(chunkSize).map { chunk ->
                         async {
-                            gate.withPermit { queryChunk(chunk) }
+                            gate.withPermit { queryChunk(chunk, uid) }
                         }
                     }.awaitAll()
                 }
@@ -266,14 +339,54 @@ class ModuleUploadViewModel(
                 // 旧协程再关一次会让界面显示「没在查」而实际还在查。
                 if (isActive) {
                     _listState.update {
-                        it.copy(checking = false, remaining = it.rows.count { row -> row.status == null })
+                        it.copy(
+                            checking = false,
+                            fromCache = servedFromCache,
+                            remaining = it.rows.count { row -> row.status == null },
+                        )
                     }
                 }
             }
         }
     }
 
+    /**
+     * 拿缓存里没过期的结论把还空着的行填上，返回填了几条。
+     *
+     * 只填 `status == null` 的行：已经有值的那一行，值要么来自这一趟更晚的一次查询、
+     * 要么就是上一趟写进缓存的那一份——两种都不比缓存旧，覆盖没有意义。
+     *
+     * 归属单独判：条目里记着「当时是照哪个 UID 问的」，换了号就只留 [UploadRow.status]，
+     * 归属退回 UNKNOWN。否则前一个号的「是你的」会顺着缓存漏给下一个人。
+     */
+    private suspend fun applyCached(uid: String, now: Long): Int {
+        val cached = ModuleUploadCheckCache.read(now)
+        if (cached.isEmpty()) return 0
+        var filled = 0
+        val rows = _listState.value.rows.map { row ->
+            if (row.status != null) return@map row
+            val entry = cached[row.id] ?: return@map row
+            // 键是 (id, versionCode)：模块升级之后，上一版的结论不再适用于这一版。
+            if (entry.versionCode != row.versionCode) return@map row
+            filled++
+            val sameWho = entry.uid == uid
+            row.copy(
+                status = entry.status,
+                eligibility = if (sameWho) entry.eligibility else UpdateEligibility.UNKNOWN,
+                eligibilityReason = if (sameWho) entry.reason else "",
+            )
+        }
+        if (filled > 0) _listState.update { it.copy(rows = rows) }
+        return filled
+    }
+
     private suspend fun fetchLimits(): BatchLimits? {
+        val now = System.currentTimeMillis()
+        val memo = limitsMemo
+        if (memo != null && memo.usable && now - limitsMemoAt < LIMITS_TTL_MS) {
+            _listState.update { it.copy(limits = memo) }
+            return memo
+        }
         val limits = try {
             ModuleContribution.fetchLimits()
         } catch (e: CancellationException) {
@@ -281,17 +394,21 @@ class ModuleUploadViewModel(
         } catch (e: Throwable) {
             null
         }
+        // 只记取到的那一份：把 null 也缓存下来的话，一次网络抖动会让接下来十分钟里
+        // 所有人都卡在「拿不到上限」而不能提交。
+        if (limits != null) {
+            limitsMemo = limits
+            limitsMemoAt = now
+        }
         _listState.update { it.copy(limits = limits) }
         return limits
     }
 
-    private suspend fun queryChunk(chunk: List<UploadRow>) {
+    private suspend fun queryChunk(chunk: List<UploadRow>, uid: String) {
         // 版本号超出 Int 的直接算「查不了」：截断会让两个不同版本查到同一个结果。
         val query = chunk.mapNotNull { row ->
             ModuleContributionEntry.checkableVersionCode(row.versionCode)?.let { row.id to it }
         }
-        val uid = listQueryUid()
-        syncEligibilityUid(uid)
         val result = if (query.isEmpty()) {
             emptyMap()
         } else {
@@ -306,6 +423,23 @@ class ModuleUploadViewModel(
                 emptyMap()
             }
         }
+        // 缓存只记服务端**真的回了**的那几格：整批失败 / 漏回的那一格是「没问出来」，
+        // 把它当结论存下去，接下来半小时都会拿着一个「查不了」不再去问。
+        val at = System.currentTimeMillis()
+        val fresh = LinkedHashMap<String, ModuleUploadCheckCache.Entry>(chunk.size)
+        chunk.forEach { row ->
+            result[row.id]?.let { answer ->
+                fresh[row.id] = ModuleUploadCheckCache.Entry(
+                    versionCode = row.versionCode,
+                    status = answer.status,
+                    uid = uid,
+                    eligibility = answer.eligibility,
+                    reason = answer.reason,
+                    at = at,
+                )
+            }
+        }
+        ModuleUploadCheckCache.write(fresh, at)
         // 只认「同一个 id 且同一个 versionCode」：查的这段时间里列表可能刷新过，
         // 把旧版本的结论写给新版本，等于给用户看了一个不属于这一版的读数。
         val queried = chunk.associateBy { it.id }
@@ -314,14 +448,15 @@ class ModuleUploadViewModel(
                 rows = state.rows.map { row ->
                     val asked = queried[row.id]
                     if (asked != null && asked.versionCode == row.versionCode) {
-                        // 一个 id 的那一格可能整个缺失（整批失败 / 服务端漏回）：那里是
-                        // 「不知道」，不是「不是你的」—— CheckAnswer.UNKNOWN 的
-                        // eligibility 就是 UNKNOWN，不会让归属闸拦下任何东西。
-                        val answer = result[row.id] ?: CheckAnswer.UNKNOWN
+                        // 服务端漏了这一格（整批失败 / 没回这个 id）：保留这一行已知的
+                        // 结论，没有才算「不知道为什么」。以前这里一律写 UNKNOWN，
+                        // 于是一次超时就把刚查到的、或者缓存里的答案抹成「查不了」。
+                        // 归属同理：缺失不等于「不是你的」——UNKNOWN 不会让归属闸拦任何东西。
+                        val answer = result[row.id]
                         row.copy(
-                            status = answer.status,
-                            eligibility = answer.eligibility,
-                            eligibilityReason = answer.reason,
+                            status = answer?.status ?: row.status ?: CheckStatus.UNKNOWN,
+                            eligibility = answer?.eligibility ?: row.eligibility,
+                            eligibilityReason = answer?.reason ?: row.eligibilityReason,
                             checking = false,
                         )
                     } else {
@@ -419,12 +554,15 @@ class ModuleUploadViewModel(
                     is ModuleUploadStaging.Result.Ok -> {
                         if (expectedId != null && result.zip.id != expectedId) {
                             File(result.zip.path).delete()
-                            postMessage(
-                                res.getString(
+                            // 走对话框而不是 Toast：这句里有两个模块 id 要对照，
+                            // Toast 在窄屏上会被截断，也留不住给用户回看。
+                            postNotice(
+                                title = res.getString(R.string.module_upload_pick_wrong_title),
+                                body = res.getString(
                                     R.string.module_upload_id_mismatch,
                                     expectedId,
                                     result.zip.id,
-                                )
+                                ),
                             )
                         } else {
                             addToForm(listOf(result.zip))
@@ -477,12 +615,13 @@ class ModuleUploadViewModel(
                             // 留存包里的 id 与这一行对不上：文件被换过或索引串了，宁可不用。
                             File(result.zip.path).delete()
                             markArchived(row.id, false)
-                            postMessage(
-                                res.getString(
+                            postNotice(
+                                title = res.getString(R.string.module_upload_pick_wrong_title),
+                                body = res.getString(
                                     R.string.module_upload_id_mismatch,
                                     row.id,
                                     result.zip.id,
-                                )
+                                ),
                             )
                         } else if (result.zip.versionCode != row.versionCode) {
                             // 留存的那份不是当前装着的这一版。真实路径有三条：用户在终端用
@@ -491,14 +630,15 @@ class ModuleUploadViewModel(
                             // 的那段时间升过级。放过去就是把旧版当新版投，而入口文案明确
                             // 说「安装这个模块时已自动留存」，暗示它就是当前这版。
                             File(result.zip.path).delete()
-                            postMessage(
-                                res.getString(
+                            postNotice(
+                                title = res.getString(R.string.module_upload_version_mismatch_title),
+                                body = res.getString(
                                     R.string.module_upload_archived_version_mismatch,
                                     result.zip.version,
                                     result.zip.versionCode,
                                     row.version,
                                     row.versionCode,
-                                )
+                                ),
                             )
                         } else {
                             addToForm(listOf(result.zip))
@@ -518,6 +658,100 @@ class ModuleUploadViewModel(
                 _listState.update { it.copy(pickingFor = null) }
             }
         }
+    }
+
+    /**
+     * 用**已安装的模块目录**现打一份 zip，作为「找不到原始包」时的兜底来源。
+     *
+     * 和 [stageArchived]（取安装时留存的原始包）不是一回事：这里打出来的是**重建包**，
+     * 缺 `META-INF/` 与 `customize.sh` 这类只在安装期存在的文件，字节与作者发布的原包不同，
+     * 索引里存下的也就是这一份重建包。所以它排在最后，界面上的说明也直说这点。
+     *
+     * 存在的意义：设置里「安装后删除模块压缩包」会把用户挑的源文件删掉，
+     * 「安装时留存原始 zip」又被关掉时，原始包就真的没了 —— 那条路以前只能让用户
+     * 自己回忆文件名去存储里翻。这个入口让「已经装上的模块」在任何情况下都还能上传。
+     */
+    fun stageFromInstalled(row: UploadRow) {
+        if (_formState.value.submitting) return
+        val current = _listState.value
+        if (current.pickingFor != null) return
+        val maxBytes = current.limits?.takeIf { it.usable }?.maxBytes
+        if (maxBytes == null) {
+            postMessage(res.getString(R.string.module_upload_limit_unknown))
+            return
+        }
+        _listState.update { it.copy(pickingFor = row.id) }
+        viewModelScope.launch {
+            try {
+                val module = withContext(Dispatchers.IO) {
+                    repo.getModules().getOrElse { emptyList() }.firstOrNull { it.id == row.id }
+                }
+                if (module == null) {
+                    postMessage(res.getString(R.string.module_upload_rebuild_failed))
+                    return@launch
+                }
+                // 打包走的是备份那套实现（ZipModuleArchiver），产物是 ksud 能直接装的模块 zip。
+                val built = ModuleContributionEntry.stageZip(module)
+                if (built == null) {
+                    postMessage(res.getString(R.string.module_upload_rebuild_failed))
+                    return@launch
+                }
+                val staged = try {
+                    ModuleUploadStaging.stageFile(built, maxBytes)
+                } finally {
+                    // stageFile 把内容复制进了自己的 staging，这份中间产物不留。
+                    built.delete()
+                }
+                when (staged) {
+                    is ModuleUploadStaging.Result.Ok -> {
+                        if (staged.zip.id != row.id) {
+                            File(staged.zip.path).delete()
+                            postNotice(
+                                title = res.getString(R.string.module_upload_pick_wrong_title),
+                                body = res.getString(
+                                    R.string.module_upload_id_mismatch,
+                                    row.id,
+                                    staged.zip.id,
+                                ),
+                            )
+                        } else if (staged.zip.versionCode != row.versionCode) {
+                            // 归档器优先读 modules_update（还没重启生效的那份）。它和列表里
+                            // 报的版本对不上时，传上去就成了「用待安装的版本冒充当前版本」。
+                            File(staged.zip.path).delete()
+                            postNotice(
+                                title = res.getString(R.string.module_upload_version_mismatch_title),
+                                body = res.getString(
+                                    R.string.module_upload_rebuild_version_mismatch,
+                                    staged.zip.version,
+                                    staged.zip.versionCode,
+                                    row.version,
+                                    row.versionCode,
+                                ),
+                            )
+                        } else {
+                            addToForm(listOf(staged.zip))
+                        }
+                    }
+
+                    ModuleUploadStaging.Result.UnreadableModule ->
+                        postMessage(res.getString(R.string.module_upload_unreadable_prop))
+
+                    is ModuleUploadStaging.Result.TooBig ->
+                        postMessage(stageTooBigMessage(staged))
+
+                    ModuleUploadStaging.Result.Failed ->
+                        postMessage(res.getString(R.string.module_upload_stage_failed))
+                }
+            } finally {
+                _listState.update { it.copy(pickingFor = null) }
+            }
+        }
+    }
+
+    /** 打开「上传记录」：它自己也要一份最新的 /mine，不能只靠进列表时那一次。 */
+    fun openHistory() {
+        _step.value = UploadStep.HISTORY
+        refreshMine()
     }
 
     /** 只改这一行的「有没有留存包」标记，其余状态不动。 */
@@ -1210,7 +1444,9 @@ class ModuleUploadViewModel(
      * 而写入结果的那一侧还以为屏幕上仍是刚提交的那一套。
      */
     fun backToList() {
-        if (_formState.value.submitting) return
+        // 只有表单那一屏要挡：上传在飞时退出去，屏幕上的状态就没人接了。
+        // 记录页没有提交动作，任何时候都该退得回来。
+        if (_step.value == UploadStep.FORM && _formState.value.submitting) return
         _step.value = UploadStep.LIST
     }
 
@@ -1390,6 +1626,25 @@ class ModuleUploadViewModel(
 
         /** Worker used-nonce 分支的机器可读码（与旧入口同一条约定）。 */
         const val PROOF_USED_CODE = "proof_used"
+
+        /**
+         * 服务端限制（单批条数、单包与整批字节上限）的进程内缓存寿命。
+         *
+         * 它是**配置**，不是状态：一次会话问一次就够。以前每建一个 ViewModel 都问一次，
+         * 而进这一页的次数远多于这份配置变化的次数。留十分钟是因为服务端要是调小了上限，
+         * 本地预检不能永远比它宽松——十分钟后自然会重新取一份。
+         */
+        const val LIMITS_TTL_MS = 10 * 60 * 1000L
+
+        /**
+         * 上一次取到的限制。放在 companion 里是为了跨 ViewModel 复用：这一页的
+         * ViewModel 随路由进出反复重建，实例字段留不住。
+         *
+         * 只在主线程读写（[fetchLimits] 从 `viewModelScope` 里调用，挂起前后都在主线），
+         * 不需要额外同步。
+         */
+        var limitsMemo: BatchLimits? = null
+        var limitsMemoAt = 0L
     }
 }
 

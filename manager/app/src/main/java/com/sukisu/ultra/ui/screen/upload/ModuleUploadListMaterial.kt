@@ -1,10 +1,10 @@
 package com.sukisu.ultra.ui.screen.upload
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.animation.animateContentSize
@@ -46,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,7 +66,6 @@ import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.TopBarBackButton
 import com.sukisu.ultra.ui.component.statustag.StatusTag
 import com.sukisu.ultra.ui.util.CheckStatus
-import com.sukisu.ultra.ui.util.MineModule
 import com.sukisu.ultra.ui.util.UpdateEligibility
 
 /**
@@ -83,17 +84,22 @@ fun ModuleUploadListMaterial(
     onToggleRow: (String) -> Unit,
     onPickForRow: (UploadRow) -> Unit,
     onUseArchived: (UploadRow) -> Unit,
+    /** 找不到原始包时，用已安装的模块目录现打一份（见 ViewModel.stageFromInstalled）。 */
+    onRebuildFromInstalled: (UploadRow) -> Unit,
     onPickZip: () -> Unit,
     onOpenArchiveSettings: () -> Unit,
-    /** 「我的模块」：服务端 `GET /mine` 的结果，与主列表共用同一套状态机。 */
+    /** 上传记录（`GET /mine`）：只用来算每行的「上传更新」标签，列表本身不再展开它。 */
     mine: MineState,
-    /** 为「我的模块」的某一行挑包；与主列表共用同一个单行 SAF 启动器与同一道闸门。 */
-    onPickForMine: (MineModule) -> Unit,
+    /** 打开上传记录页。 */
+    onOpenHistory: () -> Unit,
 ) {
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    // 与模块页/仓库页同一套表达：标题随列表上滑收起，不再是钉住不动的小标题。
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val snackbarHostState = remember { SnackbarHostState() }
     val visible = state.visibleRows
     val checked = state.rows.count { it.status != null }
+    // 每个模块投过的最新版本号；「上传更新」标签的判据之一（另一个是这一行的版本号）。
+    val uploadedMax = remember(mine.modules) { ModuleUploadRules.uploadedMaxVersions(mine.modules) }
 
     ExpressiveScaffold(
         snackbarHost = { SnackBarHost(hostState = snackbarHostState) },
@@ -109,21 +115,32 @@ fun ModuleUploadListMaterial(
                 // 刷新放顶栏而不是列表行里：列表一滚，行内按钮就看不见了；
                 // 而且在模块为空时那一行只剩一个孤零零的「刷新」。
                 actions = {
+                    // 上传记录单独一个入口：它回答的是「我以前投过什么」，
+                    // 与「这一版收录了没有」是两件事，塞进列表里只会把主列表顶长。
+                    IconButton(onClick = onOpenHistory) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = stringResource(R.string.module_upload_history_open),
+                        )
+                    }
+                    // 刷新期间图标原地转、并置灰；不再换成一个小圆环 ——
+                    // 换形状会让人以为这颗按钮变成了别的东西，转同一个图标才读得出
+                    // 「刚点的那件事还在做」。
+                    val spin = rememberSpinAngle(state.busy)
                     IconButton(
                         onClick = onRefresh,
-                        enabled = !state.refreshing && !state.loading,
+                        enabled = !state.busy,
                     ) {
-                        if (state.refreshing || state.loading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = stringResource(R.string.module_upload_refresh),
-                            )
-                        }
+                        Icon(
+                            // rotationZ 走 graphicsLayer：在图层里读角度，每帧只重绘
+                            // 这一层，不重组顶栏。
+                            modifier = Modifier.graphicsLayer { rotationZ = spin.value },
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = stringResource(R.string.module_upload_refresh),
+                            // 置灰交给 IconButton 自己：`enabled = false` 时 M3 会把
+                            // LocalContentColor 换成 contentColor.copy(alpha = 0.38f)。
+                            // 这里再手动 tint 一次会叠成两层透明，图标淡到看不见。
+                        )
                     }
                     // 留存开关与清理入口都在这个菜单背后：两件事都只跟「占空间」有关，
                     // 顶栏也不该为此多摆一个开关。
@@ -141,6 +158,20 @@ fun ModuleUploadListMaterial(
                     }
                 },
                 scrollBehavior = scrollBehavior,
+                // 顶栏底边的刷新进度条。槽位常驻 3dp、只在忙时往里画条：
+                // 高度恒定，进度条出现/消失不会让下面的列表跟着上下跳（这一屏
+                // 的查询进度行已经为「高度跳动」踩过一次，同一套规矩）。
+                bottomProgress = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp),
+                    ) {
+                        if (state.busy) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxSize())
+                        }
+                    }
+                },
                 // 展开搜索时直接看过滤结果，与上游 ModuleMaterial.kt:463 的 searchContent
                 // 同一用法：主列表仍留在 Scaffold content，收起后回到原位。
                 searchContent = { bottomPadding, _ ->
@@ -172,6 +203,12 @@ fun ModuleUploadListMaterial(
                                     onToggle = { onToggleRow(row.id) },
                                     onPick = { onPickForRow(row) },
                                     onUseArchived = { onUseArchived(row) },
+                                    onRebuild = { onRebuildFromInstalled(row) },
+                                    uploadUpdate = ModuleUploadRules.showsUploadUpdate(
+                                        row.versionCode,
+                                        row.status,
+                                        uploadedMax[row.id],
+                                    ),
                                     picking = state.pickingFor != null,
                                     pickingThis = state.pickingFor == row.id,
                                 )
@@ -232,6 +269,7 @@ fun ModuleUploadListMaterial(
                         checked = checked,
                         total = state.rows.size,
                         checking = state.checking,
+                        fromCache = state.fromCache,
                         remaining = state.remaining,
                         onContinue = onContinueCheck,
                     )
@@ -259,16 +297,8 @@ fun ModuleUploadListMaterial(
                 )
             }
 
-            // 「我的模块」紧跟挑包入口：两块是同一件事的两半——手里有 zip 就从上面进，
-            // 只是给已收录的模块发新版本就点下面这一行，挑完包带着模块 id 直接进表单。
-            item {
-                MineSectionMaterial(
-                    mine = mine,
-                    picking = state.pickingFor != null,
-                    pickingId = state.pickingFor,
-                    onPick = onPickForMine,
-                )
-            }
+            // 「上传记录」不再占这一页：它挪到了顶栏图标背后（见 onOpenHistory）。
+            // 这一页只回答「已装的这些收录了没有」，记录是另一件事、另一个页面。
 
             // 第三块「已装在本机」也补上标题：三块并列成同一级的分组，
             // 而不是「两块有标题 + 一堆平铺卡片」。
@@ -298,6 +328,12 @@ fun ModuleUploadListMaterial(
                         onToggle = { onToggleRow(row.id) },
                         onPick = { onPickForRow(row) },
                         onUseArchived = { onUseArchived(row) },
+                        onRebuild = { onRebuildFromInstalled(row) },
+                        uploadUpdate = ModuleUploadRules.showsUploadUpdate(
+                            row.versionCode,
+                            row.status,
+                            uploadedMax[row.id],
+                        ),
                         // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
                         // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
                         picking = state.pickingFor != null,
@@ -309,137 +345,6 @@ fun ModuleUploadListMaterial(
     }
 }
 
-/**
- * 「我的模块」：已经收录的模块 + 一键发新版本。
- *
- * 投稿的主路径其实是这一块：用户手里通常只剩新版 zip，早年的包早丢了；从这里挑包会带着
- * 模块 id 回表单，服务端不必再人工核对「这个包是谁的版本」。
- */
-@Composable
-private fun MineSectionMaterial(
-    mine: MineState,
-    /** 有任意一行正在挑包（全局闸门生效中）。 */
-    picking: Boolean,
-    /** 正在挑包的那一行（模块 id）；与主列表共用同一道闸门。 */
-    pickingId: String?,
-    onPick: (MineModule) -> Unit,
-) {
-    // 常态提示按状态取，一次只显示一句；message 那类一次性补充说明由外层用 Toast 消化，
-    // 不在这里重复。顺序即优先级：先答「能不能用」，再答「为什么是空的」。
-    val status = when {
-        mine.loading -> R.string.module_upload_mine_loading
-        mine.needVerify -> R.string.module_upload_mine_need_verify
-        mine.failed -> R.string.module_upload_mine_failed
-        // 降级时服务端也回空列表，但语义是「索引读不到」。说成「你没投过」会让人重投一遍。
-        mine.degraded -> R.string.module_upload_mine_degraded
-        mine.modules.isEmpty() -> R.string.module_upload_mine_empty
-        else -> null
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 20.dp),
-    ) {
-        // 标题交给 SegmentedColumn 自己画（titleSmallEmphasized + 主色 + 左 16dp + 下 8dp），
-        // 与下一块「已装在本机」的标题共用同一副字号与缩进，三块才像同一级的分组。
-        // 失败或降级时手上可能还有一份旧名单：留着比清空好，下面那句提示已经说明它没过期。
-        SegmentedColumn(
-            title = stringResource(R.string.module_upload_mine_entry_title),
-            content = {
-                if (mine.modules.isEmpty()) {
-                    // 一条内容都没有时 SegmentedColumn 连标题一起不画，可「正在载入 / 你没投过」
-                    // 恰恰要靠标题说明这是哪一组。塞一条 visible = false 的行占位：
-                    // 它会被动画收成 0 高度，看不见也点不到。
-                    item(key = "mine-empty", visible = false) {
-                        Spacer(Modifier.height(0.dp))
-                    }
-                }
-                mine.modules.forEach { module ->
-                    item(key = module.id) {
-                        MineRowMaterial(
-                            module = module,
-                            picking = picking,
-                            pickingThis = pickingId == module.id,
-                            onPick = { onPick(module) },
-                        )
-                    }
-                }
-            },
-        )
-        // 组内提示压成组下方的一行小字：每条状态各占一张卡片会把「我的模块」顶成一张表格。
-        Text(
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
-            text = stringResource(R.string.module_upload_mine_entry_summary),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (status != null) {
-            Row(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                if (mine.loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                }
-                Text(
-                    text = stringResource(status),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MineRowMaterial(
-    module: MineModule,
-    /** 有任意一行正在挑包：其余行的按钮一起禁掉（闸门本来就是全局的）。 */
-    picking: Boolean,
-    /** 正在挑的就是这一行。 */
-    pickingThis: Boolean,
-    onPick: () -> Unit,
-) {
-    SegmentedListItem(
-        headlineContent = {
-            Text(
-                text = module.name.ifBlank { module.id },
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        supportingContent = {
-            Text(
-                // 索引里 name 可能是空的（老条目），id 一定在；版本号缺了就只留 id。
-                // 分隔符与主列表用同一个「·」，两处元信息的读法一致。
-                text = if (module.version.isBlank()) {
-                    module.id
-                } else {
-                    "${module.id} · ${module.version}"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        trailingContent = {
-            if (pickingThis) {
-                // 与主列表同一件事：系统选择器回来之前要有反馈，否则用户会以为没点上。
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-            } else {
-                TextButton(onClick = onPick, enabled = !picking) {
-                    Text(stringResource(R.string.module_upload_mine_update))
-                }
-            }
-        },
-    )
-}
-
 @Composable
 private fun UploadRowCardMaterial(
     row: UploadRow,
@@ -447,6 +352,10 @@ private fun UploadRowCardMaterial(
     onToggle: () -> Unit,
     onPick: () -> Unit,
     onUseArchived: () -> Unit,
+    /** 用已安装的模块目录现打一份 zip（原始包已经没有时的那条路）。 */
+    onRebuild: () -> Unit,
+    /** 这个模块投过、而本地装着更新的版本：右侧显示「上传更新」。 */
+    uploadUpdate: Boolean = false,
     modifier: Modifier = Modifier,
     /** 有任意一行正在挑包（全局闸门生效中）。 */
     picking: Boolean = false,
@@ -499,7 +408,22 @@ private fun UploadRowCardMaterial(
                         )
                     }
                 }
-                StatusPillMaterial(row.status, row.checking)
+                // 右侧标签：「上传更新」与收录状态是两个问题，但都挂在同一处——
+                // 前者是「你手里这一版比投过的新」，后者是「索引里有没有这一版」。
+                // 两者可以同时为真（投过旧版、这一版没收录），所以并排显示而不是互相顶掉。
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (uploadUpdate) {
+                        StatusTag(
+                            label = stringResource(R.string.module_upload_tag_upload_update),
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            backgroundColor = MaterialTheme.colorScheme.primaryContainer,
+                        )
+                    }
+                    StatusPillMaterial(row.status, row.checking)
+                }
             }
             // 归属只在服务端明确答过（MINE / NOT_MINE）时才显示：UNKNOWN 是「没问出来」，
             // 挂个「不知道」的牌子只会让用户以为要自己判断，而这件事本来就该由服务端说了算。
@@ -541,7 +465,6 @@ private fun UploadRowCardMaterial(
             }
 
             if (expanded) {
-                val copy = ModuleUploadRules.statusCopy(row.status)
                 // 展开区整体缩进到名字左缘：它是这一行的补充说明，不是卡片的第二栏。
                 Column(
                     modifier = Modifier
@@ -549,17 +472,9 @@ private fun UploadRowCardMaterial(
                         .padding(start = indent, top = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    // 结论在前、解释在后：标题加 Medium 字重，与下面那一堆 bodySmall 拉开重量差。
-                    Text(
-                        text = stringResource(copy.title),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Text(
-                        text = stringResource(copy.summary),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    // 这里不再复述收录状态（「未收录 / 索引里没有这个模块，可以上传」那两句）：
+                    // 右侧的标签已经把结论说完了，再说一遍只是把用户往下推一屏。
+                    // 展开区只留标签装不下的东西：归属解释、模块描述、以及真正能点的动作。
                     // 归属那一格单独补一句解释：牌子只写「你的模块 / 别人的模块」，
                     // 展开的人想知道的是「所以这一版我还能不能发」。UNKNOWN 不说话。
                     val ownershipSummary = when (row.eligibility) {
@@ -624,6 +539,15 @@ private fun UploadRowCardMaterial(
                             onClick = onPick,
                         )
                     }
+                    // 最后一条兜底路：原始包已经被「安装后删除模块压缩包」清掉、留存也没开时，
+                    // 就地按已安装的模块目录打一份。它排在最后是有意的——重建包缺安装脚本，
+                    // 能和作者原包一致的那两条路在上面。
+                    RowActionMaterial(
+                        label = stringResource(R.string.module_upload_rebuild_zip),
+                        summary = stringResource(R.string.module_upload_rebuild_zip_summary),
+                        enabled = !picking,
+                        onClick = onRebuild,
+                    )
                 }
             }
         }
@@ -637,13 +561,15 @@ private fun UploadRowCardMaterial(
  * 标签文字与下面的说明才对在同一条竖线上。
  */
 @Composable
-private fun RowActionMaterial(
+internal fun RowActionMaterial(
     label: String,
     summary: String,
     enabled: Boolean,
     onClick: () -> Unit,
+    /** 调用方需要额外拉开与上一段的间距时用（列表页靠父 Column 的 spacedBy，不传）。 */
+    modifier: Modifier = Modifier,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         TextButton(
             onClick = onClick,
             enabled = enabled,
@@ -730,16 +656,24 @@ private fun EmptyStateMaterial(filtered: Boolean, onClear: () -> Unit) {
 }
 
 /**
- * 查重进度：进度条 + 一句计数，「继续查」与进度条同一行右对齐。
+ * 查重进度：一句计数 + 一条只在查询时出现的进度条，「继续查」与它同一行右对齐。
  *
- * 正在查（[checking]）时只说「在查」，查完才报「查了多少」——同一时刻只讲一件事，
- * 不出现两行内容一样的提示。总数还不知道时给不确定进度条，比一个停在 0% 的条更诚实。
+ * 进度条**只在 [checking] 时画**：查完了还挂着一条 100% 的条，等于在已经完成的动作上
+ * 一直闪一个进行中的信号。但它的位置必须留着——[BarHeight] 高的空位一直占着，
+ * 查询中与查询完成后这一行的高度完全相同，下面那几张卡不会因为一次查询结束而上移。
+ *
+ * 正在查时只说「在查」，不报数字（数字一直在变，读起来只是噪音）；查完才报「查了多少」。
+ * 总数还不知道时给不确定进度条，比一个停在 0% 的条更诚实。
+ *
+ * [fromCache] 为真时那句话后面挂一句「缓存」：这批读数一条请求都没发（见
+ * [ModuleUploadCheckCache]），得让人知道它最多是半小时前的，而不是刚才那一刻的。
  */
 @Composable
 private fun CheckProgressMaterial(
     checked: Int,
     total: Int,
     checking: Boolean,
+    fromCache: Boolean,
     remaining: Int,
     onContinue: () -> Unit,
 ) {
@@ -750,30 +684,25 @@ private fun CheckProgressMaterial(
             .padding(top = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Text(
-                    text = if (checking) {
-                        stringResource(R.string.module_upload_checking)
-                    } else {
-                        stringResource(R.string.module_upload_progress_checked, checked, total)
+                    text = when {
+                        checking -> stringResource(R.string.module_upload_checking)
+                        fromCache -> stringResource(
+                            R.string.module_upload_progress_checked_cached,
+                            checked,
+                            total,
+                        )
+
+                        else -> stringResource(R.string.module_upload_progress_checked, checked, total)
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (checking && total == 0) {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp),
-                    )
-                } else {
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp),
-                    )
-                }
+                ProgressBarSlotMaterial(checking = checking, fraction = fraction, total = total)
             }
             if (remaining > 0) {
                 TextButton(onClick = onContinue, enabled = !checking) {
@@ -792,6 +721,31 @@ private fun CheckProgressMaterial(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** 进度条那一行的高度。查询与查完都占这么高，避免一次查询结束就顶动下面的内容。 */
+private val BarHeight = 4.dp
+
+/**
+ * 进度条的位置：高度恒定，只在 [checking] 时画条。
+ *
+ * 单独抽出来是为了让「留位」这件事与「画条」在代码上是同一处——
+ * 两套主题各自实现时最容易走偏的就是这个空位。
+ */
+@Composable
+private fun ProgressBarSlotMaterial(checking: Boolean, fraction: Float, total: Int) {
+    Box(modifier = Modifier.fillMaxWidth().height(BarHeight)) {
+        if (checking) {
+            if (total == 0) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxSize())
+            } else {
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }

@@ -87,11 +87,28 @@ data class UploadRow(
     val eligibilityReason: String = "",
 )
 
-/** 当前在哪一屏。列表与表单共用同一个路由，靠这个状态切换。 */
+/** 当前在哪一屏。列表 / 表单 / 上传记录共用同一个路由，靠这个状态切换。 */
 enum class UploadStep {
     LIST,
     FORM,
+
+    /** 上传记录：按模块汇总投稿过的版本。从列表顶栏的图标进，返回键回列表。 */
+    HISTORY,
 }
+
+/**
+ * 需要用户看清并确认的一次性提示。
+ *
+ * 与 [ModuleUploadListState.message] 分工：那条通道走 Toast，只留给一句话就能说完的
+ * 结果（复制失败、超过上限）—— 它 3.5 秒就消失，用户没法回看。这里给的是**必须先读明白
+ * 才能纠正**的拒绝理由，典型是「挑错了包」：两个模块 id 同时出现，Toast 在窄屏上会被
+ * 系统截掉后半句，而用户还没来得及看清是哪一边错了。
+ */
+@Immutable
+data class UploadNotice(
+    val title: String,
+    val body: String,
+)
 
 @Immutable
 data class ModuleUploadListState(
@@ -109,11 +126,24 @@ data class ModuleUploadListState(
     val limits: BatchLimits? = null,
     /** 还有多少条没查过（>0 时显示「继续查」）。 */
     val remaining: Int = 0,
+    /**
+     * 这一屏的收录结论全部来自缓存（[ModuleUploadCheckCache]）——这一次一条请求都没发。
+     *
+     * 存在只为了一件事：进度那一行得说清楚这批读数是什么时候的。没有它的话，
+     * 「已查 20/20」在一瞬间出现、中间又没有进度条走过，用户没法区分「刚查的」和
+     * 「半小时前的」；而点顶栏刷新是绕过缓存重查的，他要能判断自己该不该点。
+     */
+    val fromCache: Boolean = false,
     /** 展开详情的那一行；null 表示都收起。 */
     val expandedId: String? = null,
     /** 正在为哪一行挑 zip（挑的过程中禁掉重复点击）。 */
     val pickingFor: String? = null,
-    /** 一次性提示（staging 失败、id 不一致等），消费后清空。 */
+    /**
+     * 一句话就能说完的一次性提示（复制失败、超过上限），消费后清空。
+     *
+     * 需要对照两个 id / 两个版本号才看得懂的拒绝理由不走这里，走 [UploadNotice]：
+     * Toast 在窄屏上会被截断，而且到点自己就消失了。
+     */
     val message: String? = null,
     /** 「安装时留存原始 zip」开关的当前值（见 ModuleZipArchive）。 */
     val keepZip: Boolean = true,
@@ -133,6 +163,17 @@ data class ModuleUploadListState(
      */
     val orphanCount: Int = 0,
 ) {
+    /**
+     * 顶栏是不是「正在刷新」——进度条要不要出现、刷新键要不要转，都只认这一个。
+     *
+     * 三段合成一个：本地扫描（[loading]）、手动刷新（[refreshing]）、网络查询
+     * （[checking]）。只看 [refreshing] 的话，扫描结束那一刻它就先落了 false，
+     * 而查询才刚开始 —— 用户看到的是「转了一下就不转了」，下一次刷新要等好几秒
+     * 才有东西可看，很容易以为没点上。
+     */
+    val busy: Boolean
+        get() = loading || refreshing || checking
+
     /** 界面直接渲染的那一份（筛选 + 搜索 + 排序）。 */
     val visibleRows: List<UploadRow>
         get() {

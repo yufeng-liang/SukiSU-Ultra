@@ -55,7 +55,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
@@ -473,7 +472,6 @@ fun ModulePagerMaterial(
                         displayModules = uiState.searchResults,
                         updateInfoMap = uiState.updateInfo,
                         actions = actions,
-                        contribution = contribution,
                         onModuleAddShortcut = { module, type -> onModuleAddShortcut(module, type) },
                         closeSearch = closeSearch,
                     )
@@ -586,7 +584,6 @@ fun ModulePagerMaterial(
                 displayModules = uiState.moduleList,
                 updateInfoMap = uiState.updateInfo,
                 actions = actions,
-                contribution = contribution,
                 onModuleAddShortcut = { module, type -> onModuleAddShortcut(module, type) },
                 reorderEnabled = uiState.sortManual,
                 header = if (uiState.moduleList.isEmpty()) null else {
@@ -631,7 +628,6 @@ private fun ModuleList(
     displayModules: List<Module>,
     updateInfoMap: Map<String, ModuleUpdateInfo>,
     actions: ModuleActions,
-    contribution: ModuleContributionController,
     onModuleAddShortcut: (Module, ShortcutType) -> Unit,
     reorderEnabled: Boolean = false,
     closeSearch: () -> Unit? = {},
@@ -671,8 +667,6 @@ private fun ModuleList(
                 ModuleItem(
                     module = module,
                     updateUrl = moduleUpdateInfo.downloadUrl,
-                    contribution = contribution,
-                    onOpenUpload = actions.onOpenUpload,
                     onUninstallClicked = {
                         if (module.remove) {
                             actions.onUndoUninstallModule(module)
@@ -873,8 +867,6 @@ private fun ModuleShortcutSheet(
 private fun ModuleItem(
     module: Module,
     updateUrl: String,
-    contribution: ModuleContributionController,
-    onOpenUpload: () -> Unit,
     onUninstallClicked: () -> Unit,
     onCheckChanged: (Boolean) -> Unit,
     onUpdate: () -> Unit,
@@ -885,10 +877,8 @@ private fun ModuleItem(
     dragHandleModifier: Modifier? = null,
 ) {
     val hasDescription = module.description.isNotBlank()
-    // 渲染到这一格时才查收录状态：既是唯一能自然限流的时机，也避免一次刷新连发 N 个请求。
-    contribution.rememberChecked(module)
-    val showContribute = contribution.showButton(module)
-    val showUnknown = contribution.showUnknownHint(module)
+    // 这一格不再需要收录状态：模块页的「分享此模块」入口已去掉（收录与否改在上传页看），
+    // 于是也不必为了一个不存在的按钮，给每个渲染到的模块发一次 /check 请求。
     val maxLinesLimit = LocalModuleDescriptionMaxLines.current
     var expanded by rememberSaveable(module.id) { mutableStateOf(false) }
     var descriptionCanExpand by rememberSaveable(module.id) { mutableStateOf(true) }
@@ -1050,43 +1040,6 @@ private fun ModuleItem(
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
                         backgroundColor = MaterialTheme.colorScheme.errorContainer
                     )
-                }
-            }
-
-            if (showContribute) {
-                Row(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    FilledTonalButton(
-                        modifier = Modifier.defaultMinSize(52.dp, 32.dp),
-                        // 进入新的上传页（列表 + 表单）；不再就地打包这个模块提交。
-                        onClick = onOpenUpload,
-                        contentPadding = ButtonDefaults.TextButtonContentPadding
-                    ) {
-                        Icon(
-                            modifier = Modifier.size(20.dp),
-                            imageVector = Icons.Outlined.CloudUpload,
-                            contentDescription = null,
-                        )
-                        Text(
-                            modifier = Modifier.padding(start = 7.dp),
-                            fontFamily = MaterialTheme.typography.labelMedium.fontFamily,
-                            fontSize = MaterialTheme.typography.labelMedium.fontSize,
-                            text = stringResource(R.string.module_contribution_submit)
-                        )
-                    }
-                    // 查不出来时如实说一声：用户主动点投稿，该知道"是不是已收录我们没查出来"。
-                    // 挂在按钮**右侧**并吃满剩余宽度：窄屏上它换行，而不是把按钮挤出屏幕。
-                    if (showUnknown) {
-                        Text(
-                            modifier = Modifier.weight(1f),
-                            text = stringResource(R.string.module_contribution_unknown),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
                 }
             }
 

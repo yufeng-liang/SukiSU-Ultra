@@ -521,7 +521,6 @@ fun ModulePagerMiuix(
                     modules = uiState.searchResults,
                     updateInfoMap = uiState.updateInfo,
                     actions = actions,
-                    contribution = contribution,
                     onModuleAddShortcut = ::onModuleAddShortcut,
                     contentPadding = PaddingValues(
                         top = 6.dp,
@@ -631,7 +630,6 @@ fun ModulePagerMiuix(
                             modules = modules,
                             updateInfoMap = uiState.updateInfo,
                             actions = actions,
-                            contribution = contribution,
                             onModuleAddShortcut = { module, type ->
                                 onModuleAddShortcut(module, type)
                             },
@@ -793,7 +791,6 @@ private fun ModuleList(
     modules: List<Module>,
     updateInfoMap: Map<String, ModuleUpdateInfo>,
     actions: ModuleActions,
-    contribution: ModuleContributionController,
     onModuleAddShortcut: (Module, ShortcutType) -> Unit,
     contentPadding: PaddingValues,
     listState: LazyListState = rememberLazyListState(),
@@ -842,8 +839,6 @@ private fun ModuleList(
                 ModuleItem(
                     module = module,
                     updateUrl = moduleUpdateInfo.downloadUrl,
-                    contribution = contribution,
-                    onOpenUpload = actions.onOpenUpload,
                     onUninstall = {
                         actions.onRequestUninstallConfirmation(currentModuleState.value)
                     },
@@ -900,8 +895,6 @@ private fun ModuleList(
 fun ModuleItem(
     module: Module,
     updateUrl: String,
-    contribution: ModuleContributionController,
-    onOpenUpload: () -> Unit,
     onUndoUninstall: () -> Unit,
     onUninstall: () -> Unit,
     onCheckChanged: (Boolean) -> Unit,
@@ -912,10 +905,8 @@ fun ModuleItem(
     dragHandleModifier: Modifier? = null,
 ) {
     val secondaryContainer = colorScheme.secondaryContainer.copy(alpha = 0.8f)
-    // 渲染到这一格时才查收录状态：既是唯一能自然限流的时机，也避免一次刷新连发 N 个请求。
-    contribution.rememberChecked(module)
-    val showContribute = contribution.showButton(module)
-    val showUnknown = contribution.showUnknownHint(module)
+    // 这一格不再需要收录状态：模块页的「分享此模块」入口已去掉（收录与否改在上传页看），
+    // 于是也不必为了一个不存在的按钮，给每个渲染到的模块发一次 /check 请求。
     val actionIconTint = colorScheme.onSurface.copy(alpha = if (isInDarkTheme()) 0.7f else 0.9f)
     val updateBg = colorScheme.tertiaryContainer.copy(alpha = 0.6f)
     val updateTint = colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
@@ -1079,57 +1070,6 @@ fun ModuleItem(
                     color = colorScheme.onSurfaceVariantSummary,
                     textDecoration = textDecoration
                 )
-            }
-
-            if (showContribute) {
-                // 「无法确认是否已收录」挂在分享按钮**右侧**：它是这个按钮的注解（"点了会怎样"），
-                // 不是独立的一行内容；挤在下面会把这一格撑高，列表里每一条都白占一行。
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    IconButton(
-                        backgroundColor = secondaryContainer,
-                        minHeight = 35.dp,
-                        minWidth = 35.dp,
-                        // 点进去的是新的上传页（列表 + 表单），不再就地打包这个模块提交：
-                        // 上传的必须是作者发布的原始 zip，App 重新打出来的包字节不同，口令也会对不上。
-                        onClick = { onOpenUpload() },
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Icon(
-                                modifier = Modifier.size(20.dp),
-                                imageVector = MiuixIcons.UploadCloud,
-                                tint = actionIconTint,
-                                contentDescription = stringResource(R.string.module_contribution_submit),
-                            )
-                            Text(
-                                modifier = Modifier.padding(start = 4.dp, end = 3.dp),
-                                text = stringResource(R.string.module_contribution_submit),
-                                color = actionIconTint,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 15.sp,
-                            )
-                        }
-                    }
-                    // 查不出来时如实说一声：用户主动点投稿，该知道"是不是已收录我们没查出来"。
-                    // 吃满剩余宽度：窄屏上它换行，而不是把按钮挤出屏幕。
-                    if (showUnknown) {
-                        Text(
-                            modifier = Modifier.weight(1f),
-                            text = stringResource(R.string.module_contribution_unknown),
-                            fontSize = 12.sp,
-                            color = colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                }
             }
 
             HorizontalDivider(
