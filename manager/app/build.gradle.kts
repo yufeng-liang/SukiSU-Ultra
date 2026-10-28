@@ -3,6 +3,7 @@
 import com.google.protobuf.gradle.id
 import java.net.HttpURLConnection
 import java.net.URI
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.agp.app)
@@ -40,7 +41,9 @@ fun managerPackageSingleSourceProperty(key: String): String {
         "找不到包名单一真源 ${managerPackageSingleSource.absolutePath}；" +
             "请从仓库根构建，或用 -PKSU_PACKAGE_NAME=<package> 显式指定"
     }
-    val properties = java.util.Properties()
+    // 注意：不能写 java.util.Properties —— Gradle Kotlin DSL 里 `java` 会被
+    // JavaPluginExtension 的访问器遮蔽，导致 "Unresolved reference 'util'"。
+    val properties = Properties()
     managerPackageSingleSource.reader(Charsets.UTF_8).use { properties.load(it) }
     return properties.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
         ?: error("${managerPackageSingleSource.name} 缺少 $key")
