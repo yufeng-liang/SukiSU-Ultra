@@ -1402,12 +1402,12 @@ pub fn run() -> Result<()> {
                 Kpm::Load { path, args } => {
                     crate::kpm::load_module(path.to_str().unwrap(), args.as_deref())
                 }
-                Kpm::Unload { name } => crate::kpm::unload_module(name),
+                Kpm::Unload { name } => crate::kpm::unload_module(&name),
                 Kpm::Num => crate::kpm::num().map(|_| ()),
                 Kpm::List => crate::kpm::list(),
-                Kpm::Info { name } => crate::kpm::info(name),
+                Kpm::Info { name } => crate::kpm::info(&name),
                 Kpm::Control { name, args } => {
-                    let ret = crate::kpm::control(name, args)?;
+                    let ret = crate::kpm::control(&name, args)?;
                     println!("{ret}");
                     Ok(())
                 }

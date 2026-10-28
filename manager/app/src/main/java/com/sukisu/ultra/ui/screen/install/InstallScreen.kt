@@ -78,6 +78,8 @@ fun InstallScreen(
     var kpmPatchOption by rememberSaveable { mutableStateOf(KpmPatchOption.FOLLOW_KERNEL) }
     val kpmEnabled = kpmPatchOption.enabled
     val kpmUndo = kpmPatchOption.undo
+    val canPatchKpm = android.os.Build.SUPPORTED_ABIS.contains("arm64-v8a")
+    val isStandaloneKpm = installMethod == null && canPatchKpm && kpmEnabled
     var kpmBootExpanded by rememberSaveable { mutableStateOf(false) }
     var kpmBootUri by rememberSaveable { mutableStateOf<Uri?>(null) }
     var blockModulesEnabled by rememberSaveable { mutableStateOf(false) }
@@ -197,7 +199,9 @@ fun InstallScreen(
 
     val blockModulesInvalidMessage = stringResource(R.string.install_block_modules_invalid)
     val onInstall = {
-        if (!isBlockModulesValid(effectiveBlockModules)) {
+        if (isStandaloneKpm) {
+            navigator.push(Route.Flash(FlashIt.PatchKpmBoot(boot = kpmBootUri, undo = kpmUndo)))
+        } else if (!isBlockModulesValid(effectiveBlockModules)) {
             showMessage(blockModulesInvalidMessage)
         } else installMethod?.let { method ->
             if (kpmEnabled && method is InstallMethod.DirectInstallToInactiveSlot) {
@@ -322,20 +326,21 @@ fun InstallScreen(
     val selectImageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        if (it.resultCode == Activity.RESULT_OK) {
-            it.data?.data?.let { uri ->
-                val option = when (installMethod) {
-                    is InstallMethod.SelectFile -> InstallMethod.SelectFile(uri, summary = selectFileTip)
-                    is InstallMethod.HorizonKernel -> InstallMethod.HorizonKernel(uri, summary = horizonKernelSummary)
-                    else -> null
-                }
-                option?.let { opt ->
-                    installMethod = opt
-                    // 对于 HorizonKernel，需要触发 AnyKernel3 流程（槽位选择和KPM修补）
-                    if (opt is InstallMethod.HorizonKernel) {
-                        anyKernel3State.onHorizonKernelSelected(opt)
-                    }
-                }
+        val uri = it.data?.data
+        if (it.resultCode != Activity.RESULT_OK || uri == null) {
+            installMethod = null
+            return@rememberLauncherForActivityResult
+        }
+        val option = when (installMethod) {
+            is InstallMethod.SelectFile -> InstallMethod.SelectFile(uri, summary = selectFileTip)
+            is InstallMethod.HorizonKernel -> InstallMethod.HorizonKernel(uri, summary = horizonKernelSummary)
+            else -> null
+        }
+        option?.let { opt ->
+            installMethod = opt
+            // 对于 HorizonKernel，需要触发 AnyKernel3 流程（槽位选择和KPM修补）
+            if (opt is InstallMethod.HorizonKernel) {
+                anyKernel3State.onHorizonKernelSelected(opt)
             }
         }
     }
@@ -371,7 +376,7 @@ fun InstallScreen(
         kpmPatchOption = kpmPatchOption,
         kpmBootExpanded = kpmBootExpanded,
         kpmBootUri = kpmBootUri,
-        canPatchKpm = android.os.Build.SUPPORTED_ABIS.contains("arm64-v8a"),
+        canPatchKpm = canPatchKpm,
         blockModulesEnabled = blockModulesEnabled,
         blockModules = blockModules,
         blockModulesValid = isBlockModulesValid(effectiveBlockModules),
@@ -421,7 +426,7 @@ fun InstallScreen(
                 is InstallMethod.SelectFile -> true
                 else -> isKmiUnknown
             }
-            if (isGkiDevice && !isLkmSelected && isKmiUnresolved && installMethod !is InstallMethod.HorizonKernel) {
+            if (!isStandaloneKpm && isGkiDevice && !isLkmSelected && isKmiUnresolved && installMethod !is InstallMethod.HorizonKernel) {
                 showChooseKmiDialog.value = true
             } else {
                 onInstall()

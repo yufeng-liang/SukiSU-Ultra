@@ -506,6 +506,7 @@
     <string name="kpm_found_image_file">Found Image file: %s</string>
     <string name="kpm_patch_success">KPM patch applied successfully</string>
     <string name="kpm_undo_patch_success">KPM patch undone successfully</string>
+    <string name="kpm_undo_patch_not_found">No KPM patch found; keeping the original kernel</string>
     <string name="kpm_file_repacked">File repacked successfully</string>
     <string name="kpm_extract_zip_failed">Failed to extract zip file</string>
     <string name="kpm_image_file_not_found">Image file not found</string>
@@ -513,6 +514,7 @@
     <string name="kpm_follow_kernel_file">Follow Kernel</string>
     <string name="install_kpm_manual">Manually select boot.img (optional)</string>
     <string name="install_kpm_auto">Automatic: follow the installation method</string>
+    <string name="install_kpm_auto_current_boot">Automatically extract boot from the current slot</string>
     <string name="install_kpm_clear">Clear selection and use automatic boot</string>
     <string name="install_kpm_operation">KPM operation</string>
     <string name="install_kpm_summary">Keep, apply, or undo the kernel KPM patch.</string>
@@ -1014,6 +1016,12 @@
     <string name="extension_status_forced">Forced</string>
     <string name="extension_status_managed">Module-managed</string>
     <string name="extension_status_disabled">Disabled</string>
+    <string name="extension_status_needs_reboot">Changes take effect after reboot</string>
+    <!-- Compact status row on a card: one short label plus one lifetime hint. -->
+    <string name="extension_status_unsupported_short">Unsupported</string>
+    <string name="extension_status_reboot_short">Needs reboot</string>
+    <string name="extension_status_persistent_short">Survives reboot</string>
+    <string name="extension_status_session_only_short">This boot only</string>
     <string name="extension_kpm_title">KPM (Kernel Patch Module)</string>
     <string name="extension_kpm_summary">Load third-party .kpm modules at runtime. Requires a KPM-capable kernel build.</string>
     <string name="extension_cpu_spoof_title">CPU identity spoofing</string>
@@ -1027,10 +1035,12 @@
     <string name="extension_version_spoof_title">SukiSU version overrides</string>
     <string name="extension_version_spoof_summary">Customize the reported SukiSU version code, full version and UAPI version.</string>
     <string name="extension_open_details">Open details</string>
-    <string name="extension_open_kpm">Open KPM manager</string>
-    <string name="extension_open_dynamic_manager">Open dynamic manager list</string>
-    <string name="extension_open_umount_paths">Open umount path list</string>
-    <string name="extension_open_cpu_spoof">Open CPU spoofing form</string>
+    <!-- Fallback card for a handler the kernel reports but this manager has
+         no dedicated page for. Keeps new extensions visible and, when they
+         expose a sticky bit, toggleable without an app update. -->
+    <string name="extension_generic_summary">Provided by the running kernel. This manager version has no dedicated settings page for it.</string>
+    <string name="extension_status_persistent">Persists across reboot</string>
+    <string name="extension_status_session_only">Applies until reboot</string>
 
     <!-- Empty state shown when no extension state has been observed
          and the screen is not in the middle of a refresh. -->

@@ -92,8 +92,8 @@ fun patchKpmBoot(
         val patched = File(session, "kernel.patched")
         val output = File(session, "patched-boot.img")
         val daemon = q(getKsuDaemonPath())
-        onStdout("- Preparing latest KPM tools from the configured remote URLs")
-        val tools = KpmTools.prepare(ksuApp, session, onStdout, ::command)
+        onStdout("- Preparing bundled KPM tools")
+        val tools = KpmTools.prepare(ksuApp, session)
         val toolCommand = tools.command
         val version = getKernelVersion()
         check(version.major >= 0 && version.patchLevel >= 0) { "Cannot determine kernel version" }
@@ -103,7 +103,7 @@ fun patchKpmBoot(
         onStdout("- Running kernel: $version; boot image tool: ${if (useKptoolsBoot) "kptools" else "ksud"}")
         onStdout("- Unpacking boot.img and decompressing kernel")
         if (useKptoolsBoot) {
-            // kptools uses fixed names relative to cwd: boot.img -> kernel.
+            // kptools-android uses fixed names relative to cwd: boot.img -> kernel.
             command(inSession + "$toolCommand unpack boot.img")
         } else {
             command("$daemon boot-kernel extract --boot ${q(source.absolutePath)} --output ${q(kernel.absolutePath)}")

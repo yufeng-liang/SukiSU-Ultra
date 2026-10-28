@@ -503,6 +503,7 @@
     <string name="kpm_found_image_file">找到镜像文件: %s</string>
     <string name="kpm_patch_success">KPM 补丁应用成功</string>
     <string name="kpm_undo_patch_success">KPM 补丁撤销成功</string>
+    <string name="kpm_undo_patch_not_found">未发现 KPM 补丁，保留原始内核</string>
     <string name="kpm_file_repacked">文件重新打包成功</string>
     <string name="kpm_extract_zip_failed">解压zip文件失败</string>
     <string name="kpm_image_file_not_found">未找到镜像文件</string>
@@ -510,6 +511,7 @@
     <string name="kpm_follow_kernel_file">跟随内核</string>
     <string name="install_kpm_manual">手动选择 boot（可选）</string>
     <string name="install_kpm_auto">自动跟随安装方式</string>
+    <string name="install_kpm_auto_current_boot">自动提取当前槽位的 boot</string>
     <string name="install_kpm_clear">恢复自动选择</string>
     <string name="install_kpm_operation">KPM 选择</string>
     <string name="install_kpm_summary">保留、应用或撤销内核中的 KPM 补丁。</string>
@@ -1006,6 +1008,11 @@
     <string name="extension_status_forced">已强制</string>
     <string name="extension_status_managed">模块托管</string>
     <string name="extension_status_disabled">已禁用</string>
+    <string name="extension_status_needs_reboot">重启后更改才会生效</string>
+    <string name="extension_status_unsupported_short">不支持</string>
+    <string name="extension_status_reboot_short">需重启</string>
+    <string name="extension_status_persistent_short">重启保留</string>
+    <string name="extension_status_session_only_short">仅本次开机</string>
     <string name="extension_kpm_title">KPM (内核补丁模块)</string>
     <string name="extension_kpm_summary">运行时加载第三方 .kpm 模块。需要内核支持 KPM。</string>
     <string name="extension_cpu_spoof_title">CPU 身份伪装</string>
@@ -1014,13 +1021,14 @@
     <string name="extension_umount_paths_summary">管理应用启动时内核将卸载的挂载点列表。</string>
     <string name="extension_dynamic_manager_title">动态管理器</string>
     <string name="extension_dynamic_manager_summary">允许通过签名证书验证的多个应用充当 SukiSU 管理器。</string>
+    <string name="extension_susfs_title">SuSFS</string>
+    <string name="extension_susfs_summary">配置隐藏挂载、欺骗 uname、开放重定向、kstat 等底层内核技巧。需要安装 SuSFS 内核模块。</string>
     <string name="extension_version_spoof_title">SukiSU 版本信息自定义</string>
     <string name="extension_version_spoof_summary">自定义内核对外报告的 SukiSU 数字版本号、完整版本字符串和 UAPI 版本号。</string>
     <string name="extension_open_details">打开详情</string>
-    <string name="extension_open_kpm">打开 KPM 管理</string>
-    <string name="extension_open_dynamic_manager">打开动态管理器列表</string>
-    <string name="extension_open_umount_paths">打开 Umount 路径列表</string>
-    <string name="extension_open_cpu_spoof">打开 CPU 伪装表单</string>
+    <string name="extension_generic_summary">由当前内核提供。此版本管理器没有为它提供专门的设置页面。</string>
+    <string name="extension_status_persistent">重启后仍然保留</string>
+    <string name="extension_status_session_only">仅在本次开机期间有效</string>
 
     <!-- 空状态:尚未拉到任何扩展状态,屏幕也不在刷新中。 -->
     <string name="extension_empty_title">暂无扩展数据</string>

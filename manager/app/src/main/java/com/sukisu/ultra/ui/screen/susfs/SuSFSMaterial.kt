@@ -47,8 +47,10 @@ internal fun SuSFSMaterial(
                     )
                 }),
             )
-            if (state.isLoading || state.isLoadingFeatures && state.selectedTab == SuSFSTab.ENABLED_FEATURES) {
-                LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Box(Modifier.fillMaxWidth().height(4.dp)) {
+                if (state.isLoading || state.isLoadingFeatures && state.selectedTab == SuSFSTab.ENABLED_FEATURES) {
+                    LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
             key(state.selectedTab) {
                 Column(

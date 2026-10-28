@@ -8,6 +8,9 @@
 
 use anyhow::{Result, bail};
 
+use crate::ksu_uapi;
+use crate::ksucalls::ExtensionState;
+
 /// Identifier of a registered extension handler in the kernel.
 ///
 /// Adding a new entry here must be matched in:
@@ -50,22 +53,49 @@ impl ExtensionId {
         }
     }
 
-    /// Whether this extension exposes a runtime sticky bit at all.
+    /// Whether this extension exposes a runtime sticky bit on the kernel
+    /// that [`state`](ExtensionState) was read from.
     ///
-    /// `true` means the kernel can be told "enable / disable" via
-    /// `ksu_extension_set`, and the current value is meaningful when
-    /// probed via `ksu_extension_get`. `false` means the extension
-    /// has no persistent user-controlled state:
+    /// The kernel is the authority: it publishes STICKY in
+    /// `cmd.supported`. [`Self::legacy_has_sticky_bit`] is consulted only
+    /// when the kernel predates capability negotiation (extension ABI 0),
+    /// because such a kernel never sets the bit even for extensions that
+    /// do have a toggle.
+    pub const fn is_sticky(self, state: &ExtensionState) -> bool {
+        if state.caps_known() {
+            state.has_cap(ksu_uapi::KSU_EXTENSION_FLAG_STICKY)
+        } else {
+            self.legacy_has_sticky_bit()
+        }
+    }
+
+    /// Whether the sticky value is worth writing to `.extension_config`.
+    ///
+    /// The kernel distinguishes "toggleable now" (STICKY) from "survives a
+    /// reboot" (PERSIST) so an extension can offer a runtime switch without
+    /// its value being replayed at boot. Legacy kernels know neither bit, so
+    /// they keep the historical behaviour of persisting every toggle.
+    pub const fn is_persistent(self, state: &ExtensionState) -> bool {
+        if state.caps_known() {
+            state.has_cap(ksu_uapi::KSU_EXTENSION_FLAG_PERSIST)
+        } else {
+            self.legacy_has_sticky_bit()
+        }
+    }
+
+    /// Static fallback for kernels without capability negotiation.
+    ///
+    /// This is the last remaining hand-maintained mirror of the kernel's
+    /// handler table. It only runs against extension ABI 0, i.e. a kernel
+    /// built before the capability bits existed, which by definition has
+    /// this exact table; it can never disagree with a kernel that answers
+    /// the ABI probe.
+    ///
     ///   - KPM advertises `CONFIG_KPM` via GET, but the bit is
     ///     compile-time — `ksu_extension_set` returns -EOPNOTSUPP.
     ///   - CPU_SPOOF and UMOUNT_PATHS are io-only: state lives in the
     ///     payload of each ioctl, never in a sticky u64.
-    ///
-    /// UI uses this to decide whether to show a toggle: extensions
-    /// without a sticky bit should display "Available" / "Supported"
-    /// rather than "Disabled" (which would imply an action the user
-    /// cannot perform here).
-    pub const fn has_sticky_bit(self) -> bool {
+    pub const fn legacy_has_sticky_bit(self) -> bool {
         matches!(self, Self::DynamicManager)
     }
 

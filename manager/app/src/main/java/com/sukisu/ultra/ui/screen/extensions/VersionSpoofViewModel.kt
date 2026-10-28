@@ -68,9 +68,18 @@ internal class VersionSpoofViewModel : ViewModel() {
         }
     }
 
-    fun editVersion(value: String) { state.update { it.copy(version = value, success = false) } }
-    fun editFull(value: String) { state.update { it.copy(full = value, success = false) } }
-    fun editUapi(value: String) { state.update { it.copy(uapi = value, success = false) } }
+    fun editVersion(value: String) {
+        state.update { it.copy(version = value, success = false, error = null) }
+    }
+
+    fun editFull(value: String) {
+        state.update { it.copy(full = value, success = false, error = null) }
+    }
+
+    fun editUapi(value: String) {
+        state.update { it.copy(uapi = value, success = false, error = null) }
+    }
+
     fun acknowledge(value: Boolean) { state.update { it.copy(acknowledged = value) } }
 
     fun apply(reset: Boolean = false) {

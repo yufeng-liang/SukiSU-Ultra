@@ -33,6 +33,8 @@ internal data class InstallUiState(
     val spoofVersion: String,
 ) {
     val kpmEnabled: Boolean get() = kpmPatchOption.enabled
+    val canInstall: Boolean
+        get() = if (installMethod == null) canPatchKpm && kpmEnabled else blockModulesValid
     val canSelectKpmBoot: Boolean
         get() = kpmEnabled && installMethod !is InstallMethod.HorizonKernel
 }

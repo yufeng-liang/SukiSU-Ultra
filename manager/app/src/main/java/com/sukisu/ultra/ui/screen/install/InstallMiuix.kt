@@ -295,7 +295,10 @@ internal fun InstallScreenMiuix(
                                     BasicComponent(
                                         title = stringResource(R.string.install_kpm_manual),
                                         summary = uiState.kpmBootUri?.lastPathSegment
-                                            ?: stringResource(R.string.install_kpm_auto),
+                                            ?: stringResource(
+                                                if (uiState.installMethod == null) R.string.install_kpm_auto_current_boot
+                                                else R.string.install_kpm_auto
+                                            ),
                                         onClick = actions.onToggleKpmBoot,
                                         endActions = {
                                             Icon(
@@ -467,7 +470,7 @@ internal fun InstallScreenMiuix(
                                 .fillMaxWidth()
                                 .padding(top = 12.dp),
                             text = stringResource(id = R.string.install_next),
-                            enabled = uiState.installMethod != null && uiState.blockModulesValid,
+                            enabled = uiState.canInstall,
                             colors = ButtonDefaults.textButtonColorsPrimary(),
                             onClick = actions.onNext
                         )

@@ -1,9 +1,10 @@
 #![allow(clippy::unreadable_literal)]
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 use crate::extension_id::ExtensionId;
 use crate::ksu_uapi;
 use std::cell::Cell;
+use std::ffi::CStr;
 use std::fs;
 use std::io;
 use std::os::fd::RawFd;
@@ -47,7 +48,6 @@ extern "C" fn sigsys_handler(
         }
 
         #[cfg(not(target_arch = "riscv64"))]
-        #[allow(unused_variables)]
         let ucontext = ctx.cast::<libc::ucontext_t>();
         #[cfg(target_arch = "aarch64")]
         {
@@ -153,6 +153,23 @@ pub fn ksuctl<T>(request: u32, arg: *mut T) -> Result<i32> {
         if ret < 0 {
             bail!("ksuctl failed: {}", io::Error::last_os_error())
         }
+        Ok(ret)
+    }
+}
+
+/// Same driver fd and ioctl as [`ksuctl`], but keeps the raw errno for
+/// callers that must tell a sentinel error (-ENOENT ends extension
+/// enumeration) apart from a real failure. Deliberately separate so the
+/// long-standing `ksuctl` error wording stays untouched.
+fn ksuctl_io<T>(request: u32, arg: *mut T) -> io::Result<i32> {
+    let fd = *DRIVER_FD.get_or_init(|| init_driver_fd().unwrap_or(-1));
+    if fd < 0 {
+        return Err(io::Error::from_raw_os_error(libc::ENODEV));
+    }
+    let ret = unsafe { libc::ioctl(fd as libc::c_int, request as i32, arg) };
+    if ret < 0 {
+        Err(io::Error::last_os_error())
+    } else {
         Ok(ret)
     }
 }
@@ -289,116 +306,6 @@ pub fn set_feature(feature_id: u32, value: u64) -> Result<()> {
     let mut cmd = ksu_uapi::ksu_set_feature_cmd { feature_id, value };
     ksuctl(ksu_uapi::KSU_IOCTL_SET_FEATURE, &raw mut cmd)?;
     Ok(())
-}
-
-/// State returned by [`get_extension`] for a single extension.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtensionState {
-    /// Sticky enable bit. Most extensions use bit 0 (1 = enabled).
-    pub value: u64,
-    /// Whether the kernel has a handler registered for this id. UI
-    /// uses this to show a "Not supported" hint instead of a toggle.
-    pub supported: bool,
-    /// Forced by `force_extension=` boot param. The kernel will
-    /// refuse `KSU_EXTENSION_SET` for this id.
-    pub forced: bool,
-}
-
-pub fn get_extension(extension_id: u32) -> Result<ExtensionState> {
-    let mut cmd = ksu_uapi::ksu_extension_cmd {
-        id: extension_id,
-        op: ksu_uapi::KSU_EXTENSION_GET,
-        supported: 0,
-        reserved: 0,
-        value: 0,
-        user_ptr: 0,
-    };
-    ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
-    let flags = cmd.supported;
-    Ok(ExtensionState {
-        value: cmd.value,
-        supported: flags & ksu_uapi::KSU_FEATURE_FLAG_SUPPORTED != 0,
-        forced: flags & ksu_uapi::KSU_EXTENSION_FLAG_FORCED != 0,
-    })
-}
-
-pub fn set_extension(extension_id: u32, value: u64) -> Result<()> {
-    let mut cmd = ksu_uapi::ksu_extension_cmd {
-        id: extension_id,
-        op: ksu_uapi::KSU_EXTENSION_SET,
-        supported: 0,
-        reserved: 0,
-        value,
-        user_ptr: 0,
-    };
-    // ksuctl already converts negative errno into a `bail!`, so any
-    // non-zero value here would be a positive "soft error" from the
-    // kernel's do_extension() return path. We treat those as failure
-    // to keep the API strict: callers can rely on Ok(()) == real
-    // success rather than "no -EINVAL returned".
-    let ret = ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
-    if ret != 0 {
-        bail!("set_extension(id={extension_id}, value={value}) failed: {ret}");
-    }
-    Ok(())
-}
-
-#[allow(dead_code)] // exposed for external ksud callers
-pub fn wipe_extension(extension_id: u32) -> Result<()> {
-    let mut cmd = ksu_uapi::ksu_extension_cmd {
-        id: extension_id,
-        op: ksu_uapi::KSU_EXTENSION_WIPE,
-        supported: 0,
-        reserved: 0,
-        value: 0,
-        user_ptr: 0,
-    };
-    // See set_extension() for the rationale behind the non-zero check.
-    let ret = ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
-    if ret != 0 {
-        bail!("wipe_extension(id={extension_id}) failed: {ret}");
-    }
-    Ok(())
-}
-
-/// Forward a typed payload to the extension's io op. The payload type
-/// must match the layout the targeted extension expects; the four
-/// strongly-typed wrappers below (`kpm_io`, `umount_paths_io`,
-/// `spoof_cpu_io`, `dynamic_manager_io`) encode this constraint at the
-/// type level so the compiler catches mismatches.
-///
-/// # Safety
-///
-/// The caller must ensure `payload` points to a valid layout understood
-/// by the targeted extension and that the buffer remains alive for the
-/// duration of the call.
-pub unsafe fn extension_io<T>(extension_id: u32, payload: *mut T) -> Result<i32> {
-    let mut cmd = ksu_uapi::ksu_extension_cmd {
-        id: extension_id,
-        op: ksu_uapi::KSU_EXTENSION_IO,
-        supported: 0,
-        reserved: 0,
-        value: 0,
-        user_ptr: payload as u64,
-    };
-    ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)
-}
-
-#[allow(dead_code)]
-pub unsafe fn kpm_io(cmd: *mut ksu_uapi::ksu_kpm_cmd) -> Result<i32> {
-    unsafe { extension_io(ExtensionId::Kpm as u32, cmd) }
-}
-
-pub unsafe fn umount_paths_io(cmd: *mut ksu_uapi::ksu_extension_umount_cmd) -> Result<i32> {
-    unsafe { extension_io(ExtensionId::UmountPaths as u32, cmd) }
-}
-
-pub unsafe fn spoof_cpu_io(cmd: *mut ksu_uapi::ksu_set_spoof_cpu_cmd) -> Result<i32> {
-    unsafe { extension_io(ExtensionId::CpuSpoof as u32, cmd) }
-}
-
-pub unsafe fn dynamic_manager_io(cmd: *mut ksu_uapi::ksu_manager_cmd) -> Result<i32> {
-    unsafe { extension_io(ExtensionId::DynamicManager as u32, cmd) }
 }
 
 pub fn get_wrapped_fd(fd: RawFd) -> Result<RawFd> {
@@ -562,6 +469,248 @@ pub fn umount_list_list() -> anyhow::Result<String> {
     }
     let len = buffer.iter().position(|&b| b == 0).unwrap_or(BUF_SIZE);
     Ok(String::from_utf8_lossy(&buffer[..len]).to_string())
+}
+
+static EXTENSION_API_VERSION: OnceLock<u32> = OnceLock::new();
+
+/// State returned by [`get_extension`] for a single extension.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtensionState {
+    /// Sticky enable bit. Most extensions use bit 0 (1 = enabled).
+    pub value: u64,
+    /// Capability bits advertised by the kernel (`KSU_EXTENSION_FLAG_*`).
+    /// Empty on kernels that predate capability negotiation, which is what
+    /// [`Self::caps_known`] reports.
+    pub caps: u32,
+    /// Extension ABI version the kernel speaks; 0 on legacy kernels.
+    pub api_version: u32,
+    /// Whether the kernel has a handler registered for this id. UI
+    /// uses this to show a "Not supported" hint instead of a toggle.
+    pub supported: bool,
+    /// Forced by `force_extension=` boot param. The kernel will
+    /// refuse `KSU_EXTENSION_SET` for this id.
+    pub forced: bool,
+}
+
+impl ExtensionState {
+    /// Whether the capability bits in [`Self::caps`] are meaningful.
+    ///
+    /// A legacy kernel fills only SUPPORTED/FORCED, so a missing STICKY bit
+    /// there means "this kernel never heard of the bit", not "this
+    /// extension has no toggle". Callers must use the static fallback in
+    /// that case instead of trusting an all-zero `caps`.
+    pub const fn caps_known(&self) -> bool {
+        self.api_version > 0
+    }
+
+    /// Capability bit lookup that answers `false` on legacy kernels.
+    pub const fn has_cap(&self, cap: u32) -> bool {
+        self.caps_known() && self.caps & cap != 0
+    }
+}
+
+/// Extension ABI version the kernel speaks, probed once per process.
+///
+/// Returns 0 for a kernel that predates capability negotiation. The probe id
+/// is out of range for every kernel, so a legacy one rejects the call with
+/// -EINVAL instead of answering it as a regular GET: an error here is the
+/// signal that `cmd.supported` carries nothing beyond SUPPORTED and FORCED.
+/// Answering 0 only on error, never on a version of 0, keeps the two cases
+/// apart.
+pub fn extension_api_version() -> u32 {
+    *EXTENSION_API_VERSION.get_or_init(|| {
+        let mut cmd = ksu_uapi::ksu_extension_cmd {
+            id: ksu_uapi::KSU_EXTENSION_ABI_PROBE_ID,
+            op: ksu_uapi::KSU_EXTENSION_ABI,
+            supported: 0,
+            api_version: 0,
+            value: 0,
+            user_ptr: 0,
+        };
+        match ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd) {
+            Ok(_) => cmd.api_version,
+            Err(_) => 0,
+        }
+    })
+}
+
+/// A state for an id the kernel did not answer for.
+///
+/// The ABI version is still filled in, so [`ExtensionState::caps_known`]
+/// keeps describing the kernel rather than the missing handler: callers can
+/// tell "the kernel has no capabilities to report" apart from "this
+/// particular extension was refused".
+pub fn unknown_extension_state() -> ExtensionState {
+    ExtensionState {
+        api_version: extension_api_version(),
+        ..Default::default()
+    }
+}
+
+pub fn get_extension(extension_id: u32) -> Result<ExtensionState> {
+    let api_version = extension_api_version();
+    let mut cmd = ksu_uapi::ksu_extension_cmd {
+        id: extension_id,
+        op: ksu_uapi::KSU_EXTENSION_GET,
+        supported: 0,
+        api_version,
+        value: 0,
+        user_ptr: 0,
+    };
+    ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
+    let caps = cmd.supported;
+    Ok(ExtensionState {
+        value: cmd.value,
+        caps,
+        api_version,
+        // older kernels report 1 for supported, matching the flag
+        supported: caps & ksu_uapi::KSU_FEATURE_FLAG_SUPPORTED != 0,
+        forced: caps & ksu_uapi::KSU_EXTENSION_FLAG_FORCED != 0,
+    })
+}
+
+/// One handler as reported by KSU_EXTENSION_ENUM. Unlike
+/// [`ExtensionState`], this carries the kernel's own name and the
+/// handler's minimum ABI, so callers do not need a compiled-in copy of
+/// `enum ksu_extension_id`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtensionDescriptor {
+    pub id: u32,
+    pub name: String,
+    pub caps: u32,
+    pub min_api_version: u32,
+    pub forced: bool,
+}
+
+/// Enumerate every handler the kernel currently has registered.
+///
+/// Returns an empty list on kernels that predate extension ABI 2; callers
+/// fall back to the static [`crate::extension_id::ExtensionId::ALL`] table
+/// for those. `KSU_EXTENSION_ENUM` uses the out-of-range probe id so a
+/// legacy kernel rejects it rather than treating `value` as a sticky write,
+/// and the list is bounded by the kernel's own `KSU_EXTENSION_MAX`.
+pub fn enumerate_extensions() -> Result<Vec<ExtensionDescriptor>> {
+    if extension_api_version() < 2 {
+        return Ok(Vec::new());
+    }
+
+    let api_version = extension_api_version();
+    let mut out = Vec::new();
+
+    for index in 0..ksu_uapi::ksu_extension_id_KSU_EXTENSION_MAX {
+        let mut desc: ksu_uapi::ksu_extension_desc = unsafe { std::mem::zeroed() };
+        let mut cmd = ksu_uapi::ksu_extension_cmd {
+            id: ksu_uapi::KSU_EXTENSION_ABI_PROBE_ID,
+            op: ksu_uapi::KSU_EXTENSION_ENUM,
+            supported: 0,
+            api_version,
+            value: u64::from(index),
+            user_ptr: &raw mut desc as u64,
+        };
+
+        match ksuctl_io(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd) {
+            Ok(_) => {
+                // strscpy() in ksu_extension_enumerate() always terminates
+                // within KSU_EXTENSION_NAME_LEN, so the kernel never hands
+                // us an unterminated buffer.
+                let name = unsafe { CStr::from_ptr(desc.name.as_ptr()) }
+                    .to_string_lossy()
+                    .into_owned();
+                out.push(ExtensionDescriptor {
+                    id: desc.id,
+                    name,
+                    caps: desc.caps,
+                    min_api_version: desc.min_api_version,
+                    forced: desc.forced != 0,
+                });
+            }
+            Err(e) if e.raw_os_error() == Some(libc::ENOENT) => break,
+            Err(e) => {
+                return Err(e).with_context(|| "Failed to enumerate kernel extensions");
+            }
+        }
+    }
+
+    Ok(out)
+}
+
+pub fn set_extension(extension_id: u32, value: u64) -> Result<()> {
+    let mut cmd = ksu_uapi::ksu_extension_cmd {
+        id: extension_id,
+        op: ksu_uapi::KSU_EXTENSION_SET,
+        supported: 0,
+        api_version: extension_api_version(),
+        value,
+        user_ptr: 0,
+    };
+    // ksuctl already converts negative errno into a `bail!`, so any
+    // non-zero value here would be a positive "soft error" from the
+    // kernel's do_extension() return path. We treat those as failure
+    // to keep the API strict: callers can rely on Ok(()) == real
+    // success rather than "no -EINVAL returned".
+    let ret = ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
+    if ret != 0 {
+        bail!("set_extension(id={extension_id}, value={value}) failed: {ret}");
+    }
+    Ok(())
+}
+
+#[allow(dead_code)] // exposed for external ksud callers
+pub fn wipe_extension(extension_id: u32) -> Result<()> {
+    let mut cmd = ksu_uapi::ksu_extension_cmd {
+        id: extension_id,
+        op: ksu_uapi::KSU_EXTENSION_WIPE,
+        supported: 0,
+        api_version: extension_api_version(),
+        value: 0,
+        user_ptr: 0,
+    };
+    // See set_extension() for the rationale behind the non-zero check.
+    let ret = ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)?;
+    if ret != 0 {
+        bail!("wipe_extension(id={extension_id}) failed: {ret}");
+    }
+    Ok(())
+}
+
+/// Forward a typed payload to the extension's io op. The payload type
+/// must match the layout the targeted extension expects; the four
+/// strongly-typed wrappers below (`kpm_io`, `umount_paths_io`,
+/// `spoof_cpu_io`, `dynamic_manager_io`) encode this constraint at the
+/// type level so the compiler catches mismatches.
+///
+/// # Safety
+///
+/// The caller must ensure `payload` points to a valid layout understood
+/// by the targeted extension and that the buffer remains alive for the
+/// duration of the call.
+pub unsafe fn extension_io<T>(extension_id: u32, payload: *mut T) -> Result<i32> {
+    let mut cmd = ksu_uapi::ksu_extension_cmd {
+        id: extension_id,
+        op: ksu_uapi::KSU_EXTENSION_IO,
+        supported: 0,
+        api_version: extension_api_version(),
+        value: 0,
+        user_ptr: payload as u64,
+    };
+    ksuctl(ksu_uapi::KSU_IOCTL_EXTENSION, &raw mut cmd)
+}
+
+#[allow(dead_code)]
+pub unsafe fn kpm_io(cmd: *mut ksu_uapi::ksu_kpm_cmd) -> Result<i32> {
+    unsafe { extension_io(ExtensionId::Kpm as u32, cmd) }
+}
+
+pub unsafe fn umount_paths_io(cmd: *mut ksu_uapi::ksu_extension_umount_cmd) -> Result<i32> {
+    unsafe { extension_io(ExtensionId::UmountPaths as u32, cmd) }
+}
+
+pub unsafe fn spoof_cpu_io(cmd: *mut ksu_uapi::ksu_set_spoof_cpu_cmd) -> Result<i32> {
+    unsafe { extension_io(ExtensionId::CpuSpoof as u32, cmd) }
+}
+
+pub unsafe fn dynamic_manager_io(cmd: *mut ksu_uapi::ksu_manager_cmd) -> Result<i32> {
+    unsafe { extension_io(ExtensionId::DynamicManager as u32, cmd) }
 }
 
 pub fn set_spoof_version(release: &str, version: &str) -> anyhow::Result<()> {

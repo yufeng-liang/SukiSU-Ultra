@@ -6,7 +6,10 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
@@ -43,6 +46,10 @@ internal fun VersionSpoofMiuix(s: VersionSpoofState, a: VersionSpoofActions, ver
                     onCheckedChange = a.onAcknowledge, enabled = !s.busy)
                 TextButton(stringResource(R.string.susfs_save), a.onSave, enabled = s.canSave,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), colors = ButtonDefaults.textButtonColorsPrimary())
+                val feedback = s.error ?: stringResource(R.string.version_spoof_success).takeIf { s.success }
+                if (feedback != null) {
+                    VersionFeedbackMiuix(success = s.error == null, message = feedback)
+                }
                 TextButton(stringResource(R.string.version_spoof_reset), a.onReset,
                     enabled = !s.busy && !s.warningBusy, modifier = Modifier.fillMaxWidth())
             }
@@ -52,10 +59,45 @@ internal fun VersionSpoofMiuix(s: VersionSpoofState, a: VersionSpoofActions, ver
                     checked = s.hideWarning, onCheckedChange = a.onHideWarning, enabled = !s.busy && !s.warningBusy)
                 SelectionContainer { Text(stringResource(R.string.version_spoof_recovery), style = MiuixTheme.textStyles.body2) }
             }
-            s.error?.let { Text(it, color = MiuixTheme.colorScheme.error) }
-            if (s.success) Text(stringResource(R.string.version_spoof_success), color = MiuixTheme.colorScheme.primary)
             if (!s.loaded && !s.busy) TextButton(stringResource(R.string.refresh), a.onReload)
             Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun VersionFeedbackMiuix(success: Boolean, message: String) {
+    val container = if (success) {
+        MiuixTheme.colorScheme.primaryContainer
+    } else {
+        MiuixTheme.colorScheme.errorContainer
+    }
+    val content = if (success) {
+        MiuixTheme.colorScheme.onPrimaryContainer
+    } else {
+        MiuixTheme.colorScheme.onErrorContainer
+    }
+    Card(
+        insideMargin = PaddingValues(12.dp),
+        colors = CardDefaults.defaultColors(color = container),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = if (success) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = content,
+            )
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                style = MiuixTheme.textStyles.body2,
+                color = content,
+            )
         }
     }
 }

@@ -33,7 +33,7 @@ class KpmRepositoryImpl : KpmRepository {
                     Log.e(TAG, "Error processing module $name", e)
                     null
                 }
-            }
+            }.sortedWith(compareBy<KpmViewModel.ModuleInfo> { it.id.lowercase() }.thenBy { it.id })
         }
     }
 

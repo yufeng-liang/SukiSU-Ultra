@@ -2,9 +2,13 @@ package com.sukisu.ultra.ui.screen.extensions
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -29,15 +33,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
+import com.sukisu.ultra.ui.component.material.ExpressiveSwitch
 import com.sukisu.ultra.ui.component.material.IconTile
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
-import com.sukisu.ultra.ui.util.ExtensionId
-import com.sukisu.ultra.ui.util.ExtensionState
+import com.sukisu.ultra.ui.viewmodel.ExtensionItem
 import com.sukisu.ultra.ui.viewmodel.ExtensionsUiState
 
 @Composable
@@ -45,7 +50,8 @@ fun ExtensionsScreenMaterial(
     state: ExtensionsUiState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onOpenDetails: (ExtensionId) -> Unit,
+    onOpenDetails: (ExtensionItem) -> Unit,
+    onToggle: (ExtensionItem, Boolean) -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
@@ -57,9 +63,14 @@ fun ExtensionsScreenMaterial(
                 scrollBehavior = scrollBehavior,
             )
         },
-        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+        // Match HomePagerMaterial: keep the system bottom inset out of the
+        // scroll viewport and add a trailing spacer instead, so the last card
+        // can scroll clear of the navigation bar.
+        contentWindowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
     ) { padding ->
-        if (state.states.isEmpty() && !state.loading) {
+        if (state.items.isEmpty() && !state.loading) {
             EmptyExtensionsHint(
                 modifier = Modifier
                     .fillMaxSize()
@@ -79,19 +90,26 @@ fun ExtensionsScreenMaterial(
         ) {
             SegmentedColumn(
                 modifier = Modifier.padding(bottom = 13.dp),
-                content = ExtensionId.ALL.map { ext ->
-                    val extState = state.states[ext]
-                    val onOpen = if (extState?.supported == true) {
-                        { onOpenDetails(ext) }
+                content = state.items.map { item ->
+                    val extState = item.state
+                    val canOpen = extState.supported && item.descriptor.entry !is ExtensionEntry.Generic
+                    val onOpen = if (canOpen) {
+                        { onOpenDetails(item) }
                     } else null
                     {
                         ExtensionCardMaterial(
-                            id = ext,
-                            state = extState,
+                            item = item,
+                            busy = item.wireName in state.busy,
                             onOpenDetails = onOpen,
+                            onToggle = { enabled -> onToggle(item, enabled) },
                         )
                     }
                 },
+            )
+            Spacer(
+                Modifier.height(
+                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ),
             )
         }
     }
@@ -129,41 +147,21 @@ private fun TopBar(
 
 @Composable
 private fun ExtensionCardMaterial(
-    id: ExtensionId,
-    state: ExtensionState?,
+    item: ExtensionItem,
+    busy: Boolean,
     onOpenDetails: (() -> Unit)?,
+    onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val title = stringResource(id.displayRes)
-    val featureSummary = stringResource(
-        when (id) {
-            ExtensionId.Kpm -> R.string.extension_kpm_summary
-            ExtensionId.CpuSpoof -> R.string.extension_cpu_spoof_summary
-            ExtensionId.UmountPaths -> R.string.extension_umount_paths_summary
-            ExtensionId.DynamicManager -> R.string.extension_dynamic_manager_summary
-            ExtensionId.SuSFS -> R.string.extension_susfs_summary
-            ExtensionId.VersionSpoof -> R.string.extension_version_spoof_summary
-        }
-    )
-    val statusSummary: String? = if (state == null) {
-        null
-    } else {
-        when (pillFor(state).pill) {
-            ExtensionPill.Unsupported -> stringResource(R.string.config_status_unsupported)
-            ExtensionPill.Forced -> stringResource(R.string.extension_status_forced)
-            ExtensionPill.Managed -> stringResource(R.string.extension_status_managed)
-            ExtensionPill.Supported -> stringResource(R.string.extension_status_supported)
-            ExtensionPill.Enabled -> stringResource(R.string.config_status_applied)
-            ExtensionPill.Disabled -> stringResource(R.string.extension_status_disabled)
-        }
-    }
-    val supportingText = statusSummary ?: featureSummary
-    val canOpen = onOpenDetails != null
+    val extState = item.state
+    val descriptor = item.descriptor
+    val title = extensionTitle(item)
+    val canToggle = descriptor.entry == ExtensionEntry.Generic && extState.userToggleable
 
     SegmentedListItem(
         modifier = modifier,
         onClick = onOpenDetails,
-        enabled = canOpen,
+        enabled = extState.supported,
         leadingContent = {
             IconTile(
                 icon = Icons.Rounded.Memory,
@@ -178,20 +176,37 @@ private fun ExtensionCardMaterial(
             )
         },
         supportingContent = {
-            Text(
-                text = supportingText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        trailingContent = if (canOpen) {
-            {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = stringResource(R.string.extension_open_details),
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ExtensionStatusRow(item)
+                Text(
+                    text = extensionDescription(item),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        } else null,
+        },
+        trailingContent = when {
+            canToggle -> {
+                {
+                    ExpressiveSwitch(
+                        checked = extState.value != 0L,
+                        onCheckedChange = onToggle,
+                        enabled = !busy,
+                    )
+                }
+            }
+            onOpenDetails != null -> {
+                {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = stringResource(R.string.extension_open_details),
+                    )
+                }
+            }
+            else -> null
+        },
     )
 }
 

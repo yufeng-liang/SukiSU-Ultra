@@ -437,4 +437,35 @@
     <string name="module_upload_turnstile_failed">人機驗證沒完成，本次沒有提交</string>
     <string name="settings_hide_home_warnings">隱藏首頁警告</string>
     <string name="settings_hide_home_warnings_summary">隱藏首頁的警告卡片（PR 建置、核心/管理器更新、LKM 更新、預覽模式）</string>
+
+    <!-- Extension subsystem -->
+    <string name="extension_section_title">擴充功能</string>
+    <string name="extension_section_summary">核心擴充功能</string>
+    <string name="extension_status_supported">支援</string>
+    <string name="extension_status_forced">已強制</string>
+    <string name="extension_status_managed">模組託管</string>
+    <string name="extension_status_disabled">已停用</string>
+    <string name="extension_status_needs_reboot">重新開機後變更才會生效</string>
+    <string name="extension_status_unsupported_short">不支援</string>
+    <string name="extension_status_reboot_short">需重新開機</string>
+    <string name="extension_status_persistent_short">重新開機保留</string>
+    <string name="extension_status_session_only_short">僅本次開機</string>
+    <string name="extension_kpm_title">KPM (核心補丁模組)</string>
+    <string name="extension_kpm_summary">執行階段載入第三方 .kpm 模組。需要核心支援 KPM。</string>
+    <string name="extension_cpu_spoof_title">CPU 身分偽裝</string>
+    <string name="extension_cpu_spoof_summary">覆寫目前 CPU 上報的 MIDR、BogoMIPS、ELF hwcap 與 vDSO 時鐘模式。後續讀取 /proc/cpuinfo 與 uname() 將反映偽裝結果，直至下次覆寫或重新開機。</string>
+    <string name="extension_umount_paths_title">Umount 路徑管理</string>
+    <string name="extension_umount_paths_summary">管理應用啟動時核心將卸載的掛載點清單。</string>
+    <string name="extension_dynamic_manager_title">動態管理器</string>
+    <string name="extension_dynamic_manager_summary">允許多個透過簽名憑證驗證的應用程式充當 SukiSU 管理器。</string>
+    <string name="extension_susfs_title">SuSFS</string>
+    <string name="extension_susfs_summary">設定隱藏掛載、欺騙 uname、開放重定向、kstat 等底層核心技巧。需要安裝 SuSFS 核心模組。</string>
+    <string name="extension_version_spoof_title">SukiSU 版本資訊自訂</string>
+    <string name="extension_version_spoof_summary">自訂核心對外回報的 SukiSU 數字版本號、完整版本字串和 UAPI 版本號。</string>
+    <string name="extension_open_details">開啟詳情</string>
+    <string name="extension_generic_summary">由目前核心提供。此版本管理器沒有為它提供專用的設定頁面。</string>
+    <string name="extension_status_persistent">重新開機後仍會保留</string>
+    <string name="extension_status_session_only">僅在本次開機期間有效</string>
+    <string name="extension_empty_title">暫無擴充資料</string>
+    <string name="extension_empty_subtitle">下拉重新整理，或檢查目前核心是否包含擴充中心。</string>
 </resources>

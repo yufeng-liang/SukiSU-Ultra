@@ -11,12 +11,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" android:minSdkVersion="28"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" android:minSdkVersion="34"/>
 
+    <!-- AndroidX needs this permission below API 33; newer versions use the
+         platform's RECEIVER_NOT_EXPORTED flag. Replace the library request so
+         its unrestricted declaration does not remove this SDK limit. -->
     <uses-permission
         android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-        tools:node="remove" />
+        android:maxSdkVersion="32"
+        tools:node="replace" />
     <permission
         android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-        tools:node="remove" />
+        android:protectionLevel="signature" />
 
     <uses-sdk tools:overrideLibrary="top.yukonga.miuix.kmp.blur" />
 

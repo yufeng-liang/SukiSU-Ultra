@@ -88,8 +88,10 @@ internal fun SuSFSMiuix(
                         onSelectedIndexChange = { onSelectTab(SuSFSTab.entries[it]) },
                     )
                 }
-                if (uiState.isLoading || uiState.isLoadingFeatures && uiState.selectedTab == SuSFSTab.ENABLED_FEATURES) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Box(Modifier.fillMaxWidth().height(4.dp)) {
+                    if (uiState.isLoading || uiState.isLoadingFeatures && uiState.selectedTab == SuSFSTab.ENABLED_FEATURES) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                 }
                 uiState.error?.let {
                     Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {

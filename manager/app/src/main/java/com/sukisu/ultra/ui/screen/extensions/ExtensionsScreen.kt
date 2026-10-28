@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.screen.extensions
 
 import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,14 +18,13 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.navigation3.LocalNavigator
-import com.sukisu.ultra.ui.navigation3.Route
 import com.sukisu.ultra.ui.screen.settings.tools.CpuInfo
 import com.sukisu.ultra.ui.screen.settings.tools.SpoofCpuDialogMaterial
 import com.sukisu.ultra.ui.screen.settings.tools.SpoofCpuDialogMiuix
 import com.sukisu.ultra.ui.screen.settings.tools.SpoofCpuParams
 import com.sukisu.ultra.ui.screen.settings.tools.readCurrentCpuIdentity
-import com.sukisu.ultra.ui.util.ExtensionId
 import com.sukisu.ultra.ui.util.spoofCpu
+import com.sukisu.ultra.ui.viewmodel.ExtensionItem
 import com.sukisu.ultra.ui.viewmodel.ExtensionsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -81,14 +81,20 @@ fun ExtensionsScreen() {
         }
     }
 
-    val onOpenDetails: (ExtensionId) -> Unit = { id ->
-        when (id) {
-            ExtensionId.Kpm -> navigator.push(Route.Kpm)
-            ExtensionId.DynamicManager -> navigator.push(Route.DynamicManagers)
-            ExtensionId.UmountPaths -> navigator.push(Route.UmountManager)
-            ExtensionId.CpuSpoof -> openCpuDialog()
-            ExtensionId.SuSFS -> navigator.push(Route.SuSFS)
-            ExtensionId.VersionSpoof -> navigator.push(Route.VersionSpoof)
+    // Generic extensions are toggled in place; the descriptor decides
+    // whether opening a card is a route, the CPU dialog, or nothing at all.
+    val onOpenDetails: (ExtensionItem) -> Unit = { item ->
+        when (val entry = item.descriptor.entry) {
+            is ExtensionEntry.Screen -> navigator.push(entry.route)
+            ExtensionEntry.CpuSpoofDialog -> openCpuDialog()
+            ExtensionEntry.Generic -> Unit
+        }
+    }
+
+    LaunchedEffect(state.error) {
+        state.error?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearError()
         }
     }
 
@@ -98,12 +104,14 @@ fun ExtensionsScreen() {
             onBack = { navigator.pop() },
             onRefresh = viewModel::refresh,
             onOpenDetails = onOpenDetails,
+            onToggle = viewModel::setEnabled,
         )
         UiMode.Material -> ExtensionsScreenMaterial(
             state = state,
             onBack = { navigator.pop() },
             onRefresh = viewModel::refresh,
             onOpenDetails = onOpenDetails,
+            onToggle = viewModel::setEnabled,
         )
     }
 

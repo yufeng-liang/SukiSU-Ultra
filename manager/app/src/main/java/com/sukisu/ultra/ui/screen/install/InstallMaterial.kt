@@ -213,7 +213,12 @@ internal fun InstallScreenMaterial(
                     item(visible = uiState.canSelectKpmBoot) {
                         SegmentedListItem(
                             headlineContent = { Text(stringResource(R.string.install_kpm_manual)) },
-                            supportingContent = { Text(uiState.kpmBootUri?.lastPathSegment ?: stringResource(R.string.install_kpm_auto)) },
+                            supportingContent = {
+                                Text(uiState.kpmBootUri?.lastPathSegment ?: stringResource(
+                                    if (uiState.installMethod == null) R.string.install_kpm_auto_current_boot
+                                    else R.string.install_kpm_auto
+                                ))
+                            },
                             trailingContent = {
                                 Icon(
                                     Icons.Filled.ExpandMore,
@@ -365,7 +370,7 @@ internal fun InstallScreenMaterial(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                enabled = uiState.installMethod != null && uiState.blockModulesValid,
+                enabled = uiState.canInstall,
                 onClick = actions.onNext
             ) { Text(stringResource(R.string.install_next)) }
         }

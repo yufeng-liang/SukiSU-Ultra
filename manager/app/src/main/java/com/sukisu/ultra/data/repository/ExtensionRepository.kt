@@ -1,50 +1,81 @@
 package com.sukisu.ultra.data.repository
 
 import com.sukisu.ultra.ui.util.ExtensionId
+import com.sukisu.ultra.ui.util.ExtensionOverviewEntry
 import com.sukisu.ultra.ui.util.ExtensionState
 import com.sukisu.ultra.ui.util.getExtensionOverview
+import com.sukisu.ultra.ui.util.setExtensionValue
 
 /**
  * User-facing contract for the extension subsystem.
  *
- * The overview screen is read-only: every extension that exposes a
- * runtime sticky bit (DynamicManager) is toggled from inside its own
- * sub-screen via dedicated ksud subcommands (e.g. `manager
- * set-enabled`), so this repository deliberately does not expose a
- * `setEnabled` operation.
+ * The overview list is built from `ksud extension list`, which on ABI 2+
+ * enumerates the kernel's own handler table. That is why [probeAll] returns
+ * a list rather than a map keyed by [ExtensionId]: an extension added to the
+ * kernel after this manager was built still shows up.
  *
- * Probe strategy: a single `ksud extension list` invocation returns
- * the state of every extension at once. The kernel-side CLI prints a
- * stable `EXTENSION_LIST_V1 ...` machine block after the human
- * block; see `KsuCli.getExtensionOverview`. The batched design
- * pays libksud.so startup + root handshake + teardown once instead
- * of N times per refresh.
+ * [setEnabled] drives the generic card shown for sticky extensions with no
+ * dedicated page. Known extensions with their own sub-screen keep using
+ * their existing ksud subcommands (e.g. `manager set-enabled`); this method
+ * is not a replacement for those.
  */
 interface ExtensionRepository {
     /**
-     * Probe all extensions at once. The returned map is keyed by
-     * `ExtensionId`; missing entries mean the kernel did not
-     * report on that id (older kernels, or an id that was never
-     * registered).
+     * Probe every extension at once. Known extensions the kernel did not
+     * register are included with `supported = false` so a build-time
+     * feature switch stays visible instead of disappearing.
      */
-    suspend fun probeAll(): Map<ExtensionId, ExtensionState>
+    suspend fun probeAll(): List<ExtensionState>
+
+    /** Toggle a sticky extension through `ksud extension set`. */
+    suspend fun setEnabled(extensionId: Int, enabled: Boolean): Result<Unit>
 }
 
 class ExtensionRepositoryImpl : ExtensionRepository {
 
-    override suspend fun probeAll(): Map<ExtensionId, ExtensionState> {
+    override suspend fun probeAll(): List<ExtensionState> {
         val overview = getExtensionOverview()
-        val out = LinkedHashMap<ExtensionId, ExtensionState>(ExtensionId.ALL.size)
-        for (id in ExtensionId.ALL) {
-            val entry = overview[id.wireName]
-            out[id] = ExtensionState(
-                id = id,
-                value = entry?.value ?: 0L,
-                supported = entry?.supported == true,
-                forced = entry?.forced == true,
-                managed = entry?.managed == true,
+        val out = LinkedHashMap<String, ExtensionState>(overview.size + ExtensionId.ALL.size)
+
+        for ((name, entry) in overview) {
+            out[name] = entry.toState()
+        }
+
+        // Keep the historical "not supported" rows for compiled-in
+        // extensions the running kernel did not register.
+        for (known in ExtensionId.ALL) {
+            if (out.containsKey(known.wireName)) continue
+            out[known.wireName] = ExtensionState(
+                id = known.id,
+                wireName = known.wireName,
+                value = 0L,
+                supported = false,
+                forced = false,
+                managed = false,
+                capsKnown = false,
             )
         }
-        return out
+
+        return out.values.sortedBy { it.id }
     }
+
+    override suspend fun setEnabled(extensionId: Int, enabled: Boolean): Result<Unit> =
+        setExtensionValue(extensionId, if (enabled) 1L else 0L)
 }
+
+private fun ExtensionOverviewEntry.toState(): ExtensionState = ExtensionState(
+    id = id,
+    wireName = name,
+    value = value,
+    supported = supported,
+    forced = forced,
+    managed = managed,
+    // ksud already applied the legacy fallback when the kernel reports ABI 0,
+    // so a missing entry (older ksud, or an id it never asked about) is the
+    // only case left to fill in from the static table.
+    capsKnown = apiVersion > 0,
+    sticky = sticky,
+    persistent = persistent,
+    perUid = perUid,
+    needsReboot = needsReboot,
+)
