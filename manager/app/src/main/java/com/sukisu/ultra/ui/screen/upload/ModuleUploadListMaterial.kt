@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.SearchOff
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -455,7 +457,10 @@ private fun UploadRowCardMaterial(
     // 一眼能看出它们说的是同一个模块，而不是三块互不相干的内容。
     val indent = 48.dp
     TonalCard(
-        modifier = modifier.fillMaxWidth(),
+        // 展开/收起随内容高度缓动，避免状态牌下方的说明区一帧弹出（对齐上游仓库页同款）。
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(animationSpec = tween(durationMillis = 300)),
         onClick = onToggle,
     ) {
         Column(
@@ -742,7 +747,7 @@ private fun CheckProgressMaterial(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 10.dp),
+            .padding(top = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
