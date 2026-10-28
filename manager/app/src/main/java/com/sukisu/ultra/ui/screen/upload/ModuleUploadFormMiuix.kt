@@ -242,6 +242,7 @@ fun ModuleUploadFormMiuix(
                             onValueChange = onUidChange,
                             enabled = !state.submitting,
                             label = stringResource(R.string.module_upload_uid),
+                            useLabelAsPlaceholder = true,
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth(),
@@ -726,6 +727,7 @@ private fun UploadZipCardMiuix(
                 onValueChange = onSourceChange,
                 enabled = enabled,
                 label = stringResource(R.string.module_upload_source),
+                useLabelAsPlaceholder = true,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )

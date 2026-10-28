@@ -230,6 +230,20 @@ fun ModuleUploadFormMaterial(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth(),
+                            supportingText = {
+                                // 字段自己的提示/校验文案归位 supportingText：还没填显示
+                                // 「在哪找 UID」，填了但不合法升为错误文案；其余状态由
+                                // 下面 UidStatusRowMaterial 讲述。
+                                when (state.uidState) {
+                                    CoolapkUidState.Empty -> if (state.uid.isNotBlank()) {
+                                        Text(stringResource(R.string.module_upload_uid_invalid))
+                                    } else {
+                                        Text(stringResource(R.string.module_upload_uid_hint))
+                                    }
+
+                                    else -> Unit
+                                }
+                            },
                         )
                         UidStatusRowMaterial(
                             state = state,
@@ -721,24 +735,26 @@ private fun UploadZipCardMaterial(
                 singleLine = true,
                 isError = problem == ModuleUploadRules.SourceProblem.NOT_COOLAPK,
                 modifier = Modifier.fillMaxWidth(),
+                supportingText = {
+                    // 字段自己的提示/校验文案归位 supportingText（普通 Text 默认色，
+                    // 错误观感由上面的 isError 承担）；「应用到全部」按钮留在原位。
+                    Text(
+                        stringResource(
+                            when (problem) {
+                                ModuleUploadRules.SourceProblem.EMPTY -> R.string.module_upload_source_empty
+                                ModuleUploadRules.SourceProblem.NOT_COOLAPK -> R.string.module_upload_source_invalid
+                                ModuleUploadRules.SourceProblem.OK -> R.string.module_upload_source_hint
+                            }
+                        )
+                    )
+                },
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    modifier = Modifier.weight(1f),
-                    text = stringResource(
-                        when (problem) {
-                            ModuleUploadRules.SourceProblem.EMPTY -> R.string.module_upload_source_empty
-                            ModuleUploadRules.SourceProblem.NOT_COOLAPK -> R.string.module_upload_source_invalid
-                            ModuleUploadRules.SourceProblem.OK -> R.string.module_upload_source_hint
-                        }
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (problem == ModuleUploadRules.SourceProblem.OK) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
-                )
+            // 提示文案已归位 supportingText，这行只留「应用到全部」按钮，保持靠右。
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
+            ) {
                 TextButton(onClick = onApplyToAll, enabled = enabled && item.source.isNotBlank()) {
                     Text(stringResource(R.string.module_upload_apply_all))
                 }
@@ -931,15 +947,8 @@ private fun UidStatusRowMaterial(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        CoolapkUidState.Empty -> Text(
-            text = if (state.uid.isNotBlank()) {
-                stringResource(R.string.module_upload_uid_invalid)
-            } else {
-                stringResource(R.string.module_upload_uid_hint)
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // 空态那行「在哪找 UID / UID 不合法」已挪进上面输入框的 supportingText，这里不再复读。
+        CoolapkUidState.Empty -> Unit
     }
 }
 
