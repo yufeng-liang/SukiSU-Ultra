@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
@@ -132,9 +133,15 @@ fun ModuleUploadFormMaterial(
         LazyColumn(
             modifier = Modifier
                 .fillMaxHeight()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(horizontal = 16.dp),
-            contentPadding = innerPadding,
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+            // 与上游模块页同一方案：水平 16dp 走 contentPadding 而不是 modifier，
+            // 内容可以滚动到屏幕边缘之外，视觉上不留「截断」的硬边。
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = innerPadding.calculateTopPadding(),
+                bottom = innerPadding.calculateBottomPadding(),
+            ),
         ) {
             item {
                 BatchSummaryMaterial(

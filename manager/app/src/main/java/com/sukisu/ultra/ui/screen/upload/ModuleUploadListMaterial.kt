@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
@@ -25,9 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Extension
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,13 +35,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -52,13 +51,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.SearchStatus
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.IconTile
+import com.sukisu.ultra.ui.component.material.SearchAppBar
 import com.sukisu.ultra.ui.component.material.SegmentedColumn
 import com.sukisu.ultra.ui.component.material.SegmentedListItem
+import com.sukisu.ultra.ui.component.material.SnackBarHost
 import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.TopBarBackButton
-import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.ultra.ui.component.statustag.StatusTag
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.MineModule
@@ -75,7 +76,8 @@ fun ModuleUploadListMaterial(
     onRefresh: () -> Unit,
     onContinueCheck: () -> Unit,
     onFilter: (ModuleUploadRules.Filter) -> Unit,
-    onQueryChange: (String) -> Unit,
+    onSearchTextChange: (String) -> Unit,
+    onSearchStatusChange: (SearchStatus) -> Unit,
     onToggleRow: (String) -> Unit,
     onPickForRow: (UploadRow) -> Unit,
     onUseArchived: (UploadRow) -> Unit,
@@ -87,13 +89,20 @@ fun ModuleUploadListMaterial(
     onPickForMine: (MineModule) -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+    val snackbarHostState = remember { SnackbarHostState() }
     val visible = state.visibleRows
     val checked = state.rows.count { it.status != null }
 
     ExpressiveScaffold(
+        snackbarHost = { SnackBarHost(hostState = snackbarHostState) },
         topBar = {
-            TopAppBar(
+            SearchAppBar(
+                snackbarHostState = snackbarHostState,
                 title = { Text(stringResource(R.string.module_upload_title)) },
+                searchText = state.searchStatus.searchText,
+                onSearchTextChange = onSearchTextChange,
+                // 清除即清空搜索词：VM 的 updateSearchText 会把 searchStatus 一并同步。
+                onClearClick = { onSearchTextChange("") },
                 navigationIcon = { TopBarBackButton(onClick = onBack) },
                 // 刷新放顶栏而不是列表行里：列表一滚，行内按钮就看不见了；
                 // 而且在模块为空时那一行只剩一个孤零零的「刷新」。
@@ -130,7 +139,44 @@ fun ModuleUploadListMaterial(
                     }
                 },
                 scrollBehavior = scrollBehavior,
-                colors = expressiveTopAppBarColors(),
+                // 展开搜索时直接看过滤结果，与上游 ModuleMaterial.kt:463 的 searchContent
+                // 同一用法：主列表仍留在 Scaffold content，收起后回到原位。
+                searchContent = { bottomPadding, _ ->
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 8.dp,
+                            bottom = bottomPadding + 24.dp,
+                        ),
+                    ) {
+                        if (visible.isEmpty()) {
+                            item {
+                                EmptyStateMaterial(
+                                    filtered = state.rows.isNotEmpty(),
+                                    onClear = {
+                                        onFilter(ModuleUploadRules.Filter.ALL)
+                                        onSearchTextChange("")
+                                    },
+                                )
+                            }
+                        } else {
+                            itemsIndexed(visible, key = { _, row -> row.id }) { _, row ->
+                                UploadRowCardMaterial(
+                                    row = row,
+                                    expanded = state.expandedId == row.id,
+                                    onToggle = { onToggleRow(row.id) },
+                                    onPick = { onPickForRow(row) },
+                                    onUseArchived = { onUseArchived(row) },
+                                    picking = state.pickingFor != null,
+                                    pickingThis = state.pickingFor == row.id,
+                                )
+                            }
+                        }
+                    }
+                },
             )
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
@@ -139,49 +185,23 @@ fun ModuleUploadListMaterial(
         LazyColumn(
             modifier = Modifier
                 .fillMaxHeight()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(horizontal = 16.dp),
-            contentPadding = innerPadding,
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+            // 上游列表规范：水平 16dp 走 contentPadding（内容可以滚出屏幕边缘），
+            // item 之间的纵向间距统一由 spacedBy(12.dp) 负责，不再靠各 item 手工垫。
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = innerPadding.calculateTopPadding(),
+                bottom = innerPadding.calculateBottomPadding() + 24.dp,
+            ),
         ) {
-            item {
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = onQueryChange,
-                    label = { Text(stringResource(R.string.module_upload_search_hint)) },
-                    singleLine = true,
-                    // 前置放大镜只是给眼睛一个「这里是搜索」的落点；输入框的 label 已经说明了用途，
-                    // 再让它被读一遍是噪音，所以 contentDescription 留空。
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = null,
-                        )
-                    },
-                    // 有字才给清除按钮：空着也挂一个叉号，会让人以为点一下能刷新。
-                    trailingIcon = {
-                        if (state.query.isNotEmpty()) {
-                            IconButton(onClick = { onQueryChange("") }) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Close,
-                                    contentDescription = stringResource(R.string.module_upload_search_clear),
-                                )
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .fillMaxWidth(),
-                )
-            }
-
             item {
                 // 四个筛选项在 360dp 窄屏上放不下，原来的定宽 Row 会把最后两个裁掉一半。
                 // 换横向滚动；外层列表已经留了 16dp，这里不再叠 contentPadding，
                 // 否则筛选条和上下内容的左缘对不齐。
                 LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 0.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -218,7 +238,6 @@ fun ModuleUploadListMaterial(
 
             item {
                 SegmentedColumn(
-                    modifier = Modifier.padding(top = 4.dp),
                     content = listOf {
                         SegmentedListItem(
                             onClick = onPickZip,
@@ -265,15 +284,13 @@ fun ModuleUploadListMaterial(
                         // 只组合既有回调：筛选与搜索词一起复位，不为这个按钮新增参数。
                         onClear = {
                             onFilter(ModuleUploadRules.Filter.ALL)
-                            onQueryChange("")
+                            onSearchTextChange("")
                         },
                     )
                 }
             } else {
-                itemsIndexed(visible, key = { _, row -> row.id }) { index, row ->
+                itemsIndexed(visible, key = { _, row -> row.id }) { _, row ->
                     UploadRowCardMaterial(
-                        // 标题与第一张卡之间那 8dp 由标题自带，只有卡与卡之间才需要另算间距。
-                        modifier = Modifier.padding(top = if (index == 0) 0.dp else 12.dp),
                         row = row,
                         expanded = state.expandedId == row.id,
                         onToggle = { onToggleRow(row.id) },
@@ -286,8 +303,6 @@ fun ModuleUploadListMaterial(
                     )
                 }
             }
-
-            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }

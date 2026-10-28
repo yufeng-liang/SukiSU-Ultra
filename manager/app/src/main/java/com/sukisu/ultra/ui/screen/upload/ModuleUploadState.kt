@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.screen.upload
 
 import androidx.compose.runtime.Immutable
 import com.sukisu.ultra.ui.component.CoolapkUidState
+import com.sukisu.ultra.ui.component.SearchStatus
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.UpdateEligibility
@@ -100,6 +101,11 @@ data class ModuleUploadListState(
     val rows: List<UploadRow> = emptyList(),
     val filter: ModuleUploadRules.Filter = ModuleUploadRules.Filter.ALL,
     val query: String = "",
+    /**
+     * 顶栏搜索状态机（展开/收起/文本），与上游模块页、仓库页同一套 [SearchStatus]。
+     * [query] 仍由 VM 在同步搜索状态时一并写入，规则层筛选只认它。
+     */
+    val searchStatus: SearchStatus = SearchStatus(""),
     val limits: BatchLimits? = null,
     /** 还有多少条没查过（>0 时显示「继续查」）。 */
     val remaining: Int = 0,

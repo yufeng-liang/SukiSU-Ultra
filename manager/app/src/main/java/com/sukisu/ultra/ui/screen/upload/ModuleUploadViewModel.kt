@@ -14,6 +14,7 @@ import com.sukisu.ultra.data.repository.SettingsRepository
 import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.component.CoolapkUidState
+import com.sukisu.ultra.ui.component.SearchStatus
 import com.sukisu.ultra.ui.component.toState
 import com.sukisu.ultra.ui.screen.module.ModuleContributionEntry
 import com.sukisu.ultra.ui.util.BatchLimits
@@ -172,8 +173,16 @@ class ModuleUploadViewModel(
         _listState.update { it.copy(filter = filter) }
     }
 
-    fun setQuery(query: String) {
-        _listState.update { it.copy(query = query) }
+    /**
+     * 同步顶栏搜索状态机；搜索文本变化时写入 [ModuleUploadListState.query]，
+     * 与上游 ModuleViewModel/ModuleRepoViewModel 的 updateSearchStatus 同一模式。
+     */
+    fun updateSearchStatus(status: SearchStatus) {
+        _listState.update { it.copy(searchStatus = status, query = status.searchText) }
+    }
+
+    fun updateSearchText(text: String) {
+        updateSearchStatus(_listState.value.searchStatus.copy(searchText = text))
     }
 
     fun toggleExpanded(id: String) {

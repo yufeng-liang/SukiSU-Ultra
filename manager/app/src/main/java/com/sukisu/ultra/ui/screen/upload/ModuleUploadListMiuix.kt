@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.screen.upload
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
@@ -26,12 +28,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -43,6 +53,10 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.SearchStatus
+import com.sukisu.ultra.ui.component.miuix.SearchBarFake
+import com.sukisu.ultra.ui.component.miuix.SearchBox
+import com.sukisu.ultra.ui.component.miuix.SearchPager
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.CheckStatus
@@ -59,12 +73,9 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Search
 import top.yukonga.miuix.kmp.icon.extended.Back
-import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Filter
 import top.yukonga.miuix.kmp.icon.extended.Layers
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
@@ -90,7 +101,7 @@ fun ModuleUploadListMiuix(
     onRefresh: () -> Unit,
     onContinueCheck: () -> Unit,
     onFilter: (ModuleUploadRules.Filter) -> Unit,
-    onQueryChange: (String) -> Unit,
+    onSearchStatusChange: (SearchStatus) -> Unit,
     onToggleRow: (String) -> Unit,
     onPickForRow: (UploadRow) -> Unit,
     onUseArchived: (UploadRow) -> Unit,
@@ -101,222 +112,285 @@ fun ModuleUploadListMiuix(
     /** 为「我的模块」的某一行挑包；与主列表共用同一个单行 SAF 启动器与同一道闸门。 */
     onPickForMine: (MineModule) -> Unit,
 ) {
+    val searchStatus = state.searchStatus
     val scrollBehavior = MiuixScrollBehavior()
     val enableBlur = LocalEnableBlur.current
     val backdrop = rememberBlurBackdrop(enableBlur)
     val barColor = if (backdrop != null) Color.Transparent else colorScheme.surface
     val visible = state.visibleRows
     val checked = state.rows.count { it.status != null }
+    val density = LocalDensity.current
+    // 顶栏收起时假搜索条跟着沉下去：与模块页/仓库页同一公式，展开搜索后由 SearchPager 接管。
+    val dynamicTopPadding by remember(scrollBehavior) {
+        derivedStateOf { 12.dp * (1f - scrollBehavior.state.collapsedFraction) }
+    }
+    // 本页 ViewModel 不管理 resultStatus（与 SulogMiuix 同一处境），在屏内按搜索词派生：
+    // 有词 SHOW（画搜索结果），无词 DEFAULT。所有状态回写都走这一个出口。
+    val handleSearchStatusChange: (SearchStatus) -> Unit = { next ->
+        onSearchStatusChange(
+            next.copy(
+                resultStatus = if (next.searchText.isBlank()) {
+                    SearchStatus.ResultStatus.DEFAULT
+                } else {
+                    SearchStatus.ResultStatus.SHOW
+                },
+            )
+        )
+    }
 
     Scaffold(
         topBar = {
             BlurredBar(backdrop) {
-                TopAppBar(
-                    color = barColor,
-                    title = stringResource(R.string.module_upload_title),
-                    scrollBehavior = scrollBehavior,
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            val layoutDirection = LocalLayoutDirection.current
-                            Icon(
-                                modifier = Modifier.graphicsLayer {
-                                    if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
-                                },
-                                imageVector = MiuixIcons.Back,
-                                contentDescription = null,
-                            )
-                        }
-                    },
-                    // 刷新放顶栏：列表一滚行内按钮就看不见了，空列表时那一行也只剩它一个。
-                    actions = {
-                        IconButton(
-                            onClick = onRefresh,
-                            enabled = !state.refreshing && !state.loading,
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.Refresh,
-                                contentDescription = stringResource(R.string.module_upload_refresh),
-                                // Miuix 的 IconButton 不会按 enabled 调淡图标，禁用态与可点态长得
-                                // 一模一样，用户会以为没点上而反复点。这里手动换禁用色。
-                                tint = if (state.refreshing || state.loading) {
-                                    colorScheme.onSurfaceVariantSummary
-                                } else {
-                                    colorScheme.onSurface
-                                },
-                            )
-                        }
-                        // 留存开关与清理入口都在这个按钮背后：两件事都只跟「占空间」有关，
-                        // 顶栏也不该为此多摆一个开关。
-                        // 载入完成前先禁掉：面板里的开关初值来自 settings，而列表状态里的
-                        // keepZip 默认是 true —— 这一小段窗口里打开面板会显示一个用户其实
-                        // 已经关掉的开关，点一下反而把设置写成 true。
-                        IconButton(
-                            onClick = onOpenArchiveSettings,
-                            enabled = !state.loading && !state.refreshing,
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.MoreCircle,
-                                contentDescription = stringResource(R.string.module_upload_more),
-                                tint = colorScheme.onSurface,
-                            )
-                        }
-                    },
-                )
+                searchStatus.TopAppBarAnim(backgroundColor = barColor) {
+                    TopAppBar(
+                        color = barColor,
+                        title = stringResource(R.string.module_upload_title),
+                        scrollBehavior = scrollBehavior,
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                val layoutDirection = LocalLayoutDirection.current
+                                Icon(
+                                    modifier = Modifier.graphicsLayer {
+                                        if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
+                                    },
+                                    imageVector = MiuixIcons.Back,
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        // 刷新放顶栏：列表一滚行内按钮就看不见了，空列表时那一行也只剩它一个。
+                        actions = {
+                            IconButton(
+                                onClick = onRefresh,
+                                enabled = !state.refreshing && !state.loading,
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Refresh,
+                                    contentDescription = stringResource(R.string.module_upload_refresh),
+                                    // Miuix 的 IconButton 不会按 enabled 调淡图标，禁用态与可点态长得
+                                    // 一模一样，用户会以为没点上而反复点。这里手动换禁用色。
+                                    tint = if (state.refreshing || state.loading) {
+                                        colorScheme.onSurfaceVariantSummary
+                                    } else {
+                                        colorScheme.onSurface
+                                    },
+                                )
+                            }
+                            // 留存开关与清理入口都在这个按钮背后：两件事都只跟「占空间」有关，
+                            // 顶栏也不该为此多摆一个开关。
+                            // 载入完成前先禁掉：面板里的开关初值来自 settings，而列表状态里的
+                            // keepZip 默认是 true —— 这一小段窗口里打开面板会显示一个用户其实
+                            // 已经关掉的开关，点一下反而把设置写成 true。
+                            IconButton(
+                                onClick = onOpenArchiveSettings,
+                                enabled = !state.loading && !state.refreshing,
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.MoreCircle,
+                                    contentDescription = stringResource(R.string.module_upload_more),
+                                    tint = colorScheme.onSurface,
+                                )
+                            }
+                        },
+                        // 假搜索条三件套照仓库页抄：收起时可见可点（点它展开真搜索条），
+                        // 展开时整体隐藏，并把自身位置写回 offsetY 供 SearchPager 定位。
+                        bottomContent = {
+                            Box(
+                                modifier = Modifier
+                                    .alpha(if (searchStatus.isCollapsed()) 1f else 0f)
+                                    .onGloballyPositioned { coordinates ->
+                                        with(density) {
+                                            val newOffsetY = coordinates.positionInWindow().y.toDp()
+                                            if (searchStatus.offsetY != newOffsetY) {
+                                                handleSearchStatusChange(
+                                                    searchStatus.copy(offsetY = newOffsetY)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    .then(
+                                        if (searchStatus.isCollapsed()) {
+                                            Modifier.pointerInput(Unit) {
+                                                detectTapGestures {
+                                                    handleSearchStatusChange(
+                                                        searchStatus.copy(current = SearchStatus.Status.EXPANDING)
+                                                    )
+                                                }
+                                            }
+                                        } else Modifier,
+                                    ),
+                            ) {
+                                SearchBarFake(searchStatus.label, dynamicTopPadding)
+                            }
+                        },
+                    )
+                }
             }
         },
-        popupHost = { },
+        // 搜索展开后盖住整页的结果层：SearchPager 自带背景动画、取消按钮与返回手势。
+        popupHost = {
+            searchStatus.SearchPager(
+                onSearchStatusChange = handleSearchStatusChange,
+                defaultResult = {},
+                searchBarTopPadding = dynamicTopPadding,
+            ) {
+                // 搜索结果复用主列表的行渲染与筛选逻辑：搜的就是同一份 visibleRows。
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .overScrollVertical(),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) {
+                    if (visible.isEmpty()) {
+                        // 搜空了复用主列表的空态：同一份文案与「清掉筛选」出口，不另造字符串。
+                        item(key = "search_empty") {
+                            EmptyStateMiuix(
+                                filtered = state.rows.isNotEmpty(),
+                                onReset = {
+                                    onFilter(ModuleUploadRules.Filter.ALL)
+                                    handleSearchStatusChange(searchStatus.copy(searchText = ""))
+                                },
+                            )
+                        }
+                    } else {
+                        itemsIndexed(visible, key = { _, row -> row.id }) { index, row ->
+                            UploadRowCardMiuix(
+                                row = row,
+                                expanded = state.expandedId == row.id,
+                                onToggle = { onToggleRow(row.id) },
+                                onPick = { onPickForRow(row) },
+                                onUseArchived = { onUseArchived(row) },
+                                // 闸门在 ViewModel 里是全局的，搜索结果里的挑包按钮同样照办。
+                                picking = state.pickingFor != null,
+                                pickingThis = state.pickingFor == row.id,
+                                topGap = if (index == 0) 8.dp else 12.dp,
+                            )
+                        }
+                    }
+                    item {
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+            }
+        },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
             .only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxHeight()
-                .scrollEndHaptic()
-                .overScrollVertical()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(horizontal = 12.dp),
-            contentPadding = innerPadding,
-            overscrollEffect = null,
-        ) {
-            item {
-                // 搜索框：前置放大镜点明这是搜索，有输入时右侧出一条清除按钮。
-                // 图标都留空 contentDescription —— 输入框的 label 已经说过用途，再念一遍是噪音。
-                TextField(
-                    value = state.query,
-                    onValueChange = onQueryChange,
-                    label = stringResource(R.string.module_upload_search_hint),
-                    singleLine = true,
-                    leadingIcon = {
-                        Icon(
-                            imageVector = MiuixIcons.Basic.Search,
-                            contentDescription = null,
-                            tint = colorScheme.onSurfaceVariantSummary,
+        searchStatus.SearchBox {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .scrollEndHaptic()
+                    .overScrollVertical()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .padding(horizontal = 12.dp),
+                contentPadding = innerPadding,
+                overscrollEffect = null,
+            ) {
+                item {
+                    FilterRow(
+                        selected = state.filter,
+                        onFilter = onFilter,
+                    )
+                }
+
+                // 查重进度：原先是「一行字 + 一个按钮」，看不出整体进度。这里换成「条 + 已查/总数」，
+                // 正在查时条走不确定态；一次都没查过、也不在查时整块不占位（否则顶部留白像没加载）。
+                if (state.checking || checked > 0) {
+                    item {
+                        CheckProgressMiuix(
+                            checked = checked,
+                            total = state.rows.size,
+                            remaining = state.remaining,
+                            checking = state.checking,
+                            onContinue = onContinueCheck,
                         )
-                    },
-                    trailingIcon = if (state.query.isNotEmpty()) {
-                        {
-                            IconButton(onClick = { onQueryChange("") }) {
+                    }
+                }
+
+                item {
+                    Card(
+                        modifier = Modifier
+                            .padding(top = 12.dp)
+                            .fillMaxWidth(),
+                    ) {
+                        ArrowPreference(
+                            title = stringResource(R.string.module_upload_pick_zip),
+                            summary = stringResource(R.string.module_upload_pick_zip_summary),
+                            startAction = {
                                 Icon(
-                                    imageVector = MiuixIcons.Close,
-                                    contentDescription = stringResource(
-                                        R.string.module_upload_search_clear,
-                                    ),
-                                    tint = colorScheme.onSurfaceVariantSummary,
+                                    MiuixIcons.UploadCloud,
+                                    modifier = Modifier.padding(end = 6.dp),
+                                    // 这一行的标题就是「选择 zip 上传」，图标再报一遍会被 TalkBack 念两次。
+                                    contentDescription = null,
+                                    tint = colorScheme.onBackground,
                                 )
-                            }
-                        }
-                    } else {
-                        null
-                    },
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .fillMaxWidth(),
-                )
-            }
+                            },
+                            onClick = onPickZip,
+                        )
+                    }
+                }
 
-            item {
-                FilterRow(
-                    selected = state.filter,
-                    onFilter = onFilter,
-                )
-            }
-
-            // 查重进度：原先是「一行字 + 一个按钮」，看不出整体进度。这里换成「条 + 已查/总数」，
-            // 正在查时条走不确定态；一次都没查过、也不在查时整块不占位（否则顶部留白像没加载）。
-            if (state.checking || checked > 0) {
+                // 「我的模块」紧跟挑包入口：两块是同一件事的两半——手里有 zip 就从上面进，
+                // 只是给已收录的模块发新版本就点下面这一行，挑完包带着模块 id 直接进表单。
                 item {
-                    CheckProgressMiuix(
-                        checked = checked,
-                        total = state.rows.size,
-                        remaining = state.remaining,
-                        checking = state.checking,
-                        onContinue = onContinueCheck,
-                    )
-                }
-            }
-
-            item {
-                Card(
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .fillMaxWidth(),
-                ) {
-                    ArrowPreference(
-                        title = stringResource(R.string.module_upload_pick_zip),
-                        summary = stringResource(R.string.module_upload_pick_zip_summary),
-                        startAction = {
-                            Icon(
-                                MiuixIcons.UploadCloud,
-                                modifier = Modifier.padding(end = 6.dp),
-                                // 这一行的标题就是「选择 zip 上传」，图标再报一遍会被 TalkBack 念两次。
-                                contentDescription = null,
-                                tint = colorScheme.onBackground,
-                            )
-                        },
-                        onClick = onPickZip,
-                    )
-                }
-            }
-
-            // 「我的模块」紧跟挑包入口：两块是同一件事的两半——手里有 zip 就从上面进，
-            // 只是给已收录的模块发新版本就点下面这一行，挑完包带着模块 id 直接进表单。
-            item {
-                MineSectionMiuix(
-                    mine = mine,
-                    picking = state.pickingFor != null,
-                    pickingId = state.pickingFor,
-                    onPick = onPickForMine,
-                )
-            }
-
-            // 已装模块这一组也给标题：上面两组都有名有姓，这一组裸着会读成「还没结束的上一组」。
-            item {
-                SmallTitle(
-                    text = stringResource(R.string.module_upload_section_installed),
-                    modifier = Modifier.padding(top = 20.dp),
-                    // 纵向内边距收成 0：组与组之间的 20dp、标题与内容的 8dp 由这里和卡片自己给，
-                    // 否则默认内边距会把间距叠成两倍。
-                    insideMargin = PaddingValues(
-                        start = 16.dp,
-                        top = 0.dp,
-                        end = 16.dp,
-                        bottom = 0.dp,
-                    ),
-                )
-            }
-
-            if (visible.isEmpty()) {
-                // 空态：图标 + 主文案 + 副说明；筛选筛空时再给一枚「清掉筛选」的动作。
-                // 组标题仍然保留，否则「已装在本机」下面突然空一块说不清是哪一组空了。
-                item {
-                    EmptyStateMiuix(
-                        filtered = state.rows.isNotEmpty(),
-                        onReset = {
-                            onFilter(ModuleUploadRules.Filter.ALL)
-                            onQueryChange("")
-                        },
-                    )
-                }
-            } else {
-                itemsIndexed(visible, key = { _, row -> row.id }) { index, row ->
-                    UploadRowCardMiuix(
-                        row = row,
-                        expanded = state.expandedId == row.id,
-                        onToggle = { onToggleRow(row.id) },
-                        onPick = { onPickForRow(row) },
-                        onUseArchived = { onUseArchived(row) },
-                        // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
-                        // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
+                    MineSectionMiuix(
+                        mine = mine,
                         picking = state.pickingFor != null,
-                        pickingThis = state.pickingFor == row.id,
-                        // 组内第一张卡紧跟标题：8dp；其余卡片之间 12dp。
-                        topGap = if (index == 0) 8.dp else 12.dp,
+                        pickingId = state.pickingFor,
+                        onPick = onPickForMine,
                     )
                 }
-            }
 
-            item {
-                Spacer(Modifier.height(24.dp))
+                // 已装模块这一组也给标题：上面两组都有名有姓，这一组裸着会读成「还没结束的上一组」。
+                item {
+                    SmallTitle(
+                        text = stringResource(R.string.module_upload_section_installed),
+                        modifier = Modifier.padding(top = 20.dp),
+                        // 纵向内边距收成 0：组与组之间的 20dp、标题与内容的 8dp 由这里和卡片自己给，
+                        // 否则默认内边距会把间距叠成两倍。
+                        insideMargin = PaddingValues(
+                            start = 16.dp,
+                            top = 0.dp,
+                            end = 16.dp,
+                            bottom = 0.dp,
+                        ),
+                    )
+                }
+
+                if (visible.isEmpty()) {
+                    // 空态：图标 + 主文案 + 副说明；筛选筛空时再给一枚「清掉筛选」的动作。
+                    // 组标题仍然保留，否则「已装在本机」下面突然空一块说不清是哪一组空了。
+                    item {
+                        EmptyStateMiuix(
+                            filtered = state.rows.isNotEmpty(),
+                            onReset = {
+                                onFilter(ModuleUploadRules.Filter.ALL)
+                                handleSearchStatusChange(searchStatus.copy(searchText = ""))
+                            },
+                        )
+                    }
+                } else {
+                    itemsIndexed(visible, key = { _, row -> row.id }) { index, row ->
+                        UploadRowCardMiuix(
+                            row = row,
+                            expanded = state.expandedId == row.id,
+                            onToggle = { onToggleRow(row.id) },
+                            onPick = { onPickForRow(row) },
+                            onUseArchived = { onUseArchived(row) },
+                            // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
+                            // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
+                            picking = state.pickingFor != null,
+                            pickingThis = state.pickingFor == row.id,
+                            // 组内第一张卡紧跟标题：8dp；其余卡片之间 12dp。
+                            topGap = if (index == 0) 8.dp else 12.dp,
+                        )
+                    }
+                }
+
+                item {
+                    Spacer(Modifier.height(24.dp))
+                }
             }
         }
     }
