@@ -753,8 +753,8 @@
     <string name="susfs_android_data_path_label">Android Data 路徑</string>
     <string name="susfs_sdcard_path_label">SDCard 路徑</string>
     <string name="module_upload_title">模組上傳</string>
-    <string name="module_upload_entry_title">模組上傳</string>
-    <string name="module_upload_entry_summary">上傳模組原始 zip，查看哪些版本已經收錄</string>
+    <string name="module_upload_entry_title">模組上傳分享</string>
+    <string name="module_upload_entry_summary">將好模組上傳，共建模組生態</string>
     <string name="module_upload_after_install_title">安裝後提示分享</string>
     <string name="module_upload_after_install_summary">安裝本機模組後，提示分享尚未收錄的模組</string>
     <string name="module_upload_filter_all">全部</string>

@@ -1121,8 +1121,8 @@
     <string name="susfs_android_data_path_label">Android Data Path</string>
     <string name="susfs_sdcard_path_label">SD Card Path</string>
     <string name="module_upload_title">Module upload</string>
-    <string name="module_upload_entry_title">Module upload</string>
-    <string name="module_upload_entry_summary">Upload original module zips and see which versions are already listed</string>
+    <string name="module_upload_entry_title">Module upload &amp; share</string>
+    <string name="module_upload_entry_summary">Upload good modules to help build the module ecosystem</string>
     <string name="module_upload_after_install_title">Prompt to share after install</string>
     <string name="module_upload_after_install_summary">After installing a local module, offer to share modules that are not listed yet</string>
     <string name="module_upload_filter_all">All</string>

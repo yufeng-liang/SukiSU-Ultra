@@ -1105,8 +1105,8 @@
     <string name="susfs_android_data_path_label">Android Data 路径</string>
     <string name="susfs_sdcard_path_label">SDCard 路径</string>
     <string name="module_upload_title">模块上传</string>
-    <string name="module_upload_entry_title">模块上传</string>
-    <string name="module_upload_entry_summary">上传模块原始 zip，查看哪些版本已经收录</string>
+    <string name="module_upload_entry_title">模块上传分享</string>
+    <string name="module_upload_entry_summary">将好模块上传，共建模块生态</string>
     <string name="module_upload_after_install_title">安装后提示分享</string>
     <string name="module_upload_after_install_summary">安装本地模块后，提示分享尚未收录的模块</string>
     <string name="module_upload_filter_all">全部</string>
