@@ -13,7 +13,7 @@ interface SettingsRepository {
     var uiMode: String
     var appLanguage: String
     var checkUpdate: Boolean
-    var checkCiUpdate: Boolean
+    // 本 fork 不检查 CI 构建（见 Downloader.checkNewVersion：只看 release）。
     var checkModuleUpdate: Boolean
     var autoDeleteModuleZip: Boolean
     var alternativeIcon : Boolean

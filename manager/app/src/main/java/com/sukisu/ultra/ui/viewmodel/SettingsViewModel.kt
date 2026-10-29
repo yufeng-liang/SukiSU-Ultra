@@ -590,11 +590,6 @@ class SettingsViewModel(
         }
     }
 
-    fun setCheckCiUpdate(enabled: Boolean) {
-        repo.checkCiUpdate = enabled
-        _uiState.update { it.copy(checkCiUpdate = enabled) }
-    }
-
     fun setCheckUpdate(enabled: Boolean) {
         repo.checkUpdate = enabled
         _uiState.update { it.copy(checkUpdate = enabled) }
