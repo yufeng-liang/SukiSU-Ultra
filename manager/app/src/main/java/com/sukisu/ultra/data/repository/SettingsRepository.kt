@@ -13,6 +13,7 @@ interface SettingsRepository {
     var uiMode: String
     var appLanguage: String
     var checkUpdate: Boolean
+    var checkCiUpdate: Boolean
     var checkModuleUpdate: Boolean
     var autoDeleteModuleZip: Boolean
     var alternativeIcon : Boolean

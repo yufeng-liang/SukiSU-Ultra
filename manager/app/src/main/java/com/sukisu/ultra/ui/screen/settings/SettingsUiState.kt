@@ -11,6 +11,7 @@ data class SettingsUiState(
     val uiMode: String = UiMode.DEFAULT_VALUE,
     val appLanguage: String = "",
     val checkUpdate: Boolean = true,
+    val checkCiUpdate: Boolean = false,
     val checkModuleUpdate: Boolean = true,
     val autoDeleteModuleZip: Boolean = false,
     val appIconId: String = BuiltinAppIcons.DEFAULT_ID,

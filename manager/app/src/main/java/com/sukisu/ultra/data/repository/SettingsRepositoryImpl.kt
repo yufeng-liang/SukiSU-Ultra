@@ -185,6 +185,10 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = prefs.getBoolean("check_update", true)
         set(value) = prefs.edit { putBoolean("check_update", value) }
 
+    override var checkCiUpdate: Boolean
+        get() = prefs.getBoolean("check_ci_update", false)
+        set(value) = prefs.edit { putBoolean("check_ci_update", value) }
+
     override var checkModuleUpdate: Boolean
         get() = prefs.getBoolean("module_check_update", true)
         set(value) = prefs.edit { putBoolean("module_check_update", value) }
