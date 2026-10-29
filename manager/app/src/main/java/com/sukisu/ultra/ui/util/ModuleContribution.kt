@@ -717,9 +717,16 @@ object ModuleContribution {
             for (module in modules) {
                 addFormDataPart(
                     "zip",
-                    // 优先用调用方算好的 `{id}-{versionCode}.zip`：`file.name` 是 staging 的
-                    // 随机临时名（upload-xxxxxxxx.zip），拿它当资产名会让索引里全是随机串。
-                    module.fileName.ifBlank { "${module.meta.id}-${module.meta.versionCode}.zip" },
+                    // 三级 fallback，顺序不能换：
+                    // 1. 调用方算好的 `{id}-{versionCode}.zip` —— staging 里那份文件叫
+                    //    upload-xxxxxxxx.zip（随机临时名），拿它当资产名会让索引里全是随机串；
+                    // 2. 真实文件名 —— 不传 fileName 的旧调用点仍按老规矩走；
+                    // 3. 再兜一层 `{id}-{versionCode}.zip` —— 连文件名都没有时的最后一档。
+                    module.fileName.ifBlank {
+                        module.file.name.ifBlank {
+                            "${module.meta.id}-${module.meta.versionCode}.zip"
+                        }
+                    },
                     module.file.asRequestBody(ZIP_MEDIA_TYPE),
                 )
             }

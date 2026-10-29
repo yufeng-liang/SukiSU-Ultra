@@ -120,6 +120,46 @@ class ContributionBatchTest {
         assertTrue(dispositions[7].contains("filename=\"b.zip\""))
     }
 
+    /**
+     * 上传时的 part 文件名有三档，顺序不能换。
+     *
+     * 背景：staging 里那份 zip 叫 `upload-xxxxxxxx.zip`（随机临时名），拿它当资产名
+     * 会让服务端索引里全是随机串；但旧调用点不传 fileName，那时还得按真实文件名走。
+     */
+    @Test
+    fun `zip part filename prefers the caller supplied name`() {
+        val withName = ModuleContribution.buildBatchBody(
+            listOf(
+                batchZip(
+                    "demo",
+                    "upload-1234.zip",
+                    shaA,
+                    "https://www.coolapk.com/feed/1",
+                    fileName = "demo-7.zip",
+                ),
+            ),
+            "nick",
+            "1000",
+            "abc123",
+        )
+        assertTrue(
+            withName.parts[6].headers?.get("Content-Disposition").orEmpty()
+                .contains("filename=\"demo-7.zip\""),
+        )
+
+        // 不传 fileName：退回真实文件名（旧调用点的行为不变）。
+        val withoutName = ModuleContribution.buildBatchBody(
+            listOf(batchZip("demo", "real.zip", shaA, "https://www.coolapk.com/feed/1")),
+            "nick",
+            "1000",
+            "abc123",
+        )
+        assertTrue(
+            withoutName.parts[6].headers?.get("Content-Disposition").orEmpty()
+                .contains("filename=\"real.zip\""),
+        )
+    }
+
     @Test
     fun `multipart carries the session token when one is given`() {
         val modules = listOf(
@@ -280,6 +320,7 @@ class ContributionBatchTest {
         sha: String,
         source: String,
         size: Int = 4,
+        fileName: String = "",
     ): BatchZip {
         val dir = Files.createTempDirectory("batch-test").toFile()
         val file = File(dir, name)
@@ -296,6 +337,7 @@ class ContributionBatchTest {
             ),
             sha256 = sha,
             source = source,
+            fileName = fileName,
         )
     }
 }
