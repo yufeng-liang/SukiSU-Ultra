@@ -482,11 +482,11 @@ private fun FilterRow(
 }
 
 /**
- * 查重进度：只在查询时出现的进度条 + 「已查 N / 共 M」+ 右侧「继续查」。
+ * 查重进度：「已查 N / 共 M」+ 右侧「继续查」。
  *
- * 条的位置一直占着（固定 4dp），只是不查询时**不画**：查完了还挂一条 100% 的条，
- * 等于在已经完成的动作上一直闪一个进行中的信号；而把位置也一起收掉，会让查询结束的
- * 那一刻下面所有卡片往上跳一截。
+ * 这里**不画进度条**——顶栏底边那条已经在表达「正在忙」，同一屏两条进度条纯属重复。
+ * 原来还为了「查完不顶动下面卡片」常驻过一条 4dp 空槽位，条删掉后这一行的高度
+ * 由文本决定，「在查」与「查完」是同一个字号，天然恒定。
  *
  * [fromCache] 为真时那句话后面挂一句「缓存」：这批读数一条请求都没发（见
  * [ModuleUploadCheckCache]），得让人知道它最多是半小时前的，而不是刚才那一刻的。
@@ -510,17 +510,8 @@ private fun CheckProgressMiuix(
     ) {
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Box(modifier = Modifier.fillMaxWidth().height(ProgressBarHeight)) {
-                if (checking) {
-                    LinearProgressIndicator(
-                        // 正在查时交给不确定态（条自己走）；查完这一格空着。
-                        progress = null,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
             Text(
                 text = when {
                     checking -> stringResource(R.string.module_upload_checking)
@@ -556,9 +547,6 @@ private fun CheckProgressMiuix(
         }
     }
 }
-
-/** 进度条那一行的高度。查询与查完都占这么高，避免一次查询结束就顶动下面的内容。 */
-private val ProgressBarHeight = 4.dp
 
 /**
  * 空列表：图标 + 主文案 + 副说明。

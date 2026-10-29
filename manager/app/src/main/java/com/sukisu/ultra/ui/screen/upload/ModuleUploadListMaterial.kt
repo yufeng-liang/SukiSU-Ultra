@@ -260,9 +260,9 @@ fun ModuleUploadListMaterial(
                 }
             }
 
-            // 查重进度：原来只有一行小字，看不出「还差多少」。改成进度条 + 计数并排。
-            // 一次都没查过、也不在查（checked == 0 && !checking）时整块不占位，
-            // 否则列表顶上会永远挂着一条空白的灰条。
+            // 查重进度：一行计数（见 CheckProgressMaterial）。进度条交给顶栏底边那条，
+            // 这里不重复画第二条。一次都没查过、也不在查（checked == 0 && !checking）
+            // 时整块不占位，否则列表顶上会平白多出一行空白。
             if (checked > 0 || state.checking) {
                 item {
                     CheckProgressMaterial(
@@ -656,14 +656,15 @@ private fun EmptyStateMaterial(filtered: Boolean, onClear: () -> Unit) {
 }
 
 /**
- * 查重进度：一句计数 + 一条只在查询时出现的进度条，「继续查」与它同一行右对齐。
+ * 查重进度：一句计数，「继续查」与它同一行右对齐。
  *
- * 进度条**只在 [checking] 时画**：查完了还挂着一条 100% 的条，等于在已经完成的动作上
- * 一直闪一个进行中的信号。但它的位置必须留着——[BarHeight] 高的空位一直占着，
- * 查询中与查询完成后这一行的高度完全相同，下面那几张卡不会因为一次查询结束而上移。
+ * 这里**不再画进度条**——顶栏底边那条（`bottomProgress`）已经在表达「正在忙」，
+ * 同一屏出现两条进度条纯属重复。这个位置只留一句给数字：正在查时说「在查」，
+ * 不报数字（数字一直在变，读起来只是噪音）；查完才报「查了多少」。
  *
- * 正在查时只说「在查」，不报数字（数字一直在变，读起来只是噪音）；查完才报「查了多少」。
- * 总数还不知道时给不确定进度条，比一个停在 0% 的条更诚实。
+ * 原来的实现为了不顶动下面的卡片，还常驻了一条 4dp 高的空槽位。进度条整个删掉后，
+ * 那一行的高度由文本本身决定、且「在查」与「查完」都是同一句话的同一个字号，
+ * 高度天然恒定，不需要再留占位。
  *
  * [fromCache] 为真时那句话后面挂一句「缓存」：这批读数一条请求都没发（见
  * [ModuleUploadCheckCache]），得让人知道它最多是半小时前的，而不是刚才那一刻的。
@@ -677,33 +678,27 @@ private fun CheckProgressMaterial(
     remaining: Int,
     onContinue: () -> Unit,
 ) {
-    val fraction = if (total > 0) checked.toFloat() / total else 0f
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(
+            Text(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    text = when {
-                        checking -> stringResource(R.string.module_upload_checking)
-                        fromCache -> stringResource(
-                            R.string.module_upload_progress_checked_cached,
-                            checked,
-                            total,
-                        )
+                text = when {
+                    checking -> stringResource(R.string.module_upload_checking)
+                    fromCache -> stringResource(
+                        R.string.module_upload_progress_checked_cached,
+                        checked,
+                        total,
+                    )
 
-                        else -> stringResource(R.string.module_upload_progress_checked, checked, total)
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                ProgressBarSlotMaterial(checking = checking, fraction = fraction, total = total)
-            }
+                    else -> stringResource(R.string.module_upload_progress_checked, checked, total)
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (remaining > 0) {
                 TextButton(onClick = onContinue, enabled = !checking) {
                     Text(stringResource(R.string.module_upload_continue_check))
@@ -721,31 +716,6 @@ private fun CheckProgressMaterial(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-/** 进度条那一行的高度。查询与查完都占这么高，避免一次查询结束就顶动下面的内容。 */
-private val BarHeight = 4.dp
-
-/**
- * 进度条的位置：高度恒定，只在 [checking] 时画条。
- *
- * 单独抽出来是为了让「留位」这件事与「画条」在代码上是同一处——
- * 两套主题各自实现时最容易走偏的就是这个空位。
- */
-@Composable
-private fun ProgressBarSlotMaterial(checking: Boolean, fraction: Float, total: Int) {
-    Box(modifier = Modifier.fillMaxWidth().height(BarHeight)) {
-        if (checking) {
-            if (total == 0) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxSize())
-            } else {
-                LinearProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
         }
     }
 }
