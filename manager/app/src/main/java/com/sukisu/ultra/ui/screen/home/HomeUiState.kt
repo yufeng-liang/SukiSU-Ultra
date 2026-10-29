@@ -57,7 +57,12 @@ data class HomeUiState(
         get() = isManager &&
                 lkmMode == true &&
                 isLkmBundled &&
-                ksuVersion?.toLong() != currentManagerVersionCode &&
+                // 只有内核比管理器内附的 LKM 旧，才叫「有可用更新」。
+                // 这里必须是「小于」而不是「不等于」：APK 里的 LKM 版本号与
+                // versionCode 未必相等（构建链路两处各算一次就会出现偏差），
+                // 用 != 的话装完更新版本号依旧不等，横幅永远消不掉——用户会
+                // 陷入「点了安装、提示还在」的死循环。
+                (ksuVersion?.toLong()?.let { it < currentManagerVersionCode } ?: false) &&
                 !requiresNewKernel &&
                 !requiresNewManager
 

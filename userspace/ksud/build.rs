@@ -10,6 +10,14 @@ const BOOTSTRAP_OBJECT: &str = "lkm_image_bootstrap.o";
 const PREPARED_BOOTSTRAP_OBJECT: &str = ".lkm_image_bootstrap.o";
 
 fn get_git_version() -> Result<(u32, String), std::io::Error> {
+    // CI 里 ksud 在容器/独立工作副本中编译，`git rev-list --count HEAD` 可能数到
+    // 另一个 git 状态（浅历史、别的分支），从而算出与管理器、LKM 都不一致的版本号。
+    // 上游 workflow 已统一算好 version_code 并注入，优先采信它。
+    let injected_code = env::var("KSU_VERSION_CODE")
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .filter(|code| *code > 0);
+
     let output = Command::new("git")
         .args(["rev-list", "--count", "HEAD"])
         .output()?;
@@ -21,6 +29,7 @@ fn get_git_version() -> Result<(u32, String), std::io::Error> {
         .parse()
         .map_err(|_| std::io::Error::other("Failed to parse git count"))?;
     let version_code = 40000 - 2815 + version_code; // For historical reasons
+    let version_code = injected_code.unwrap_or(version_code);
 
     let version_name = String::from_utf8(
         Command::new("git")

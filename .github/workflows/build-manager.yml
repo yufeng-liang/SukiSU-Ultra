@@ -153,11 +153,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          COMMIT_COUNT=$(git rev-list --count refs/remotes/origin/main)
+          # 必须与 manager/build.gradle.kts 的 getVersionCode() 同源同式：两边都数
+          # 当前被构建的 ref（HEAD）。不要数 origin/main——本仓库发版在
+          # custom-repo-backup 分支上，main 会少掉一批提交，于是 kernel 的
+          # KSU_VERSION 小于 APK 的 versionCode，首页「有可用更新」点多少次都消不掉。
+          COMMIT_COUNT=$(git rev-list --count HEAD)
           VERSION_CODE=$((40000 + COMMIT_COUNT - 2815))
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "KernelSU version code: $VERSION_CODE (main commits: $COMMIT_COUNT)"
+          echo "commit_count=$COMMIT_COUNT" >> "$GITHUB_OUTPUT"
+          echo "KernelSU version code: $VERSION_CODE (HEAD commits: $COMMIT_COUNT)"
 
   # ------------------------------------------------------------
   # 包名一致性闸门（必须在任何编译之前跑）
@@ -212,7 +216,7 @@ jobs:
 
 
   build-ksud:
-    needs: [build-lkm, build-ksuinit]
+    needs: [build-lkm, build-ksuinit, determine-version]
 
     strategy:
       fail-fast: false
@@ -228,6 +232,7 @@ jobs:
       target: ${{ matrix.target }}
       pack_lkm: true
       pack_ksuinit: true
+      version_code: ${{ needs.determine-version.outputs.version_code }}
 
 
   # ------------------------------------------------------------
@@ -235,7 +240,7 @@ jobs:
   # ------------------------------------------------------------
 
   build-manager:
-    needs: [generate-key, build-ksud, verify-package-name]
+    needs: [generate-key, build-ksud, determine-version, verify-package-name]
 
     if: always() &&
         needs.generate-key.result == 'success' &&
@@ -522,10 +527,13 @@ jobs:
 
       - name: Build with Gradle
         run: |
+          # 把 determine-version 算出的版本号显式喂给 gradle，避免 gradle 在
+          # 另一个 checkout 状态里再数一遍 git 得出不同的数。
+          VERSION_ARGS="-PksuVersionCode=${{ needs.determine-version.outputs.version_code }}"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            ./gradlew clean assembleRelease -PIS_PR_BUILD=true
+            ./gradlew clean assembleRelease $VERSION_ARGS -PIS_PR_BUILD=true
           else
-            ./gradlew clean assembleRelease
+            ./gradlew clean assembleRelease $VERSION_ARGS
           fi
 
 

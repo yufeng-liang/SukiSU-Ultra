@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: false
+      version_code:
+        description: 'Unified KernelSU version code shared with LKM and manager'
+        required: false
+        default: ''
+        type: string
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -60,6 +65,8 @@ jobs:
     - name: Build ksud
       env:
         ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        # build.rs 优先采信这个值；为空时回退到数 git（本地构建路径）。
+        KSU_VERSION_CODE: ${{ inputs.version_code }}
       run: |
         # PR 变体的包名同样来自仓库根的 manager-package.properties（build.rs 读取），
         # 这里只声明"这是 PR 构建"，不再写字面量，避免与内核侧取值各写一份。

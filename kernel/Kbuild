@@ -167,7 +167,11 @@ MDIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 REPO_OWNER  := SukiSU-Ultra
 REPO_NAME   := SukiSU-Ultra
-REPO_BRANCH := main
+# 仅在「既没有 .git、CI 又没传 KSU_VERSION」时用于回退数 GitHub 的 main 分支。
+# 本仓库发版分支是 custom-repo-backup，main 会比它少一批提交；数 main 得到的
+# 版本号必然小于 manager 的 versionCode，首页就会永久显示「有可用更新」。
+# 用 ?= 允许 make/环境覆盖，正常构建路径请走 KSU_VERSION 注入。
+REPO_BRANCH ?= main
 
 VERSION_BASE    := 40000
 VERSION_OFFSET  := 2815
