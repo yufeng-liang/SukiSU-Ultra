@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  模块上传：长期会话令牌（九十天免改签名）的两条失效文案（繁體）。
+
+  与 values/strings_module_upload_session.xml 同名 key，只此一处 ——
+  AAPT 见到同一 locale 下两个文件定义同一个 key 会直接报重复资源、整个构建失败。
+
+  这两条 key 在 values/ 与 values-zh-rCN/ 各有一份；繁體這裡補齊，
+  免得中文繁體用戶在令牌失效時看到英文提示。
+-->
+<resources>
+    <!-- 服務端明確說令牌失效時的一次性提示（ViewModel.refreshSession 的 Invalid 分支）。
+         必須說清「要再改一次簽名」：使用者下一步唯一能做的事就是重走簽名那條路。 -->
+    <string name="module_upload_session_expired">上次的驗證已失效，請重新改一次酷安簽名</string>
+    <!-- 手裡還攥著一張已過期令牌時點提交的提示（ViewModel.submit 的攔截）。
+         與上一條的差別是「已經過期」而非「服務端說失效」——都不帶 error 細節，只說下一步。 -->
+    <string name="module_upload_session_expired_submit">上次的驗證已經過期，請重新改一次酷安簽名後再提交</string>
+</resources>

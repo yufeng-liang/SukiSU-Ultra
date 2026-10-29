@@ -862,7 +862,6 @@
     <string name="module_upload_uid_checking">正在核實…</string>
     <string name="module_upload_uid_verified">將以 %1$s 署名</string>
     <string name="module_upload_session_checking">正在確認上次的驗證…</string>
-    <string name="module_upload_session_expired">上次的驗證已失效，請重新改一次簽名</string>
     <string name="module_upload_session_hint">90 天內再投稿不用改簽名。換帳號請點右邊。</string>
     <string name="module_upload_session_signout">退出驗證</string>
     <string name="module_upload_uid_not_found">酷安查無此人，請核對 UID</string>
@@ -895,7 +894,6 @@
     <string name="module_upload_limit_unknown">暫時拿不到伺服器上限，先不能提交</string>
     <string name="module_upload_turnstile_title">人機驗證</string>
     <string name="module_upload_turnstile_failed">人機驗證沒完成，本次沒有提交</string>
-    <string name="module_upload_session_expired_submit">會話令牌已過期，請重新改一次簽名</string>
     <string name="susfs_runtime_available">可用</string>
     <string name="susfs_runtime_unavailable">不可用</string>
     <string name="susfs_runtime_status">狀態</string>

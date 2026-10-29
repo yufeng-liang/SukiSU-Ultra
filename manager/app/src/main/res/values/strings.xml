@@ -1231,7 +1231,6 @@
     <string name="module_upload_uid_checking">Checking…</string>
     <string name="module_upload_uid_verified">Verified: %1$s</string>
     <string name="module_upload_session_checking">Checking the saved verification…</string>
-    <string name="module_upload_session_expired">The saved session is no longer valid, please sign again</string>
     <string name="module_upload_session_hint">No signature change needed for 90 days. Switching accounts? Sign out.</string>
     <string name="module_upload_session_signout">Sign out</string>
     <string name="module_upload_uid_not_found">No such Coolapk user — please check the UID</string>
@@ -1264,7 +1263,6 @@
     <string name="module_upload_limit_unknown">Couldn\'t read the server limits; upload is disabled for now</string>
     <string name="module_upload_turnstile_title">Human verification</string>
     <string name="module_upload_turnstile_failed">Verification was not completed, nothing was uploaded</string>
-    <string name="module_upload_session_expired_submit">The saved session expired, please sign again</string>
     <string name="susfs_runtime_available">Available</string>
     <string name="susfs_runtime_unavailable">Unavailable</string>
     <string name="susfs_runtime_status">Status</string>
