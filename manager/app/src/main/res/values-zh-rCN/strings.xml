@@ -1087,7 +1087,6 @@
     <string name="module_upload_filter_unknown">未知</string>
     <string name="module_upload_search_hint">搜索模块</string>
     <string name="module_upload_search_clear">清除搜索</string>
-    <string name="module_upload_refresh">刷新</string>
 
     <string name="module_upload_progress_checked">已查 %1$d / 共 %2$d</string>
     <string name="module_upload_progress_checked_cached">已查 %1$d / 共 %2$d · 缓存</string>

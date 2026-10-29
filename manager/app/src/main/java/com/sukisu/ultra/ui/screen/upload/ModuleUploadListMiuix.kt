@@ -72,6 +72,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
@@ -83,7 +84,6 @@ import top.yukonga.miuix.kmp.icon.extended.Filter
 import top.yukonga.miuix.kmp.icon.extended.Layers
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Notes
-import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.UploadCloud
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -165,7 +165,8 @@ fun ModuleUploadListMiuix(
                                 )
                             }
                         },
-                        // 刷新放顶栏：列表一滚行内按钮就看不见了，空列表时那一行也只剩它一个。
+                        // 顶栏只留「解释」「记录」「更多」三件事：都是点一下就走。
+                        // 刷新是「等一下再看」，已经挪到列表下拉（见 content 里的 PullToRefresh）。
                         actions = {
                             // 「为什么只能传原始 zip」的说明入口：重建包那条路关掉之后，
                             // 已经装过的模块在这页没有上传入口，解释放在这里。
@@ -184,27 +185,7 @@ fun ModuleUploadListMiuix(
                                     tint = colorScheme.onSurface,
                                 )
                             }
-                            // 刷新期间图标原地转 + 置灰，与 Material 那套同一套表达。
-                            val spin = rememberSpinAngle(state.busy)
-                            IconButton(
-                                onClick = onRefresh,
-                                enabled = !state.busy,
-                            ) {
-                                Icon(
-                                    // rotationZ 走 graphicsLayer：在图层里读角度，
-                                    // 每帧只重绘这一层，不重组顶栏。
-                                    modifier = Modifier.graphicsLayer { rotationZ = spin.value },
-                                    imageVector = MiuixIcons.Refresh,
-                                    contentDescription = stringResource(R.string.module_upload_refresh),
-                                    // Miuix 的 IconButton 不会按 enabled 调淡图标，禁用态与可点态长得
-                                    // 一模一样，用户会以为没点上而反复点。这里手动换禁用色。
-                                    tint = if (state.busy) {
-                                        colorScheme.onSurfaceVariantSummary
-                                    } else {
-                                        colorScheme.onSurface
-                                    },
-                                )
-                            }
+                            // 刷新不占顶栏：与模块页/仓库页一样改成列表下拉。
                             // 留存开关与清理入口都在这个按钮背后：两件事都只跟「占空间」有关，
                             // 顶栏也不该为此多摆一个开关。
                             // 载入完成前先禁掉：面板里的开关初值来自 settings，而列表状态里的
@@ -260,7 +241,10 @@ fun ModuleUploadListMiuix(
                                         .fillMaxWidth()
                                         .height(3.dp),
                                 ) {
-                                    if (state.busy) {
+                                    // 刷新中不画：那一刻下拉指示器正悬在列表顶上转，
+                                    // 两条进度说同一件事，一条就够 —— 这条留给它管不到的
+                                    // 「首次载入」和「查重」。
+                                    if (state.busy && !state.refreshing) {
                                         LinearProgressIndicator(
                                             progress = null,
                                             modifier = Modifier.fillMaxSize(),
@@ -328,114 +312,132 @@ fun ModuleUploadListMiuix(
             .only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
         searchStatus.SearchBox {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .scrollEndHaptic()
-                    .overScrollVertical()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                    .padding(horizontal = 12.dp),
-                contentPadding = innerPadding,
-                overscrollEffect = null,
+            // 下拉刷新：与模块页/仓库页同一个手势、同一组提示语。
+            // 刷新那颗键原来占着顶栏，要「先找到、再按下」；这一屏的操作重心就在列表上。
+            val refreshTexts = listOf(
+                stringResource(R.string.refresh_pulling),
+                stringResource(R.string.refresh_release),
+                stringResource(R.string.refresh_refresh),
+                stringResource(R.string.refresh_complete),
+            )
+            PullToRefresh(
+                // 只跟刷新走，不跟 busy：busy 里还含「查重」和首次载入，
+                // 那两件事由顶栏底边那条细进度条负责。
+                isRefreshing = state.refreshing,
+                onRefresh = onRefresh,
+                refreshTexts = refreshTexts,
+                // 只留顶部：下拉指示器要落在顶栏下面，不能钻进标题栏里。
+                contentPadding = PaddingValues(top = innerPadding.calculateTopPadding()),
             ) {
-                item {
-                    FilterRow(
-                        selected = state.filter,
-                        onFilter = onFilter,
-                    )
-                }
-
-                // 查重进度：只有一句计数，永远占一行 —— 「继续查」按钮和它下面那句说明
-                // 会随 remaining 消失，查完那一刻整块缩一行、下面内容跟着上移一截。
-                if (state.checking || checked > 0) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .scrollEndHaptic()
+                        .overScrollVertical()
+                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                        .padding(horizontal = 12.dp),
+                    contentPadding = innerPadding,
+                    overscrollEffect = null,
+                ) {
                     item {
-                        CheckProgressMiuix(
-                            checked = checked,
-                            total = state.rows.size,
-                            checking = state.checking,
-                            fromCache = state.fromCache,
+                        FilterRow(
+                            selected = state.filter,
+                            onFilter = onFilter,
                         )
                     }
-                }
 
-                item {
-                    Card(
-                        modifier = Modifier
-                            .padding(top = 12.dp)
-                            .fillMaxWidth(),
-                    ) {
-                        ArrowPreference(
-                            title = stringResource(R.string.module_upload_pick_zip),
-                            summary = stringResource(R.string.module_upload_pick_zip_summary),
-                            startAction = {
-                                Icon(
-                                    MiuixIcons.UploadCloud,
-                                    modifier = Modifier.padding(end = 6.dp),
-                                    // 这一行的标题就是「选择 zip 上传」，图标再报一遍会被 TalkBack 念两次。
-                                    contentDescription = null,
-                                    tint = colorScheme.onBackground,
-                                )
-                            },
-                            onClick = onPickZip,
-                        )
+                    // 查重进度：只有一句计数，永远占一行 —— 「继续查」按钮和它下面那句说明
+                    // 会随 remaining 消失，查完那一刻整块缩一行、下面内容跟着上移一截。
+                    if (state.checking || checked > 0) {
+                        item {
+                            CheckProgressMiuix(
+                                checked = checked,
+                                total = state.rows.size,
+                                checking = state.checking,
+                                fromCache = state.fromCache,
+                            )
+                        }
                     }
-                }
 
-                // 「上传记录」不占这一页：它挪到了顶栏图标背后（见 onOpenHistory）。
-
-                // 已装模块这一组也给标题：上面两组都有名有姓，这一组裸着会读成「还没结束的上一组」。
-                item {
-                    SmallTitle(
-                        text = stringResource(R.string.module_upload_section_installed),
-                        modifier = Modifier.padding(top = 20.dp),
-                        // 纵向内边距收成 0：组与组之间的 20dp、标题与内容的 8dp 由这里和卡片自己给，
-                        // 否则默认内边距会把间距叠成两倍。
-                        insideMargin = PaddingValues(
-                            start = 16.dp,
-                            top = 0.dp,
-                            end = 16.dp,
-                            bottom = 0.dp,
-                        ),
-                    )
-                }
-
-                if (visible.isEmpty()) {
-                    // 空态：图标 + 主文案 + 副说明；筛选筛空时再给一枚「清掉筛选」的动作。
-                    // 组标题仍然保留，否则「已装在本机」下面突然空一块说不清是哪一组空了。
                     item {
-                        EmptyStateMiuix(
-                            filtered = state.rows.isNotEmpty(),
-                            onReset = {
-                                onFilter(ModuleUploadRules.Filter.ALL)
-                                handleSearchStatusChange(searchStatus.copy(searchText = ""))
-                            },
-                        )
+                        Card(
+                            modifier = Modifier
+                                .padding(top = 12.dp)
+                                .fillMaxWidth(),
+                        ) {
+                            ArrowPreference(
+                                title = stringResource(R.string.module_upload_pick_zip),
+                                summary = stringResource(R.string.module_upload_pick_zip_summary),
+                                startAction = {
+                                    Icon(
+                                        MiuixIcons.UploadCloud,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                        // 这一行的标题就是「选择 zip 上传」，图标再报一遍会被 TalkBack 念两次。
+                                        contentDescription = null,
+                                        tint = colorScheme.onBackground,
+                                    )
+                                },
+                                onClick = onPickZip,
+                            )
+                        }
                     }
-                } else {
-                    itemsIndexed(visible, key = { _, row -> row.id }) { index, row ->
-                        UploadRowCardMiuix(
-                            row = row,
-                            expanded = state.expandedId == row.id,
-                            onToggle = { onToggleRow(row.id) },
-                            onPick = { onPickForRow(row) },
-                            onUseArchived = { onUseArchived(row) },
-                            uploadUpdate = ModuleUploadRules.showsUploadUpdate(
-                                row.versionCode,
-                                row.status,
-                                uploadedMax[row.id],
+
+                    // 「上传记录」不占这一页：它挪到了顶栏图标背后（见 onOpenHistory）。
+
+                    // 已装模块这一组也给标题：上面两组都有名有姓，这一组裸着会读成「还没结束的上一组」。
+                    item {
+                        SmallTitle(
+                            text = stringResource(R.string.module_upload_section_installed),
+                            modifier = Modifier.padding(top = 20.dp),
+                            // 纵向内边距收成 0：组与组之间的 20dp、标题与内容的 8dp 由这里和卡片自己给，
+                            // 否则默认内边距会把间距叠成两倍。
+                            insideMargin = PaddingValues(
+                                start = 16.dp,
+                                top = 0.dp,
+                                end = 16.dp,
+                                bottom = 0.dp,
                             ),
-                            // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
-                            // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
-                            picking = state.pickingFor != null,
-                            pickingThis = state.pickingFor == row.id,
-                            // 组内第一张卡紧跟标题：8dp；其余卡片之间 12dp。
-                            topGap = if (index == 0) 8.dp else 12.dp,
                         )
                     }
-                }
 
-                item {
-                    Spacer(Modifier.height(24.dp))
+                    if (visible.isEmpty()) {
+                        // 空态：图标 + 主文案 + 副说明；筛选筛空时再给一枚「清掉筛选」的动作。
+                        // 组标题仍然保留，否则「已装在本机」下面突然空一块说不清是哪一组空了。
+                        item {
+                            EmptyStateMiuix(
+                                filtered = state.rows.isNotEmpty(),
+                                onReset = {
+                                    onFilter(ModuleUploadRules.Filter.ALL)
+                                    handleSearchStatusChange(searchStatus.copy(searchText = ""))
+                                },
+                            )
+                        }
+                    } else {
+                        itemsIndexed(visible, key = { _, row -> row.id }) { index, row ->
+                            UploadRowCardMiuix(
+                                row = row,
+                                expanded = state.expandedId == row.id,
+                                onToggle = { onToggleRow(row.id) },
+                                onPick = { onPickForRow(row) },
+                                onUseArchived = { onUseArchived(row) },
+                                uploadUpdate = ModuleUploadRules.showsUploadUpdate(
+                                    row.versionCode,
+                                    row.status,
+                                    uploadedMax[row.id],
+                                ),
+                                // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
+                                // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
+                                picking = state.pickingFor != null,
+                                pickingThis = state.pickingFor == row.id,
+                                // 组内第一张卡紧跟标题：8dp；其余卡片之间 12dp。
+                                topGap = if (index == 0) 8.dp else 12.dp,
+                            )
+                        }
+                    }
+
+                    item {
+                        Spacer(Modifier.height(24.dp))
+                    }
                 }
             }
         }

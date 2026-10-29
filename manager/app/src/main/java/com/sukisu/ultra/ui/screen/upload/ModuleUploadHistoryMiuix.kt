@@ -4,6 +4,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -50,6 +51,7 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -57,7 +59,6 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Notes
-import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -124,86 +125,85 @@ fun ModuleUploadHistoryMiuix(
                             )
                         }
                     },
-                    actions = {
-                        // 刷新期间图标原地转 + 置灰，与列表页顶栏同一套表达。
-                        val spin = rememberSpinAngle(mine.loading)
-                        IconButton(onClick = onRefresh, enabled = !mine.loading) {
-                            Icon(
-                                // 在图层里读角度：每帧只重绘这一层，不重组顶栏。
-                                modifier = Modifier.graphicsLayer { rotationZ = spin.value },
-                                imageVector = MiuixIcons.Refresh,
-                                contentDescription = stringResource(R.string.module_upload_refresh),
-                                // Miuix 的 IconButton 不会按 enabled 调淡图标，禁用态与可点态
-                                // 长得一模一样，用户会以为没点上而反复点。这里手动换禁用色。
-                                tint = if (mine.loading) {
-                                    colorScheme.onSurfaceVariantSummary
-                                } else {
-                                    colorScheme.onSurface
-                                },
-                            )
-                        }
-                    },
+                    // 刷新不在顶栏：这一页只有一件可刷的事，改成列表下拉（见下面 PullToRefresh）。
                 )
             }
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
             .only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxHeight()
-                .scrollEndHaptic()
-                .overScrollVertical()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(horizontal = 12.dp),
-            contentPadding = innerPadding,
-            // 卡片间的纵向间距统一由列表负责：卡片自己再带 padding，两种间距会叠起来。
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            overscrollEffect = null,
+        // 下拉刷新：全页只有这一件可刷的事，手势比顶栏那颗键更短。
+        // isRefreshing 跟 mine.loading 走 —— 这一页没有「首次载入」与「重新拉」
+        // 两种语义，两者都是打一次 GET /mine。
+        val refreshTexts = listOf(
+            stringResource(R.string.refresh_pulling),
+            stringResource(R.string.refresh_release),
+            stringResource(R.string.refresh_refresh),
+            stringResource(R.string.refresh_complete),
+        )
+        PullToRefresh(
+            isRefreshing = mine.loading,
+            onRefresh = onRefresh,
+            refreshTexts = refreshTexts,
+            // 只留顶部：下拉指示器要落在顶栏下面，不能钻进标题栏里。
+            contentPadding = PaddingValues(top = innerPadding.calculateTopPadding()),
         ) {
-            item {
-                Text(
-                    modifier = Modifier.padding(start = 4.dp, top = 12.dp, end = 4.dp),
-                    text = stringResource(R.string.module_upload_mine_entry_summary),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            }
-
-            if (notice != null) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .scrollEndHaptic()
+                    .overScrollVertical()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection)
+                    .padding(horizontal = 12.dp),
+                contentPadding = innerPadding,
+                // 卡片间的纵向间距统一由列表负责：卡片自己再带 padding，两种间距会叠起来。
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                overscrollEffect = null,
+            ) {
                 item {
                     Text(
-                        modifier = Modifier.padding(start = 4.dp, end = 4.dp),
-                        text = notice,
+                        modifier = Modifier.padding(start = 4.dp, top = 12.dp, end = 4.dp),
+                        text = stringResource(R.string.module_upload_mine_entry_summary),
                         fontSize = 12.sp,
                         color = colorScheme.onSurfaceVariantSummary,
                     )
                 }
-            }
 
-            if (empty) {
-                item { HistoryEmptyMiuix() }
-            }
+                if (notice != null) {
+                    item {
+                        Text(
+                            modifier = Modifier.padding(start = 4.dp, end = 4.dp),
+                            text = notice,
+                            fontSize = 12.sp,
+                            color = colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
 
-            items(groups, key = { it.id }) { group ->
-                val local = installed[group.id]
-                HistoryCardMiuix(
-                    group = group,
-                    expanded = expandedId == group.id,
-                    onToggle = { expandedId = if (expandedId == group.id) null else group.id },
-                    // 本地装着更新的一版才有「上传更新」：与列表页那一枚标签同一条判据。
-                    uploadUpdate = local != null && ModuleUploadRules.showsUploadUpdate(
-                        localVersionCode = local.versionCode,
-                        status = local.status,
-                        uploadedVersionCode = group.latestVersionCode,
-                    ),
-                    picking = state.pickingFor != null,
-                    pickingThis = state.pickingFor == group.id,
-                    onPick = { onPickForMine(group.latest) },
-                )
-            }
+                if (empty) {
+                    item { HistoryEmptyMiuix() }
+                }
 
-            item { Spacer(Modifier.height(24.dp)) }
+                items(groups, key = { it.id }) { group ->
+                    val local = installed[group.id]
+                    HistoryCardMiuix(
+                        group = group,
+                        expanded = expandedId == group.id,
+                        onToggle = { expandedId = if (expandedId == group.id) null else group.id },
+                        // 本地装着更新的一版才有「上传更新」：与列表页那一枚标签同一条判据。
+                        uploadUpdate = local != null && ModuleUploadRules.showsUploadUpdate(
+                            localVersionCode = local.versionCode,
+                            status = local.status,
+                            uploadedVersionCode = group.latestVersionCode,
+                        ),
+                        picking = state.pickingFor != null,
+                        pickingThis = state.pickingFor == group.id,
+                        onPick = { onPickForMine(group.latest) },
+                    )
+                }
+
+                item { Spacer(Modifier.height(24.dp)) }
+            }
         }
     }
 }

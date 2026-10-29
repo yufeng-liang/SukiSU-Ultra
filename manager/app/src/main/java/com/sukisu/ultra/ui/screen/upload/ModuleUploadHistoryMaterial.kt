@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -17,17 +18,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,9 +39,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -107,21 +110,8 @@ fun ModuleUploadHistoryMaterial(
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.module_upload_mine_entry_title)) },
                 navigationIcon = { TopBarBackButton(onClick = onBack) },
-                actions = {
-                    // 刷新期间图标原地转、并置灰，与列表页顶栏同一套表达：
-                    // 换成一个圆环会让人以为这颗按钮变成了别的东西。
-                    val spin = rememberSpinAngle(mine.loading)
-                    IconButton(onClick = onRefresh, enabled = !mine.loading) {
-                        Icon(
-                            // 在图层里读角度：每帧只重绘这一层，不重组顶栏。
-                            modifier = Modifier.graphicsLayer { rotationZ = spin.value },
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = stringResource(R.string.module_upload_refresh),
-                            // 置灰交给 IconButton 自己：enabled=false 时 M3 会把内容色
-                            // 换成 alpha 0.38，这里再手动 tint 会叠成两层透明。
-                        )
-                    }
-                },
+                // 刷新不再占顶栏：这一页只有一件需要刷的事，往下拉一把就是它，
+                // 与列表页/模块页同一个手势（见下面 content 里的 PullToRefreshBox）。
                 colors = expressiveTopAppBarColors(),
                 // 大标题栏自己吃顶部安全区，所以 Scaffold 那边只留水平方向。
                 windowInsets = WindowInsets.safeDrawing
@@ -132,56 +122,78 @@ fun ModuleUploadHistoryMaterial(
         contentWindowInsets = WindowInsets.safeDrawing
             .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxHeight()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = innerPadding.calculateTopPadding(),
-                bottom = innerPadding.calculateBottomPadding() + 24.dp,
-            ),
-        ) {
-            item {
-                Text(
-                    text = stringResource(R.string.module_upload_mine_entry_summary),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // 下拉刷新：全页只有这一件可刷的事，手势比顶栏那颗键更短。
+        // isRefreshing 跟 mine.loading 走 —— 这一页没有「首次载入」与「重新拉」
+        // 两种语义，两者都是打一次 GET /mine。
+        val pullToRefreshState = rememberPullToRefreshState()
+        val haptic = LocalHapticFeedback.current
+        PullToRefreshBox(
+            modifier = Modifier.fillMaxSize(),
+            isRefreshing = mine.loading,
+            onRefresh = {
+                haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                onRefresh()
+            },
+            state = pullToRefreshState,
+            indicator = {
+                PullToRefreshDefaults.LoadingIndicator(
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    isRefreshing = mine.loading,
+                    state = pullToRefreshState,
                 )
-            }
-
-            if (notice != null) {
+            },
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = innerPadding.calculateBottomPadding() + 24.dp,
+                ),
+            ) {
                 item {
                     Text(
-                        text = notice,
+                        text = stringResource(R.string.module_upload_mine_entry_summary),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
 
-            if (empty) {
-                item { HistoryEmptyMaterial() }
-            }
+                if (notice != null) {
+                    item {
+                        Text(
+                            text = notice,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
 
-            items(groups, key = { it.id }) { group ->
-                val local = installed[group.id]
-                HistoryCardMaterial(
-                    group = group,
-                    expanded = expandedId == group.id,
-                    onToggle = { expandedId = if (expandedId == group.id) null else group.id },
-                    // 本地装着更新的一版才有「上传更新」：与列表页那一枚标签同一条判据。
-                    uploadUpdate = local != null && ModuleUploadRules.showsUploadUpdate(
-                        localVersionCode = local.versionCode,
-                        status = local.status,
-                        uploadedVersionCode = group.latestVersionCode,
-                    ),
-                    picking = state.pickingFor != null,
-                    pickingThis = state.pickingFor == group.id,
-                    onPick = { onPickForMine(group.latest) },
-                )
+                if (empty) {
+                    item { HistoryEmptyMaterial() }
+                }
+
+                items(groups, key = { it.id }) { group ->
+                    val local = installed[group.id]
+                    HistoryCardMaterial(
+                        group = group,
+                        expanded = expandedId == group.id,
+                        onToggle = { expandedId = if (expandedId == group.id) null else group.id },
+                        // 本地装着更新的一版才有「上传更新」：与列表页那一枚标签同一条判据。
+                        uploadUpdate = local != null && ModuleUploadRules.showsUploadUpdate(
+                            localVersionCode = local.versionCode,
+                            status = local.status,
+                            uploadedVersionCode = group.latestVersionCode,
+                        ),
+                        picking = state.pickingFor != null,
+                        pickingThis = state.pickingFor == group.id,
+                        onPick = { onPickForMine(group.latest) },
+                    )
+                }
             }
         }
     }

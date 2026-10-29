@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
@@ -43,13 +42,17 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -112,8 +115,8 @@ fun ModuleUploadListMaterial(
                 // 清除即清空搜索词：VM 的 updateSearchText 会把 searchStatus 一并同步。
                 onClearClick = { onSearchTextChange("") },
                 navigationIcon = { TopBarBackButton(onClick = onBack) },
-                // 刷新放顶栏而不是列表行里：列表一滚，行内按钮就看不见了；
-                // 而且在模块为空时那一行只剩一个孤零零的「刷新」。
+                // 顶栏只留「解释」「记录」「更多」三件事：它们都是点一下就走。
+                // 刷新是「等一下再看」，已经挪到列表下拉（见 content 里的 PullToRefreshBox）。
                 actions = {
                     // 「为什么只能传原始 zip」的说明入口。重建包那条路关掉之后，
                     // 「已经装过的模块」上就没有上传入口了，用户会来找解释——就在这里。
@@ -131,25 +134,8 @@ fun ModuleUploadListMaterial(
                             contentDescription = stringResource(R.string.module_upload_history_open),
                         )
                     }
-                    // 刷新期间图标原地转、并置灰；不再换成一个小圆环 ——
-                    // 换形状会让人以为这颗按钮变成了别的东西，转同一个图标才读得出
-                    // 「刚点的那件事还在做」。
-                    val spin = rememberSpinAngle(state.busy)
-                    IconButton(
-                        onClick = onRefresh,
-                        enabled = !state.busy,
-                    ) {
-                        Icon(
-                            // rotationZ 走 graphicsLayer：在图层里读角度，每帧只重绘
-                            // 这一层，不重组顶栏。
-                            modifier = Modifier.graphicsLayer { rotationZ = spin.value },
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = stringResource(R.string.module_upload_refresh),
-                            // 置灰交给 IconButton 自己：`enabled = false` 时 M3 会把
-                            // LocalContentColor 换成 contentColor.copy(alpha = 0.38f)。
-                            // 这里再手动 tint 一次会叠成两层透明，图标淡到看不见。
-                        )
-                    }
+                    // 刷新不再占顶栏位置：顶栏按钮要「点一下就走」，而刷新是「等一下再看」，
+                    // 放在列表上下拉更符合它（与模块页/仓库页同一个手势）。
                     // 留存开关与清理入口都在这个菜单背后：两件事都只跟「占空间」有关，
                     // 顶栏也不该为此多摆一个开关。
                     // 载入完成前先禁掉：面板里的开关初值来自 settings，而列表状态里的
@@ -166,16 +152,18 @@ fun ModuleUploadListMaterial(
                     }
                 },
                 scrollBehavior = scrollBehavior,
-                // 顶栏底边的刷新进度条。槽位常驻 3dp、只在忙时往里画条：
+                // 顶栏底边的进度条。槽位常驻 3dp、只在忙时往里画条：
                 // 高度恒定，进度条出现/消失不会让下面的列表跟着上下跳（这一屏
                 // 的查询进度行已经为「高度跳动」踩过一次，同一套规矩）。
+                // 刷新中不画：那一刻下拉指示器正悬在列表顶上转，两条进度说同一件事，
+                // 一条就够 —— 这条留给它管不到的「首次载入」和「查重」。
                 bottomProgress = {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp),
                     ) {
-                        if (state.busy) {
+                        if (state.busy && !state.refreshing) {
                             LinearProgressIndicator(modifier = Modifier.fillMaxSize())
                         }
                     }
@@ -228,121 +216,147 @@ fun ModuleUploadListMaterial(
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
             .only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxHeight()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
-            // 上游列表规范：水平 16dp 走 contentPadding（内容可以滚出屏幕边缘），
-            // item 之间的纵向间距统一由 spacedBy(12.dp) 负责，不再靠各 item 手工垫。
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = innerPadding.calculateTopPadding(),
-                bottom = innerPadding.calculateBottomPadding() + 24.dp,
-            ),
+        // 下拉刷新：与模块页/仓库页同一枚指示器、同一个手势。
+        // 刷新这颗键原来占着顶栏，要「先找到、再按下」；而这一屏的操作重心就在列表上，
+        // 往下拉一把是最短的路。刷的语义没变（重新扫一遍已装模块 + 强制重查）。
+        val pullToRefreshState = rememberPullToRefreshState()
+        val haptic = LocalHapticFeedback.current
+        PullToRefreshBox(
+            modifier = Modifier.fillMaxSize(),
+            // 只跟刷新走，不跟 busy：busy 里还含「查重」和首次载入，
+            // 那两件事由顶栏底边那条细进度条负责，不该让下拉指示器一直转着。
+            isRefreshing = state.refreshing,
+            onRefresh = {
+                // 轻振一下：下拉本身没有「按下」的反馈，不补这一下就分不清
+                // 是「触发了」还是「没拉够」。
+                haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                onRefresh()
+            },
+            state = pullToRefreshState,
+            indicator = {
+                PullToRefreshDefaults.LoadingIndicator(
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    isRefreshing = state.refreshing,
+                    state = pullToRefreshState,
+                )
+            },
         ) {
-            item {
-                // 四个筛选项在 360dp 窄屏上放不下，原来的定宽 Row 会把最后两个裁掉一半。
-                // 换横向滚动；外层列表已经留了 16dp，这里不再叠 contentPadding，
-                // 否则筛选条和上下内容的左缘对不齐。
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 0.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    val labels = listOf(
-                        ModuleUploadRules.Filter.ALL to R.string.module_upload_filter_all,
-                        ModuleUploadRules.Filter.NOT_RECORDED to R.string.module_upload_filter_not_recorded,
-                        ModuleUploadRules.Filter.RECORDED to R.string.module_upload_filter_recorded,
-                        ModuleUploadRules.Filter.UNKNOWN to R.string.module_upload_filter_unknown,
-                    )
-                    items(labels) { (filter, label) ->
-                        FilterChip(
-                            selected = state.filter == filter,
-                            onClick = { onFilter(filter) },
-                            label = { Text(stringResource(label)) },
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                // 上游列表规范：水平 16dp 走 contentPadding（内容可以滚出屏幕边缘），
+                // item 之间的纵向间距统一由 spacedBy(12.dp) 负责，不再靠各 item 手工垫。
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = innerPadding.calculateBottomPadding() + 24.dp,
+                ),
+            ) {
+                item {
+                    // 四个筛选项在 360dp 窄屏上放不下，原来的定宽 Row 会把最后两个裁掉一半。
+                    // 换横向滚动；外层列表已经留了 16dp，这里不再叠 contentPadding，
+                    // 否则筛选条和上下内容的左缘对不齐。
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val labels = listOf(
+                            ModuleUploadRules.Filter.ALL to R.string.module_upload_filter_all,
+                            ModuleUploadRules.Filter.NOT_RECORDED to R.string.module_upload_filter_not_recorded,
+                            ModuleUploadRules.Filter.RECORDED to R.string.module_upload_filter_recorded,
+                            ModuleUploadRules.Filter.UNKNOWN to R.string.module_upload_filter_unknown,
+                        )
+                        items(labels) { (filter, label) ->
+                            FilterChip(
+                                selected = state.filter == filter,
+                                onClick = { onFilter(filter) },
+                                label = { Text(stringResource(label)) },
+                            )
+                        }
+                    }
+                }
+
+                // 查重进度：一行计数（见 CheckProgressMaterial）。进度条交给顶栏底边那条，
+                // 这里不重复画第二条。一次都没查过、也不在查（checked == 0 && !checking）
+                // 时整块不占位，否则列表顶上会平白多出一行空白。
+                if (checked > 0 || state.checking) {
+                    item {
+                        CheckProgressMaterial(
+                            checked = checked,
+                            total = state.rows.size,
+                            checking = state.checking,
+                            fromCache = state.fromCache,
                         )
                     }
                 }
-            }
 
-            // 查重进度：一行计数（见 CheckProgressMaterial）。进度条交给顶栏底边那条，
-            // 这里不重复画第二条。一次都没查过、也不在查（checked == 0 && !checking）
-            // 时整块不占位，否则列表顶上会平白多出一行空白。
-            if (checked > 0 || state.checking) {
                 item {
-                    CheckProgressMaterial(
-                        checked = checked,
-                        total = state.rows.size,
-                        checking = state.checking,
-                        fromCache = state.fromCache,
-                    )
-                }
-            }
-
-            item {
-                SegmentedColumn(
-                    content = listOf {
-                        SegmentedListItem(
-                            onClick = onPickZip,
-                            headlineContent = { Text(stringResource(R.string.module_upload_pick_zip)) },
-                            supportingContent = { Text(stringResource(R.string.module_upload_pick_zip_summary)) },
-                            leadingContent = {
-                                IconTile(
-                                    Icons.Outlined.CloudUpload,
-                                    stringResource(R.string.module_upload_pick_zip),
-                                )
-                            },
-                            trailingContent = {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
-                            },
-                        )
-                    },
-                )
-            }
-
-            // 「上传记录」不再占这一页：它挪到了顶栏图标背后（见 onOpenHistory）。
-            // 这一页只回答「已装的这些收录了没有」，记录是另一件事、另一个页面。
-
-            // 第三块「已装在本机」也补上标题：三块并列成同一级的分组，
-            // 而不是「两块有标题 + 一堆平铺卡片」。
-            item {
-                SectionHeaderMaterial(
-                    modifier = Modifier.padding(top = 20.dp),
-                    text = stringResource(R.string.module_upload_section_installed),
-                )
-            }
-
-            if (visible.isEmpty()) {
-                item {
-                    EmptyStateMaterial(
-                        filtered = state.rows.isNotEmpty(),
-                        // 只组合既有回调：筛选与搜索词一起复位，不为这个按钮新增参数。
-                        onClear = {
-                            onFilter(ModuleUploadRules.Filter.ALL)
-                            onSearchTextChange("")
+                    SegmentedColumn(
+                        content = listOf {
+                            SegmentedListItem(
+                                onClick = onPickZip,
+                                headlineContent = { Text(stringResource(R.string.module_upload_pick_zip)) },
+                                supportingContent = { Text(stringResource(R.string.module_upload_pick_zip_summary)) },
+                                leadingContent = {
+                                    IconTile(
+                                        Icons.Outlined.CloudUpload,
+                                        stringResource(R.string.module_upload_pick_zip),
+                                    )
+                                },
+                                trailingContent = {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
+                                },
+                            )
                         },
                     )
                 }
-            } else {
-                itemsIndexed(visible, key = { _, row -> row.id }) { _, row ->
-                    UploadRowCardMaterial(
-                        row = row,
-                        expanded = state.expandedId == row.id,
-                        onToggle = { onToggleRow(row.id) },
-                        onPick = { onPickForRow(row) },
-                        onUseArchived = { onUseArchived(row) },
-                        uploadUpdate = ModuleUploadRules.showsUploadUpdate(
-                            row.versionCode,
-                            row.status,
-                            uploadedMax[row.id],
-                        ),
-                        // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
-                        // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
-                        picking = state.pickingFor != null,
-                        pickingThis = state.pickingFor == row.id,
+
+                // 「上传记录」不再占这一页：它挪到了顶栏图标背后（见 onOpenHistory）。
+                // 这一页只回答「已装的这些收录了没有」，记录是另一件事、另一个页面。
+
+                // 第三块「已装在本机」也补上标题：三块并列成同一级的分组，
+                // 而不是「两块有标题 + 一堆平铺卡片」。
+                item {
+                    SectionHeaderMaterial(
+                        modifier = Modifier.padding(top = 20.dp),
+                        text = stringResource(R.string.module_upload_section_installed),
                     )
+                }
+
+                if (visible.isEmpty()) {
+                    item {
+                        EmptyStateMaterial(
+                            filtered = state.rows.isNotEmpty(),
+                            // 只组合既有回调：筛选与搜索词一起复位，不为这个按钮新增参数。
+                            onClear = {
+                                onFilter(ModuleUploadRules.Filter.ALL)
+                                onSearchTextChange("")
+                            },
+                        )
+                    }
+                } else {
+                    itemsIndexed(visible, key = { _, row -> row.id }) { _, row ->
+                        UploadRowCardMaterial(
+                            row = row,
+                            expanded = state.expandedId == row.id,
+                            onToggle = { onToggleRow(row.id) },
+                            onPick = { onPickForRow(row) },
+                            onUseArchived = { onUseArchived(row) },
+                            uploadUpdate = ModuleUploadRules.showsUploadUpdate(
+                                row.versionCode,
+                                row.status,
+                                uploadedMax[row.id],
+                            ),
+                            // 闸门在 ViewModel 里是全局的（pickingFor != null 就拒绝一切挑包），
+                            // 界面照这个来：任一行为 true 时所有挑包按钮都禁用，只有那一行转圈。
+                            picking = state.pickingFor != null,
+                            pickingThis = state.pickingFor == row.id,
+                        )
+                    }
                 }
             }
         }

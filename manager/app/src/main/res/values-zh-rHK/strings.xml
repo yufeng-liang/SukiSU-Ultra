@@ -321,7 +321,6 @@
     <string name="module_upload_filter_unknown">查不了</string>
     <string name="module_upload_search_hint">搜尋模組</string>
     <string name="module_upload_search_clear">清除搜尋</string>
-    <string name="module_upload_refresh">重新整理</string>
     <string name="module_upload_progress_checked">已查 %1$d / 共 %2$d</string>
     <string name="module_upload_section_installed">已裝在本機</string>
     <string name="module_upload_empty">沒有已安裝的模組</string>

@@ -1103,7 +1103,6 @@
     <string name="module_upload_filter_unknown">Unknown</string>
     <string name="module_upload_search_hint">Search modules</string>
     <string name="module_upload_search_clear">Clear search</string>
-    <string name="module_upload_refresh">Refresh</string>
 
     <string name="module_upload_progress_checked">Checked %1$d of %2$d</string>
     <string name="module_upload_progress_checked_cached">Checked %1$d of %2$d · cached</string>
