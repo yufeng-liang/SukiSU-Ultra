@@ -84,6 +84,8 @@ fun ModuleUploadHistoryMiuix(
     onRefresh: () -> Unit,
     /** 给某个模块挑一枚新版本的 zip；与主列表共用同一个 SAF 启动器与同一道闸门。 */
     onPickForMine: (MineModule) -> Unit,
+    /** 退出当前上传身份：退出后要重新做一次签名核验，换账号也在这里换。 */
+    onSignOut: () -> Unit,
 ) {
     val enableBlur = LocalEnableBlur.current
     val scrollBehavior = MiuixScrollBehavior()
@@ -116,6 +118,13 @@ fun ModuleUploadHistoryMiuix(
                     color = barColor,
                     title = stringResource(R.string.module_upload_mine_entry_title),
                     scrollBehavior = scrollBehavior,
+                    actions = {
+                        // 换账号只能在这里：身份页核验过就不出现了，退出是唯一回头路。
+                        TextButton(
+                            text = stringResource(R.string.module_upload_session_signout),
+                            onClick = onSignOut,
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
                             val layoutDirection = LocalLayoutDirection.current

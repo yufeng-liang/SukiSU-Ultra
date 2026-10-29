@@ -1456,4 +1456,17 @@
     <string name="module_upload_row_collapsed">Collapsed</string>
     <!-- 无障碍：PR 链接的点击动作名（TalkBack 念出来）。 -->
     <string name="module_upload_open_pr">Open pull request</string>
+    <string name="module_upload_identity_title">Verify your identity</string>
+    <string name="module_upload_identity_why_title">Why we ask for these</string>
+    <string name="module_upload_identity_why_body">Uploads are public and reviewed by a human, so we need to know who submitted each module. We record your Coolapk UID so a module can be traced back to its uploader later, and we require a Coolapk account of level 2 or higher. Your signature is read only once, to prove the UID is yours.</string>
+    <string name="module_upload_identity_level">A Coolapk account of level 2 or higher is required</string>
+    <string name="module_upload_identity_anchor_title">Pick one module as the anchor</string>
+    <string name="module_upload_identity_anchor_hint">The string below is derived from one of your modules, so it only works for you. Pick any module you already have — it is only read, never uploaded.</string>
+    <string name="module_upload_identity_anchor_empty">No module selected yet</string>
+    <string name="module_upload_identity_anchor_pick">Pick a module zip</string>
+    <string name="module_upload_identity_pledge">I will not upload malicious modules, I take responsibility for what I submit, and I understand that uploads are public and contain no personal information or keys.</string>
+    <string name="module_upload_identity_verify">Verify and continue</string>
+    <string name="module_upload_identity_verifying">Verifying…</string>
+    <string name="module_upload_identity_expired">Your verification has expired. Verify again to keep uploading.</string>
+    <string name="module_upload_identity_verified">Verified. You will not need to do this again.</string>
 </resources>

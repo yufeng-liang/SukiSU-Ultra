@@ -217,6 +217,34 @@ data class SubmitResult(
 )
 
 /**
+ * 服务端在 `/session/issue` 应答里回抄的一份身份快照。
+ *
+ * [nickname] 必须是酷安反查得到的那个（不是用户自己填的署名）；[level] 为 null 表示这一版
+ * 服务端没给，界面不该把它当 0 显示。[avatar] 为空串是正常情况（对方没设头像）。
+ */
+data class IdentityInfo(
+    val uid: String,
+    val nickname: String,
+    val avatar: String = "",
+    val level: Int? = null,
+)
+
+/**
+ * 「用一次签名核验换一张长期令牌」的结果。
+ *
+ * [ok] 为 false 时 [message] 一定非空且可直出界面；[code] 是服务端给的机器可读码
+ * （`proof_used` / `not_owner` / `owner_unknown` / `index_unavailable` / `identity_required`），
+ * 没有就是空串 —— 与 [SubmitResult.code] 同一条约定：认码，不认文案。
+ */
+data class IssueOutcome(
+    val ok: Boolean = false,
+    val session: SessionGrant? = null,
+    val identity: IdentityInfo? = null,
+    val message: String = "",
+    val code: String = "",
+)
+
+/**
  * 酷安 UID 的核实结果（`GET /user?uid=` 的四态 + 本地判定的形状不对）。
  *
  * 投稿人身份从"自己填一个署名"改成"填酷安 UID 并核实出昵称"之后，这里就是那道门的全部取值：
@@ -372,6 +400,9 @@ object ModuleContribution {
      * 形状不对的一串**不发出去**（服务端会当没带、回落签名路），也不往本地存。
      */
     internal val SESSION_TOKEN_RE = Regex("^[0-9a-f]{64}$")
+
+    /** 整包 sha256 的形状（与服务端 `proof.ts` 的 `SHA256_RE` 同一条）：64 位小写十六进制。 */
+    private val SHA256_HEX_RE = Regex("^[0-9a-f]{64}$")
 
     /**
      * 合法模块 id 的形状：字母开头，之后只允许字母、数字、点、下划线、连字符。
@@ -994,6 +1025,121 @@ object ModuleContribution {
             }
             Unit
         }
+    }
+
+    /**
+     * 用一次酷安签名核验，换一张九十天的长期令牌（「先把身份验证好，之后上传不再改签名」）。
+     *
+     * 为什么必须带上 [items]：酷安签名是**公开**的，谁都能看到别人 bio 里那串口令。如果换
+     * 令牌只要「bio 里有某个只跟 UID 有关的串」，那任何看到签名的人都能替**别人**领一张，
+     * 领到之后就能以那个人的名义投稿。所以这里与投稿走同一套口令：密码学上绑死一套具体的
+     * 包（id + 整包 sha256），看见口令的人反推不出包，也就无法重放。
+     *
+     * 成功之后服务端烧掉 nonce、写下九十天的 `session:<sha256(token)>`；应答里连同
+     * `identity` 一起回抄一份身份，界面拿它显示昵称头像，不必再为了一行字多查一次 `/user`。
+     *
+     * 失败不抛异常（调用点在界面里，抛出去就是一次崩溃），一律走 [IssueOutcome]。
+     */
+    suspend fun issueIdentitySession(
+        coolapkUid: String,
+        nonce: String,
+        items: List<ProofItem>,
+        pledge: String = PLEDGE_VERSION,
+    ): IssueOutcome {
+        val uid = coolapkUid.trim()
+        val safeNonce = nonce.trim()
+        // 形状不对的请求不发出去：服务端同样会 400，先在本地说清楚是哪一项不对。
+        if (!isValidUid(uid)) {
+            return IssueOutcome(message = "酷安 UID 要填 4~12 位数字", code = "identity_required")
+        }
+        if (safeNonce.isEmpty()) {
+            return IssueOutcome(message = "口令还没生成好，请稍后重试", code = "identity_required")
+        }
+        if (items.isEmpty()) {
+            return IssueOutcome(message = "验证身份要先挑一个模块包做锚点", code = "identity_required")
+        }
+        val declared = JSONArray()
+        for (item in items) {
+            val id = item.id.trim()
+            val sha = item.zipSha.trim().lowercase(Locale.ROOT)
+            if (id.isEmpty() || !SHA256_HEX_RE.matches(sha)) {
+                return IssueOutcome(message = "模块包的指纹不对，请重新挑一次", code = "identity_required")
+            }
+            declared.put(JSONObject().put("id", id).put("zipSha", sha))
+        }
+        val payload = JSONObject()
+            .put("coolapkUid", uid)
+            .put("nonce", safeNonce)
+            .put("pledge", pledge)
+            .put("items", declared)
+            .toString()
+            .toRequestBody(JSON_MEDIA_TYPE)
+        val url = BASE_URL.trimEnd('/') + "/session/issue"
+        return withContext(Dispatchers.IO) {
+            val call = runCatching {
+                client().newCall(Request.Builder().url(url).post(payload).build())
+            }.getOrNull() ?: return@withContext IssueOutcome(message = "网络不可用，验证没有完成")
+            try {
+                withTimeout(SUBMIT_TIMEOUT_MS) { execute(call, SUBMIT_TIMEOUT_MS) }.use { response ->
+                    readIssueOutcome(response)
+                }
+            } catch (e: CancellationException) {
+                if (e is TimeoutCancellationException) {
+                    IssueOutcome(message = "验证超时了，请稍后重试")
+                } else {
+                    throw e
+                }
+            } catch (e: SocketTimeoutException) {
+                IssueOutcome(message = "验证超时了，请稍后重试")
+            } catch (e: InterruptedIOException) {
+                // 连接被重置、写一半断流：它也是 IOException 的子类，不单独分支就会落到
+                // 下面那句「网络不可用」，用户明明连着网却被告知没网。
+                IssueOutcome(message = "验证过程中连接中断了，请稍后重试")
+            } catch (e: IOException) {
+                IssueOutcome(message = "网络不可用，验证没有完成")
+            } catch (e: Throwable) {
+                IssueOutcome(message = e.message?.takeIf { it.isNotBlank() } ?: "验证没有通过，请稍后重试")
+            }
+        }
+    }
+
+    /**
+     * `/session/issue` 的应答解析。
+     *
+     * 成功时 `session` 与 `identity` 两个对象**都得在**：任何一个缺失或形状不对，都按「这一趟
+     * 没换成」处理 —— 宁可让用户再点一次，也不要往本地写一份缺字段的令牌。
+     */
+    private fun readIssueOutcome(response: Response): IssueOutcome {
+        val text = runCatching { response.body.string() }.getOrNull().orEmpty()
+        val json = runCatching { JSONObject(text) }.getOrNull()
+            ?: return IssueOutcome(message = "服务端回了看不懂的内容，请稍后重试")
+        if (!json.optBoolean("ok", false)) {
+            val message = json.optString("error").trim().ifEmpty { "验证没有通过，请稍后重试" }
+            return IssueOutcome(message = message, code = json.optString("code").trim())
+        }
+        val grant = readSessionGrant(json.optJSONObject("session"))
+            ?: return IssueOutcome(message = "服务端没有给出可用的令牌，请稍后重试")
+        val info = readIdentityInfo(json.optJSONObject("identity"))
+            ?: return IssueOutcome(message = "服务端没有给出身份信息，请稍后重试")
+        return IssueOutcome(ok = true, session = grant, identity = info)
+    }
+
+    /**
+     * `identity` 的必填只有 uid 与昵称：没有昵称就没有可署名的东西；头像与等级可以缺席
+     * （对方没设头像、或旧版服务端还没回抄等级）。
+     */
+    private fun readIdentityInfo(json: JSONObject?): IdentityInfo? {
+        if (json == null) return null
+        val uid = json.optString("uid").trim()
+        val nickname = json.optString("nickname").trim()
+        if (uid.isEmpty() || nickname.isEmpty()) return null
+        val level = if (json.has("level") && !json.isNull("level")) json.optInt("level", -1) else -1
+        return IdentityInfo(
+            uid = uid,
+            nickname = nickname,
+            avatar = json.optString("avatar").trim(),
+            level = level.takeIf { it >= 0 },
+        )
     }
 
     /**

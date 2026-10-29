@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.LocalUiMode
+import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.dialog.ConfirmResult
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
@@ -27,7 +28,7 @@ import com.sukisu.ultra.ui.util.formatFileSize
 import kotlinx.coroutines.launch
 
 /**
- * 「模块上传」路由的入口：一个路由、三屏（列表 / 表单 / 上传记录）、两套主题。
+ * 「模块上传」路由的入口：一个路由、四屏（身份 / 列表 / 表单 / 上传记录）、两套主题。
  *
  * 状态与网络都在 [ModuleUploadViewModel] 里，这里只做三件事：
  * 挑 zip 的 SAF 启动器、一次性提示（Toast）、按当前主题与步骤分派。
@@ -50,6 +51,11 @@ fun ModuleUploadScreen() {
     // 名字带 upload 前缀是为了与下面表单自己的 formState.notice 分清（两者不是一回事）。
     val uploadNotice by viewModel.notice.collectAsStateWithLifecycle()
 
+    // 顶栏头像：核验过就有地址可画（会话里存的那份是登录时留下的，令牌过期也还在）。
+    val avatarUrl = (formState.uidState as? CoolapkUidState.Verified)?.avatar
+        ?.ifBlank { formState.session?.avatar.orEmpty() }
+        .orEmpty()
+
     // 人机校验的 WebView 只在需要时弹出；它自己管生命周期。
     val turnstile = remember { WebViewTurnstileProvider() }
 
@@ -63,7 +69,10 @@ fun ModuleUploadScreen() {
 
     // 表单与记录页的系统返回 = 回列表（与左上角箭头同一件事），不是退出整个路由：
     // 直接 pop 会把这一批已选好的包和算好的 sha 一起丢掉。
-    BackHandler(enabled = step != UploadStep.LIST) { viewModel.backToList() }
+    // 身份页是例外：那时候手上还没有令牌，回列表只是个空壳，按返回就该退出这条路由。
+    BackHandler(enabled = step != UploadStep.LIST) {
+        if (step == UploadStep.IDENTITY) navigator.pop() else viewModel.backToList()
+    }
 
     // 一次性提示：复制失败、超过上限这类一句话能说完的。用 Toast 是因为列表与表单的
     // snackbar host 分属两套 Scaffold，而这类消息不需要「操作按钮」。
@@ -101,6 +110,14 @@ fun ModuleUploadScreen() {
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) viewModel.stageMany(context, uris)
+    }
+
+    // 身份页的锚点包：同样走 SAF，但回来的东西只用来算口令（id + sha256），
+    // 不进表单的 items —— 那是「这次要上传的包」，与「证明我是我的那枚包」不是一回事。
+    val verifyLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) viewModel.stageForVerify(context, uri)
     }
 
     val pickForRow: (UploadRow) -> Unit = { row ->
@@ -179,6 +196,28 @@ fun ModuleUploadScreen() {
     }
 
     when (step) {
+        UploadStep.IDENTITY -> when (uiMode) {
+            UiMode.Miuix -> ModuleUploadIdentityMiuix(
+                state = formState,
+                onExit = { navigator.pop() },
+                onUidChange = viewModel::updateUid,
+                onRetryUid = viewModel::retryUidLookup,
+                onPickZip = { verifyLauncher.launch(arrayOf(ZIP_MIME)) },
+                onConsentChange = viewModel::setConsent,
+                onVerify = viewModel::verifyIdentity,
+            )
+
+            UiMode.Material -> ModuleUploadIdentityMaterial(
+                state = formState,
+                onExit = { navigator.pop() },
+                onUidChange = viewModel::updateUid,
+                onRetryUid = viewModel::retryUidLookup,
+                onPickZip = { verifyLauncher.launch(arrayOf(ZIP_MIME)) },
+                onConsentChange = viewModel::setConsent,
+                onVerify = viewModel::verifyIdentity,
+            )
+        }
+
         UploadStep.LIST -> when (uiMode) {
             UiMode.Miuix -> ModuleUploadListMiuix(
                 state = listState,
@@ -193,6 +232,7 @@ fun ModuleUploadScreen() {
                 onPickZip = pickMany,
                 onOpenArchiveSettings = { showArchiveSettings = true },
                 mine = mineState,
+                avatarUrl = avatarUrl,
                 onOpenHistory = viewModel::openHistory,
             )
 
@@ -210,6 +250,7 @@ fun ModuleUploadScreen() {
                 onPickZip = pickMany,
                 onOpenArchiveSettings = { showArchiveSettings = true },
                 mine = mineState,
+                avatarUrl = avatarUrl,
                 onOpenHistory = viewModel::openHistory,
             )
         }
@@ -221,6 +262,7 @@ fun ModuleUploadScreen() {
                 onBack = viewModel::backToList,
                 onRefresh = viewModel::refreshMine,
                 onPickForMine = pickForMine,
+                onSignOut = viewModel::signOut,
             )
 
             UiMode.Material -> ModuleUploadHistoryMaterial(
@@ -229,6 +271,7 @@ fun ModuleUploadScreen() {
                 onBack = viewModel::backToList,
                 onRefresh = viewModel::refreshMine,
                 onPickForMine = pickForMine,
+                onSignOut = viewModel::signOut,
             )
         }
 
@@ -245,8 +288,6 @@ fun ModuleUploadScreen() {
                 onSelectItem = viewModel::selectItem,
                 onPickMore = pickMany,
                 onSignOut = viewModel::signOut,
-                onConsentChange = viewModel::setConsent,
-                onSignatureConfirmedChange = viewModel::setSignatureConfirmed,
                 onSubmit = { viewModel.submit(turnstile) },
             )
 
@@ -262,8 +303,6 @@ fun ModuleUploadScreen() {
                 onSelectItem = viewModel::selectItem,
                 onPickMore = pickMany,
                 onSignOut = viewModel::signOut,
-                onConsentChange = viewModel::setConsent,
-                onSignatureConfirmedChange = viewModel::setSignatureConfirmed,
                 onSubmit = { viewModel.submit(turnstile) },
             )
         }

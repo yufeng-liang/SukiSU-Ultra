@@ -105,8 +105,6 @@ fun ModuleUploadFormMaterial(
     onSelectItem: (String) -> Unit,
     onPickMore: () -> Unit,
     onSignOut: () -> Unit,
-    onConsentChange: (Boolean) -> Unit,
-    onSignatureConfirmedChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
 ) {
     // 这一屏是钉住的小标题，与列表页/记录页的「随滚动收起」刻意不同：
@@ -224,131 +222,6 @@ fun ModuleUploadFormMaterial(
                         onSourceChange = { onSourceChange(current.path, it) },
                         onApplyToAll = { onApplySourceToAll(current.source) },
                     )
-                }
-            }
-
-            item {
-                TonalCard(
-                    modifier = Modifier
-                        .padding(top = 20.dp)
-                        .fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SectionLabelMaterial(
-                            icon = Icons.Outlined.Info,
-                            text = stringResource(R.string.module_upload_section_identity),
-                            required = true,
-                        )
-                        OutlinedTextField(
-                            value = state.uid,
-                            onValueChange = onUidChange,
-                            enabled = !state.submitting,
-                            label = { Text(stringResource(R.string.module_upload_uid)) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            // 与出处字段一致：非法时输入框本身变红，而不是只在下面换一句话。
-                            isError = state.uidState is CoolapkUidState.Empty && state.uid.isNotBlank(),
-                            modifier = Modifier.fillMaxWidth(),
-                            supportingText = {
-                                // 字段自己的提示/校验文案归位 supportingText：还没填显示
-                                // 「在哪找 UID」，填了但不合法升为错误文案；其余状态由
-                                // 下面 UidStatusRowMaterial 讲述。
-                                when (state.uidState) {
-                                    CoolapkUidState.Empty -> if (state.uid.isNotBlank()) {
-                                        Text(stringResource(R.string.module_upload_uid_invalid))
-                                    } else {
-                                        Text(stringResource(R.string.module_upload_uid_hint))
-                                    }
-
-                                    else -> Unit
-                                }
-                            },
-                        )
-                        UidStatusRowMaterial(
-                            state = state,
-                            onRetry = onRetryUid,
-                            onSignOut = onSignOut,
-                        )
-                        if (state.sessionMatchesUid) {
-                            Text(
-                                text = stringResource(R.string.module_upload_session_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.module_upload_uid_note),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            item {
-                ProofSectionMaterial(
-                    state = state,
-                    enabled = !state.submitting,
-                    onSignatureConfirmedChange = onSignatureConfirmedChange,
-                )
-            }
-
-            item {
-                TonalCard(
-                    modifier = Modifier
-                        .padding(top = 20.dp)
-                        .fillMaxWidth(),
-                ) {
-                    // 整行可点：勾选框在左侧、文字占三行时，只点那个小方块太窄。
-                    // 勾选框与文字垂直居中：Top 会让方框压在首行文字的上半截，看着像没对齐。
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .toggleable(
-                                value = state.consent,
-                                enabled = !state.submitting,
-                                role = Role.Checkbox,
-                                onValueChange = onConsentChange,
-                            )
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = state.consent,
-                            onCheckedChange = null,
-                            enabled = !state.submitting,
-                        )
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.module_upload_consent),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
-                            // 提示是补出来的（淡入 + 纵向展开），不是常驻再消失，视觉上少一次跳变。
-                            AnimatedVisibility(
-                                visible = state.uidVerified &&
-                                    (state.signatureValid || state.sessionMatchesUid) &&
-                                    !state.consent,
-                                enter = fadeIn() + expandVertically(),
-                                exit = fadeOut() + shrinkVertically(),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.module_upload_consent_required),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                            }
-                        }
-                    }
                 }
             }
 
@@ -811,132 +684,11 @@ private fun UploadZipCardMaterial(
 }
 
 @Composable
-private fun ProofSectionMaterial(
-    state: ModuleUploadFormState,
-    enabled: Boolean,
-    onSignatureConfirmedChange: (Boolean) -> Unit,
-) {
-    // 走长期令牌的这一次上传不需要改签名 —— 整段收起，别让人白抄一次。
-    if (state.sessionMatchesUid) return
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
-    val proof = state.proof
-    TonalCard(
-        modifier = Modifier
-            .padding(top = 20.dp)
-            .fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SectionLabelMaterial(
-                icon = Icons.Filled.VerifiedUser,
-                text = stringResource(R.string.module_upload_proof_title),
-            )
-
-            if (proof == null) {
-                // 只要还有一个包的 sha 没算完，就一行口令都不显示。
-                Text(
-                    text = stringResource(R.string.module_upload_proof_pending),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                // 这一串是要拿去抄进酷安签名的东西，给它一个「可以复制的东西」的容器，
-                // 而不是一行裸文本旁边挂个远处的按钮。
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            modifier = Modifier.weight(1f),
-                            text = proof.text,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        TextButton(
-                            onClick = {
-                                scope.launch {
-                                    clipboard.setClipEntry(
-                                        ClipEntry(ClipData.newPlainText("proof", proof.text)),
-                                    )
-                                }
-                            },
-                        ) {
-                            Text(stringResource(R.string.module_upload_proof_copy))
-                        }
-                    }
-                }
-                // 怎么做 / 为什么可信 / 之后怎么办，三段各占一行：挤成一段时谁都不显眼，
-                // 而「之后可以改回来」恰恰是最需要被看见的一句。
-                Text(
-                    text = stringResource(R.string.module_upload_proof_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = stringResource(R.string.module_upload_proof_why),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = stringResource(R.string.module_upload_proof_restore),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .toggleable(
-                            value = state.signatureValid,
-                            enabled = enabled,
-                            role = Role.Checkbox,
-                            onValueChange = onSignatureConfirmedChange,
-                        ),
-                    // 文字只有一行，勾选框居中与文字同一条水平线上；
-                    // 原先的 Top 会让方框压在文字的上半截。
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(
-                        checked = state.signatureValid,
-                        onCheckedChange = null,
-                        enabled = enabled,
-                    )
-                    Text(
-                        modifier = Modifier.padding(start = 8.dp),
-                        text = stringResource(R.string.module_upload_proof_confirm),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                if (state.confirmedSetKey != null && !state.signatureValid) {
-                    Text(
-                        text = stringResource(R.string.module_upload_proof_changed),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun UidStatusRowMaterial(
+internal fun UidStatusRowMaterial(
     state: ModuleUploadFormState,
     onRetry: () -> Unit,
-    onSignOut: () -> Unit,
+    /** 传 null 表示这一屏没有「退出验证」可给。 */
+    onSignOut: (() -> Unit)? = null,
 ) {
     when (val uidState = state.uidState) {
         // 已验证：头像 + 勾选描边动画 + 昵称，右侧给「退出验证」（只有真握着令牌时才给）。
@@ -955,8 +707,8 @@ private fun UidStatusRowMaterial(
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.primary,
             )
-            if (state.sessionActive) {
-                TextButton(onClick = onSignOut, enabled = !state.submitting) {
+            if (state.sessionActive && onSignOut != null) {
+                TextButton(onClick = { onSignOut?.invoke() }, enabled = !state.submitting) {
                     Text(stringResource(R.string.module_upload_session_signout))
                 }
             }

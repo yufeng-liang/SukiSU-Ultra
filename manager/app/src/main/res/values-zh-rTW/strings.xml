@@ -1222,4 +1222,17 @@
     <string name="module_contribution_version">版本</string>
     <!-- 无障碍：PR 链接的点击动作名（TalkBack 念出来）。 -->
     <string name="module_upload_open_pr">開啟 PR</string>
+    <string name="module_upload_identity_title">驗證身分</string>
+    <string name="module_upload_identity_why_title">為什麼要填這些</string>
+    <string name="module_upload_identity_why_body">上傳是公開的、有人工審核，所以我們要知道每個模組是誰提交的。收集酷安 UID 是為了日後回溯到上傳者，並要求酷安等級 2 級以上。簽名只讀一次，用來證明這個 UID 是你本人的。</string>
+    <string name="module_upload_identity_level">需要酷安等級 2 級以上</string>
+    <string name="module_upload_identity_anchor_title">挑一個模組作為憑據</string>
+    <string name="module_upload_identity_anchor_hint">口令由你手上的一個模組算出來，只對你有用。隨便挑一個已有模組即可 —— 只讀取，不會上傳。</string>
+    <string name="module_upload_identity_anchor_empty">還沒選擇模組</string>
+    <string name="module_upload_identity_anchor_pick">選擇模組 zip</string>
+    <string name="module_upload_identity_pledge">我不上傳惡意模組，對自己提交的內容負責，並且知道上傳是公開的、不含任何個人資訊或金鑰。</string>
+    <string name="module_upload_identity_verify">驗證並繼續</string>
+    <string name="module_upload_identity_verifying">正在驗證…</string>
+    <string name="module_upload_identity_expired">身份驗證已過期，重新驗證後可以繼續上傳。</string>
+    <string name="module_upload_identity_verified">驗證通過，以後不用再驗證了</string>
 </resources>

@@ -1444,4 +1444,17 @@
     <string name="module_upload_row_collapsed">已收起</string>
     <!-- 无障碍：PR 链接的点击动作名（TalkBack 念出来）。 -->
     <string name="module_upload_open_pr">打开 PR</string>
+    <string name="module_upload_identity_title">验证身份</string>
+    <string name="module_upload_identity_why_title">为什么要填这些</string>
+    <string name="module_upload_identity_why_body">上传是公开的、有人工审核，所以我们要知道每个模块是谁提交的。收集酷安 UID 是为了日后回溯到上传者，并要求酷安等级 2 级以上。签名只读一次，用来证明这个 UID 是你本人的。</string>
+    <string name="module_upload_identity_level">需要酷安等级 2 级以上</string>
+    <string name="module_upload_identity_anchor_title">挑一个模块作为凭据</string>
+    <string name="module_upload_identity_anchor_hint">口令由你手上的一个模块算出来，只对你有用。随便挑一个已有模块即可 —— 只读取，不会上传。</string>
+    <string name="module_upload_identity_anchor_empty">还没选择模块</string>
+    <string name="module_upload_identity_anchor_pick">选择模块 zip</string>
+    <string name="module_upload_identity_pledge">我不上传恶意模块，对自己提交的内容负责，并且知道上传是公开的、不含任何个人信息或密钥。</string>
+    <string name="module_upload_identity_verify">验证并继续</string>
+    <string name="module_upload_identity_verifying">正在验证…</string>
+    <string name="module_upload_identity_expired">身份验证已过期，重新验证后可以继续上传。</string>
+    <string name="module_upload_identity_verified">验证通过，以后不用再验证了</string>
 </resources>

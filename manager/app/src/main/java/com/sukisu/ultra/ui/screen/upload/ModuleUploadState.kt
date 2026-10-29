@@ -87,12 +87,21 @@ data class UploadRow(
     val eligibilityReason: String = "",
 )
 
-/** 当前在哪一屏。列表 / 表单 / 上传记录共用同一个路由，靠这个状态切换。 */
+/** 当前在哪一屏。身份 / 列表 / 表单 / 上传记录共用同一个路由，靠这个状态切换。 */
 enum class UploadStep {
+    /**
+     * 身份页：填酷安 UID、看核验结果、勾统一承诺、抄口令并完成一次签名核验。
+     *
+     * 只在**手上没有有效令牌**时出现。核验通过就写下九十天的令牌并跳到 [LIST]，
+     * 之后每次进来都直接是列表 —— 用户不必每次上传都重填身份，也不必每次都改一次酷安签名。
+     * 主动「退出验证」后会回到这一屏。
+     */
+    IDENTITY,
+
     LIST,
     FORM,
 
-    /** 上传记录：按模块汇总投稿过的版本。从列表顶栏的图标进，返回键回列表。 */
+    /** 上传记录：按模块汇总投稿过的版本。从列表顶栏的头像进，返回键回列表。 */
     HISTORY,
 }
 
@@ -252,6 +261,22 @@ data class ModuleUploadFormState(
     val outcome: UploadOutcome? = null,
     /** 人机校验没完成 / 超时之类的一次性提示。 */
     val notice: String? = null,
+    /** 正在拿签名换令牌（身份页那个按钮按下之后）。 */
+    val verifying: Boolean = false,
+    /**
+     * 上一次核验失败的原因，直出界面。
+     *
+     * 与 [notice] 分开：那条是 Toast，3.5 秒就没；核验失败的文案（「口令没在签名里找到」
+     * 「这个口令已经用过」）必须留在原地让用户对着改，所以单独一个字段。
+     */
+    val verifyError: String? = null,
+    /**
+     * 身份页拿去当锚点的那一枚包（只用到 id 与整包 sha256，不会进 [items]）。
+     *
+     * 口令必须绑一套具体的包才不可重放（酷安签名是公开的，只绑 UID 等于谁看见谁能冒充）。
+     * 优先用留存包，用户手上没有留存包时由界面走一次 SAF 挑一枚。
+     */
+    val verifyItem: UploadZip? = null,
 ) {
     /**
      * 手里这张令牌此刻能不能顶掉「改签名」那一步。
@@ -266,6 +291,27 @@ data class ModuleUploadFormState(
     /** 令牌绑的 UID 与当前输入框里的 UID 是同一个 —— 换了号就不认这张令牌。 */
     val sessionMatchesUid: Boolean
         get() = sessionActive && session?.uid == uid.trim()
+
+    /**
+     * 身份页能不能点「验证身份」。
+     *
+     * 与 [canSubmit] 分开：那一套是「上传」的门，这里是「换令牌」的门，只要集齐三件事
+     * ——UID 形状像样、统一承诺勾了、手上有那枚做锚点的包。等级、签名里有没有口令这些
+     * 只有服务端说了算，不在本地预判。
+     */
+    val canVerify: Boolean
+        get() = verifyItem != null && consent && !verifying && !sessionChecking &&
+            uid.trim().length in 4..12
+
+    /**
+     * 身份页那串口令：只绑 [verifyItem] 这一枚包。
+     *
+     * 与表单页的 [proof] 是同一套算法（[ModuleUploadRules.proofSnapshot]），但锚点不同 ——
+     * 身份页走到这里时 [items] 通常还是空的（先验证身份、再挑要传的包），所以不能复用 [proof]。
+     * 为 null 表示还没挑锚点包。
+     */
+    val verifyProof: ModuleUploadRules.ProofSnapshot?
+        get() = verifyItem?.let { ModuleUploadRules.proofSnapshot(listOf(it), nonce) }
 
     /** 当前集合 + nonce 算出来的口令；sha 没齐时 text 为空。 */
     val proof: ModuleUploadRules.ProofSnapshot?

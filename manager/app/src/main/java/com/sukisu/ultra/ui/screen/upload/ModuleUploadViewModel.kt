@@ -23,9 +23,11 @@ import com.sukisu.ultra.ui.util.BatchZip
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ContributionBatch
 import com.sukisu.ultra.ui.util.CoolapkUidLookup
+import com.sukisu.ultra.ui.util.IssueOutcome
 import com.sukisu.ultra.ui.util.MineModule
 import com.sukisu.ultra.ui.util.MineResult
 import com.sukisu.ultra.ui.util.ModuleContribution
+import com.sukisu.ultra.ui.util.ProofItem
 import com.sukisu.ultra.ui.util.SessionCheck
 import com.sukisu.ultra.ui.util.SessionGrant
 import com.sukisu.ultra.ui.util.UpdateEligibility
@@ -97,7 +99,10 @@ class ModuleUploadViewModel(
     private val settings: SettingsRepository = SettingsRepositoryImpl(),
 ) : ViewModel() {
 
-    private val _step = MutableStateFlow(UploadStep.LIST)
+    // 首屏默认身份页：磁盘上有没有令牌要等 refreshSession() 读完才知道，
+    // 先摆列表会闪一帧「模块列表是空的」，那对没验过身份的人是误导。
+    // 有令牌时 refreshSession() 会立刻把这一步推到 LIST，最多一帧。
+    private val _step = MutableStateFlow(UploadStep.IDENTITY)
     val step: StateFlow<UploadStep> = _step.asStateFlow()
 
     private val _listState = MutableStateFlow(ModuleUploadListState())
@@ -1218,9 +1223,16 @@ class ModuleUploadViewModel(
             sessionEpoch++
             sessionJob?.cancel()
             _formState.update { it.copy(session = null, sessionChecking = false) }
+            // 手上没有令牌：身份页就是这一趟的起点。核验通过写下令牌之前，列表与表单
+            // 都不该露出来（否则用户会在一个「提交必被 403 拒」的界面上白填一遍）。
+            _step.value = UploadStep.IDENTITY
             return
         }
         _formState.update { it.copy(session = stored, sessionChecking = true) }
+        // 磁盘上有令牌就先把人放进列表：核实要出网，慢网下（超时八秒）把人钉在身份页
+        // 盯着「为什么要验证」没有道理 —— 他本来就已经验过。核实回 Invalid 会把他退回
+        // 身份页，那才是他该看到的地方；回 Unavailable 则留在列表（本地那份照常到期）。
+        if (_step.value == UploadStep.IDENTITY) _step.value = UploadStep.LIST
         sessionJob?.cancel()
         // 这一趟的身份：退出/重开之后回来的旧结果一律不许落地（见 [signOut]）。
         val epoch = ++sessionEpoch
@@ -1240,6 +1252,8 @@ class ModuleUploadViewModel(
                     _formState.update {
                         it.copy(session = result.session, sessionChecking = false)
                     }
+                    // 令牌已经确认可用：身份页不该再挡在前面（进页面时若落在身份页，回列表）。
+                    if (_step.value == UploadStep.IDENTITY) _step.value = UploadStep.LIST
                 }
 
                 // 服务端**明确**说这张失效了（或本地这串形状已坏）：必须抹掉。
@@ -1265,6 +1279,8 @@ class ModuleUploadViewModel(
                             notice = res.getString(R.string.module_upload_session_expired),
                         )
                     }
+                    // 令牌失效 = 手上没有核验过的身份：退回身份页重新换一张。
+                    _step.value = UploadStep.IDENTITY
                 }
 
                 // 没问出来（网络/超时/脏应答）：保留本地那份（它自己会按 expiresAt 到期），
@@ -1291,6 +1307,21 @@ class ModuleUploadViewModel(
                 // 进程改状态纯属浪费电。
                 if (_step.value != UploadStep.FORM) continue
                 val now = System.currentTimeMillis()
+                val snapshot = _formState.value
+                val session = snapshot.session
+                // 令牌在表单页上过期：这一版表单里已经不再摆「改签名」那一段（身份验过才有
+                // 表单），留着只会把人钉在「还差一项」上、找不到能勾的地方 —— 退回身份页重来。
+                // 提交中不动：半路把人踢走比让他按一下重试更糟。
+                if (!snapshot.submitting && session != null && !session.validAt(now)) {
+                    sessionJob?.cancel()
+                    sessionJob = null
+                    sessionEpoch++
+                    ModuleUploadPrefs.clearSession()
+                    _formState.update { it.copy(session = null, nowTick = now) }
+                    _step.value = UploadStep.IDENTITY
+                    postMessage(res.getString(R.string.module_upload_identity_expired))
+                    continue
+                }
                 _formState.update { state ->
                     if (state.session == null) state else state.copy(nowTick = now)
                 }
@@ -1330,6 +1361,9 @@ class ModuleUploadViewModel(
                 uidState = if (it.uid.isBlank()) it.uidState else CoolapkUidState.Empty,
             )
         }
+        // 「退出验证」的语义是「换一个上传身份」：回到身份页，而不是留在列表里一个
+        // 既没有令牌、也没有核验结论的界面上（那种界面上提交按钮必然是灰的，却没人解释为什么）。
+        _step.value = UploadStep.IDENTITY
         if (token.isNullOrBlank()) return
         // 吊销必须挂在 NonCancellable 上：这个协程原本属于 viewModelScope，用户点完
         // 「退出验证」随手一返回，路由销毁 → 作用域取消 → 请求根本没发出去，而服务端
@@ -1340,6 +1374,108 @@ class ModuleUploadViewModel(
             }
         }
     }
+
+    // ── 身份（用一次签名核验换九十天令牌）──────────────────────────────────
+
+    /**
+     * 身份页挑一枚包当口令锚点。
+     *
+     * 与 [stageForRow] 只差落点：那一枚是要上传的货，这一枚只用来让口令**绑死一套具体的包**
+     * —— 酷安签名是公开的，口令若只绑 UID，任何看见签名的人都能替别人领令牌。挑完不会进
+     * 上传列表，也不会出现在图标墙上。
+     */
+    fun stageForVerify(context: Context, uri: Uri) {
+        if (_formState.value.verifying) return
+        val maxBytes = _listState.value.limits?.takeIf { it.usable }?.maxBytes
+        if (maxBytes == null) {
+            _formState.update { it.copy(verifyError = res.getString(R.string.module_upload_limit_unknown)) }
+            return
+        }
+        _formState.update { it.copy(verifyItem = null, verifyError = null) }
+        viewModelScope.launch {
+            val message = when (val result = ModuleUploadStaging.stage(context, uri, maxBytes)) {
+                is ModuleUploadStaging.Result.Ok -> {
+                    _formState.update { it.copy(verifyItem = result.zip) }
+                    return@launch
+                }
+                ModuleUploadStaging.Result.UnreadableModule ->
+                    res.getString(R.string.module_upload_unreadable_prop)
+                ModuleUploadStaging.Result.NoInstaller ->
+                    res.getString(R.string.module_upload_no_installer_title)
+                is ModuleUploadStaging.Result.TooBig -> stageTooBigMessage(result)
+                ModuleUploadStaging.Result.Failed ->
+                    res.getString(R.string.module_upload_stage_failed)
+            }
+            _formState.update { it.copy(verifyError = message) }
+        }
+    }
+
+    /** 身份页上那条错误提示读过了就收起来，别一直压着。 */
+    fun consumeVerifyError() {
+        _formState.update { if (it.verifyError == null) it else it.copy(verifyError = null) }
+    }
+
+    /**
+     * 「验证身份」：拿签名里那串口令换一张九十天的令牌。
+     *
+     * 成败都落在 [ModuleUploadFormState.verifyError] 上，**不弹一次性 Toast 就算完**：像
+     * 「口令没在签名里找到」这种话必须留在原地，用户要对着它去改签名。
+     *
+     * 成功之后这一屏就再也不会出现（除非主动退出验证）：令牌写进磁盘，进页面直接是列表。
+     */
+    fun verifyIdentity() {
+        val state = _formState.value
+        if (state.verifying || !state.canVerify) return
+        val item = state.verifyItem ?: return
+        val uid = state.uid.trim()
+        val nonce = state.nonce
+        _formState.update { it.copy(verifying = true, verifyError = null) }
+        identityJob?.cancel()
+        identityJob = viewModelScope.launch {
+            val outcome = try {
+                ModuleContribution.issueIdentitySession(
+                    coolapkUid = uid,
+                    nonce = nonce,
+                    items = listOf(ProofItem(item.id, item.sha256)),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                IssueOutcome(message = e.message?.takeIf { it.isNotBlank() } ?: "")
+            }
+            _formState.update { it.copy(verifying = false) }
+            if (!outcome.ok) {
+                _formState.update { it.copy(verifyError = outcome.message) }
+                return@launch
+            }
+            val grant = outcome.session ?: return@launch
+            val identity = outcome.identity
+            // 昵称必须在 adoptGrant **之前**落到状态里：adoptGrant 拿 state.nickname 拼
+            // UploadSession，拼出一份昵称为空的令牌，下次 /session/check 会把它当脏应答
+            // （Unavailable）—— 这次核验的效果在下次进页面时就被打回原形。
+            if (identity != null) {
+                _formState.update {
+                    it.copy(uidState = CoolapkUidState.Verified(identity.nickname, identity.avatar))
+                }
+            }
+            adoptGrant(grant, uid)
+            ModuleUploadPrefs.rememberUid(uid)
+            _formState.update {
+                it.copy(
+                    // 统一承诺在身份页勾过了：它是「这个人愿意为自己的上传负责」的一次性
+                    // 声明，不该在每次上传时再问一遍。退出验证会把它连同令牌一起清掉。
+                    consent = true,
+                    verifyError = null,
+                    // 令牌到手，那串口令与勾选都没有依据了：下次要改签名时从干净状态开始。
+                    confirmedSetKey = null,
+                )
+            }
+            _step.value = UploadStep.LIST
+            postMessage(res.getString(R.string.module_upload_identity_verified))
+        }
+    }
+
+    private var identityJob: Job? = null
 
     // ── 我投过的模块（GET /mine）────────────────────────────────────────────
 

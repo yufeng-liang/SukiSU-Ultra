@@ -100,6 +100,8 @@ fun ModuleUploadListMaterial(
     onOpenArchiveSettings: () -> Unit,
     /** 上传记录（`GET /mine`）：只用来算每行的「上传更新」标签，列表本身不再展开它。 */
     mine: MineState,
+    /** 酷安头像地址：核验过就有，没有时顶栏退回历史图标。 */
+    avatarUrl: String = "",
     /** 打开上传记录页。 */
     onOpenHistory: () -> Unit,
 ) {
@@ -144,11 +146,23 @@ fun ModuleUploadListMaterial(
                     }
                     // 上传记录单独一个入口：它回答的是「我以前投过什么」，
                     // 与「这一版收录了没有」是两件事，塞进列表里只会把主列表顶长。
+                    // 有头像就画头像：这颗按钮现在同时回答「我是谁」与「我投过什么」，
+                    // 光一个历史图标答不了前半句。
                     IconButton(onClick = onOpenHistory) {
-                        Icon(
-                            imageVector = Icons.Outlined.History,
-                            contentDescription = stringResource(R.string.module_upload_history_open),
-                        )
+                        if (avatarUrl.isEmpty()) {
+                            Icon(
+                                imageVector = Icons.Outlined.History,
+                                contentDescription = stringResource(R.string.module_upload_history_open),
+                            )
+                        } else {
+                            VerifiedAvatar(
+                                avatarUrl = avatarUrl,
+                                tint = MaterialTheme.colorScheme.primary,
+                                placeholder = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                avatarSize = 28.dp,
+                                markSize = 12.dp,
+                            )
+                        }
                     }
                     // 刷新不再占顶栏位置：顶栏按钮要「点一下就走」，而刷新是「等一下再看」，
                     // 放在列表上下拉更符合它（与模块页/仓库页同一个手势）。

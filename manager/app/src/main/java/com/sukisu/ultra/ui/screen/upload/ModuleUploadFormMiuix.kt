@@ -115,8 +115,6 @@ fun ModuleUploadFormMiuix(
     onSelectItem: (String) -> Unit,
     onPickMore: () -> Unit,
     onSignOut: () -> Unit,
-    onConsentChange: (Boolean) -> Unit,
-    onSignatureConfirmedChange: (Boolean) -> Unit,
     onSubmit: () -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
@@ -233,121 +231,6 @@ fun ModuleUploadFormMiuix(
                         onSourceChange = { onSourceChange(current.path, it) },
                         onApplyToAll = { onApplySourceToAll(current.source) },
                     )
-                }
-            }
-
-            item {
-                Card(
-                    modifier = Modifier
-                        .padding(top = 20.dp)
-                        .fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SectionLabelMiuix(
-                            icon = Icons.Outlined.Info,
-                            text = stringResource(R.string.module_upload_section_identity),
-                            required = true,
-                        )
-                        TextField(
-                            value = state.uid,
-                            onValueChange = onUidChange,
-                            enabled = !state.submitting,
-                            label = stringResource(R.string.module_upload_uid),
-                            useLabelAsPlaceholder = true,
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        UidStatusRowMiuix(
-                            state = state,
-                            onRetry = onRetryUid,
-                            onSignOut = onSignOut,
-                        )
-                        if (state.sessionMatchesUid) {
-                            Text(
-                                text = stringResource(R.string.module_upload_session_hint),
-                                fontSize = 12.sp,
-                                color = colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.module_upload_uid_note),
-                            fontSize = 12.sp,
-                            color = colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                }
-            }
-
-            item {
-                ProofSectionMiuix(
-                    state = state,
-                    enabled = !state.submitting,
-                    onSignatureConfirmedChange = onSignatureConfirmedChange,
-                )
-            }
-
-            item {
-                Card(
-                    modifier = Modifier
-                        // 卡片间隔统一 20dp：与当前编辑卡、身份卡同一口径，16dp 是历史漂移。
-                        .padding(top = 20.dp)
-                        .fillMaxWidth(),
-                ) {
-                    // 整行可点：勾选框在左侧、文字占三行时，只点那个小方块太窄。
-                    // 勾选框与文字垂直居中：Top 会让方框压在首行文字的上半截，看着像没对齐。
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .toggleable(
-                                value = state.consent,
-                                enabled = !state.submitting,
-                                role = Role.Checkbox,
-                                onValueChange = onConsentChange,
-                            )
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            state = if (state.consent) {
-                                androidx.compose.ui.state.ToggleableState.On
-                            } else {
-                                androidx.compose.ui.state.ToggleableState.Off
-                            },
-                            onClick = null,
-                            enabled = !state.submitting,
-                        )
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.module_upload_consent),
-                                fontSize = 13.sp,
-                                color = colorScheme.onSurfaceVariantSummary,
-                            )
-                            // 只差这一个勾时才提示：一打开表单就挂红字是噪音。
-                            // 提示是补出来的（淡入 + 纵向展开），不是常驻再消失，视觉上少一次跳变。
-                            AnimatedVisibility(
-                                visible = state.uidVerified &&
-                                    (state.signatureValid || state.sessionMatchesUid) &&
-                                    !state.consent,
-                                enter = fadeIn() + expandVertically(),
-                                exit = fadeOut() + shrinkVertically(),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.module_upload_consent_required),
-                                    fontSize = 12.sp,
-                                    color = colorScheme.error,
-                                )
-                            }
-                        }
-                    }
                 }
             }
 
@@ -796,137 +679,11 @@ private fun UploadZipCardMiuix(
 }
 
 @Composable
-private fun ProofSectionMiuix(
-    state: ModuleUploadFormState,
-    enabled: Boolean,
-    onSignatureConfirmedChange: (Boolean) -> Unit,
-) {
-    // 走长期令牌的这一次上传不需要改签名 —— 这一整段收起（连同「去酷安改签名」那句）。
-    // 判据与提交那一步同一份：令牌绑的就是输入框里这个 UID，就别让人白抄一次签名。
-    if (state.sessionMatchesUid) return
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScope()
-    val proof = state.proof
-    Card(
-        modifier = Modifier
-            .padding(top = 20.dp)
-            .fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SectionLabelMiuix(
-                icon = Icons.Filled.VerifiedUser,
-                text = stringResource(R.string.module_upload_proof_title),
-            )
-
-            if (proof == null) {
-                // 只要还有一个包的 sha 没算完，就一行口令都不显示：
-                // 半截哈希算出来的口令用户抄走也是废的。
-                Text(
-                    text = stringResource(R.string.module_upload_proof_pending),
-                    fontSize = 13.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            } else {
-                // 这一串是要拿去抄进酷安签名的东西，给它一个「可以复制的东西」的容器，
-                // 而不是一行裸文本旁边挂个远处的按钮。
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.defaultColors(color = colorScheme.surfaceContainer),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            modifier = Modifier.weight(1f),
-                            text = proof.text,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        TextButton(
-                            text = stringResource(R.string.module_upload_proof_copy),
-                            onClick = {
-                                scope.launch {
-                                    clipboard.setClipEntry(
-                                        ClipEntry(ClipData.newPlainText("proof", proof.text)),
-                                    )
-                                }
-                            },
-                        )
-                    }
-                }
-                // 怎么做 / 为什么可信 / 之后怎么办，三段各占一行：挤成一段时谁都不显眼，
-                // 而「之后可以改回来」恰恰是最需要被看见的一句。
-                Text(
-                    text = stringResource(R.string.module_upload_proof_hint),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-                Text(
-                    text = stringResource(R.string.module_upload_proof_why),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-                Text(
-                    text = stringResource(R.string.module_upload_proof_restore),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .toggleable(
-                            value = state.signatureValid,
-                            enabled = enabled,
-                            role = Role.Checkbox,
-                            onValueChange = onSignatureConfirmedChange,
-                        ),
-                    // 文字只有一行，勾选框居中与文字同一条水平线上；
-                    // 原先的 Top 会让方框压在文字的上半截。
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(
-                        state = if (state.signatureValid) {
-                            androidx.compose.ui.state.ToggleableState.On
-                        } else {
-                            androidx.compose.ui.state.ToggleableState.Off
-                        },
-                        onClick = null,
-                        enabled = enabled,
-                    )
-                    Text(
-                        modifier = Modifier.padding(start = 8.dp),
-                        text = stringResource(R.string.module_upload_proof_confirm),
-                        fontSize = 13.sp,
-                    )
-                }
-                // 勾过之后集合又变了：明确告诉用户要重抄，而不是只把勾去掉。
-                if (state.confirmedSetKey != null && !state.signatureValid) {
-                    Text(
-                        text = stringResource(R.string.module_upload_proof_changed),
-                        fontSize = 12.sp,
-                        color = colorScheme.error,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun UidStatusRowMiuix(
+internal fun UidStatusRowMiuix(
     state: ModuleUploadFormState,
     onRetry: () -> Unit,
-    onSignOut: () -> Unit,
+    /** 传 null 表示这一屏没有「退出验证」可给（身份页本来就是因为没有令牌才来的）。 */
+    onSignOut: (() -> Unit)? = null,
 ) {
     when (val uidState = state.uidState) {
         // 已验证：头像（有就画、没有就一个底圈）+ 勾选描边动画 + 昵称，右侧给「退出验证」。
@@ -949,10 +706,10 @@ private fun UidStatusRowMiuix(
             )
             // 只有手里真有一张长期令牌时才给「退出验证」：没有令牌的话这个按钮点了
             // 只是把 UID 清空，用户会以为「验证被取消了」，而其实什么都没发生。
-            if (state.sessionActive) {
+            if (state.sessionActive && onSignOut != null) {
                 TextButton(
                     text = stringResource(R.string.module_upload_session_signout),
-                    onClick = onSignOut,
+                    onClick = { onSignOut?.invoke() },
                     enabled = !state.submitting,
                 )
             }

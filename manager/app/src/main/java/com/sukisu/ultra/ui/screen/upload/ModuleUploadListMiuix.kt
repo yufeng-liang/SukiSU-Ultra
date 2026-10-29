@@ -124,6 +124,8 @@ fun ModuleUploadListMiuix(
     onOpenArchiveSettings: () -> Unit,
     /** 上传记录（`GET /mine`）：只用来算每行的「上传更新」标签，列表本身不再展开它。 */
     mine: MineState,
+    /** 酷安头像地址：核验过就有，没有时顶栏退回历史图标。 */
+    avatarUrl: String = "",
     /** 打开上传记录页。 */
     onOpenHistory: () -> Unit,
 ) {
@@ -196,12 +198,23 @@ fun ModuleUploadListMiuix(
                                 )
                             }
                             // 上传记录：回答「我以前投过什么」，与「这一版收录了没有」是两件事。
+                            // 有头像就画头像：这颗按钮同时回答「我是谁」，图标答不了。
                             IconButton(onClick = onOpenHistory) {
-                                Icon(
-                                    imageVector = MiuixIcons.Notes,
-                                    contentDescription = stringResource(R.string.module_upload_history_open),
-                                    tint = colorScheme.onSurface,
-                                )
+                                if (avatarUrl.isEmpty()) {
+                                    Icon(
+                                        imageVector = MiuixIcons.Notes,
+                                        contentDescription = stringResource(R.string.module_upload_history_open),
+                                        tint = colorScheme.onSurface,
+                                    )
+                                } else {
+                                    VerifiedAvatar(
+                                        avatarUrl = avatarUrl,
+                                        tint = colorScheme.primary,
+                                        placeholder = colorScheme.surfaceContainer,
+                                        avatarSize = 28.dp,
+                                        markSize = 12.dp,
+                                    )
+                                }
                             }
                             // 刷新不占顶栏：与模块页/仓库页一样改成列表下拉。
                             // 留存开关与清理入口都在这个按钮背后：两件事都只跟「占空间」有关，

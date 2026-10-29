@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -81,6 +82,8 @@ fun ModuleUploadHistoryMaterial(
     onRefresh: () -> Unit,
     /** 给某个模块挑一枚新版本的 zip；与主列表共用同一个 SAF 启动器与同一道闸门。 */
     onPickForMine: (MineModule) -> Unit,
+    /** 退出当前上传身份：退出后要重新做一次签名核验，换账号也在这里换。 */
+    onSignOut: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val groups = remember(mine.modules) { ModuleUploadRules.groupMine(mine.modules) }
@@ -112,6 +115,12 @@ fun ModuleUploadHistoryMaterial(
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.module_upload_mine_entry_title)) },
                 navigationIcon = { TopBarBackButton(onClick = onBack) },
+                actions = {
+                    // 换账号只能在这里：身份页核验过就不出现了，退出是唯一回头路。
+                    TextButton(onClick = onSignOut) {
+                        Text(stringResource(R.string.module_upload_session_signout))
+                    }
+                },
                 // 刷新不再占顶栏：这一页只有一件需要刷的事，往下拉一把就是它，
                 // 与列表页/模块页同一个手势（见下面 content 里的 PullToRefreshBox）。
                 colors = expressiveTopAppBarColors(),
