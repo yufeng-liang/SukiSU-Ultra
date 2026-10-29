@@ -16,6 +16,7 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.navigation3.LocalNavigator
+import com.sukisu.ultra.ui.navigation3.Route
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -98,6 +99,9 @@ fun ToolsScreen() {
         },
         onRestoreAllowlist = {
             restoreLauncher.launch(arrayOf("*/*"))
+        },
+        onOpenKernelModules = {
+            navigator.push(Route.KernelModules)
         },
     )
 

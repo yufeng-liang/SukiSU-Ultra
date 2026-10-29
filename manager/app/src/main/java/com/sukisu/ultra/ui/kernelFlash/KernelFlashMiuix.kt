@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
@@ -34,16 +35,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.KeyEventBlocker
+import com.sukisu.ultra.ui.component.miuix.AppCard
+import com.sukisu.ultra.ui.component.miuix.AppScaffold
 import com.sukisu.ultra.ui.kernelFlash.state.FlashState
-import top.yukonga.miuix.kmp.basic.Card
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
+import com.sukisu.ultra.ui.theme.LocalEnableBlur
+import com.sukisu.ultra.ui.util.BlurredBar
+import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.FileDownloads
@@ -59,6 +65,11 @@ fun KernelFlashMiuix(
     kpmUndoPatch: Boolean
 ) {
     val scrollState = rememberScrollState()
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
+    val enableBlur = LocalEnableBlur.current
+    val backdrop = rememberBlurBackdrop(enableBlur)
+    val blurActive = backdrop != null
+    val barColor = if (blurActive || hasCustomBackground) Color.Transparent else colorScheme.surface
 
     BackHandler {
         actions.onBack()
@@ -68,45 +79,48 @@ fun KernelFlashMiuix(
         it.key == Key.VolumeDown || it.key == Key.VolumeUp
     }
 
-    Scaffold(
+    AppScaffold(
         topBar = {
-            SmallTopAppBar(
-                title = stringResource(
-                    when {
-                        state.error.isNotEmpty() -> R.string.flash_failed
-                        state.isCompleted -> R.string.flash_success
-                        else -> R.string.kernel_flashing
+            BlurredBar(backdrop) {
+                SmallTopAppBar(
+                    title = stringResource(
+                        when {
+                            state.error.isNotEmpty() -> R.string.flash_failed
+                            state.isCompleted -> R.string.flash_success
+                            else -> R.string.kernel_flashing
+                        }
+                    ),
+                    color = barColor,
+                    navigationIcon = {
+                        IconButton(
+                            modifier = Modifier.padding(start = 16.dp),
+                            onClick = actions.onBack
+                        ) {
+                            val layoutDirection = LocalLayoutDirection.current
+                            Icon(
+                                modifier = Modifier.graphicsLayer {
+                                    if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
+                                },
+                                imageVector = MiuixIcons.Back,
+                                contentDescription = null,
+                                tint = colorScheme.onBackground
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            modifier = Modifier.padding(end = 16.dp),
+                            onClick = { actions.onSaveLog(logText) }
+                        ) {
+                            Icon(
+                                imageVector = MiuixIcons.FileDownloads,
+                                contentDescription = stringResource(id = R.string.save_log),
+                                tint = colorScheme.onBackground
+                            )
+                        }
                     }
-                ),
-                navigationIcon = {
-                    IconButton(
-                        modifier = Modifier.padding(start = 16.dp),
-                        onClick = actions.onBack
-                    ) {
-                        val layoutDirection = LocalLayoutDirection.current
-                        Icon(
-                            modifier = Modifier.graphicsLayer {
-                                if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
-                            },
-                            imageVector = MiuixIcons.Back,
-                            contentDescription = null,
-                            tint = colorScheme.onBackground
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        modifier = Modifier.padding(end = 16.dp),
-                        onClick = { actions.onSaveLog(logText) }
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.FileDownloads,
-                            contentDescription = stringResource(id = R.string.save_log),
-                            tint = colorScheme.onBackground
-                        )
-                    }
-                }
-            )
+                )
+            }
         },
         floatingActionButton = {
             if (state.isCompleted) {
@@ -125,17 +139,17 @@ fun KernelFlashMiuix(
     ) { innerPadding ->
         Column(
             modifier = Modifier
+                .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
                 .fillMaxSize()
                 .padding(innerPadding)
                 .scrollEndHaptic(),
         ) {
             FlashProgressIndicatorMiuix(state, kpmPatchEnabled, kpmUndoPatch)
-            Card(
+            AppCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                colors = CardDefaults.defaultColors(color = colorScheme.surfaceContainer),
             ) {
                 Box(modifier = Modifier.verticalScroll(scrollState)) {
                     LaunchedEffect(logText) {
@@ -171,7 +185,7 @@ private fun FlashProgressIndicatorMiuix(
         label = "FlashProgress"
     )
 
-    Card(
+    AppCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)

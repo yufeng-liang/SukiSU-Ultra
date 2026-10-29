@@ -143,6 +143,7 @@ import com.sukisu.ultra.ui.component.material.SearchAppBar
 import com.sukisu.ultra.ui.component.material.SnackBarHost
 import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.statustag.StatusTag
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
 import com.sukisu.ultra.ui.theme.LocalModuleDescriptionMaxLines
 import com.sukisu.ultra.ui.util.reboot
 import sh.calvin.reorderable.ReorderableItem
@@ -276,6 +277,8 @@ fun ModulePagerMaterial(
         }
     }
 
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
+
     // 本地 zip 装完、且查出来是个新模块时的「分享这个模块吗？」
     // 只有 CheckStatus.NEW 会走到这里（见 ModuleContributionController.checkAfterLocalZipInstall）；
     // 查不出来、查出来是版本更新或已收录，都静默。
@@ -293,8 +296,8 @@ fun ModulePagerMaterial(
         message = stringResource(R.string.module_contribution_snackbar),
         actionLabel = stringResource(R.string.module_contribution_action),
     )
-
     ExpressiveScaffold(
+        containerColor = if (hasCustomBackground) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             SearchAppBar(
                 title = { Text(stringResource(R.string.module)) },

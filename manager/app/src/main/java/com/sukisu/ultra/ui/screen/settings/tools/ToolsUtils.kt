@@ -23,8 +23,7 @@ fun setSelinuxPermissive(permissive: Boolean): Boolean {
 suspend fun backupAllowlistToUri(context: Context, targetUri: Uri): Boolean = withContext(Dispatchers.IO) {
     val tempFile = File(context.cacheDir, "allowlist_backup_tmp.bin")
     try {
-        if (!copyAllowlistToFile(tempFile)) return@withContext false
-        return@withContext runCatching {
+        return@withContext copyAllowlistToFile(tempFile) && runCatching {
             context.contentResolver.openOutputStream(targetUri, "w")?.use { output ->
                 tempFile.inputStream().use { input ->
                     input.copyTo(output)
@@ -48,8 +47,7 @@ suspend fun restoreAllowlistFromUri(context: Context, sourceUri: Uri): Boolean =
                 true
             } ?: false
         }.getOrElse { false }
-        if (!downloaded) return@withContext false
-        return@withContext copyFileToAllowlist(tempFile)
+        return@withContext downloaded && copyFileToAllowlist(tempFile)
     } finally {
         tempFile.delete()
     }
@@ -186,18 +184,10 @@ suspend fun readCurrentCpuIdentity(): CpuInfo? = withContext(Dispatchers.IO) {
         val coreCount = Runtime.getRuntime().availableProcessors()
 
         val hwcapResult = Shell.cmd("getprop ro.hwcap").exec()
-        val hwcap = if (hwcapResult.isSuccess && hwcapResult.out.isNotEmpty()) {
-            hwcapResult.out.first().trim()
-        } else {
-            "0x0"
-        }
+        val hwcap = hwcapResult.out.firstOrNull()?.trim().takeUnless { it.isNullOrBlank() } ?: "0x0"
 
         val hwcap2Result = Shell.cmd("getprop ro.hwcap2").exec()
-        val hwcap2 = if (hwcap2Result.isSuccess && hwcap2Result.out.isNotEmpty()) {
-            hwcap2Result.out.first().trim()
-        } else {
-            "0x0"
-        }
+        val hwcap2 = hwcap2Result.out.firstOrNull()?.trim().takeUnless { it.isNullOrBlank() } ?: "0x0"
 
         CpuInfo(
             midrHex = midrHex,

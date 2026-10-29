@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.viewmodel
 
 import android.content.Context
+import android.net.Uri
 import android.system.OsConstants
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
@@ -12,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.materialkolor.PaletteStyle
+import com.materialkolor.dynamiccolor.ColorSpec
 import com.sukisu.ultra.Natives
 import com.sukisu.ultra.R
 import com.sukisu.ultra.data.repository.SettingsRepository
@@ -19,7 +22,15 @@ import com.sukisu.ultra.data.repository.SettingsRepositoryImpl
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.screen.settings.SettingsUiState
 import com.sukisu.ultra.ui.theme.ColorMode
+import com.sukisu.ultra.ui.theme.ThemeController
+import com.sukisu.ultra.ui.util.BgStorage
+import com.sukisu.ultra.ui.screen.module.ModuleNameSort
+import com.sukisu.ultra.ui.util.BuiltinAppIcons
+import com.sukisu.ultra.ui.util.ImportedTheme
+import com.sukisu.ultra.ui.util.ThemePackageData
+import com.sukisu.ultra.ui.util.ThemePackageStorage
 import com.sukisu.ultra.ui.util.findActivity
+import java.io.File
 
 class SettingsViewModel(
     private val repo: SettingsRepository = SettingsRepositoryImpl()
@@ -37,7 +48,7 @@ class SettingsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            val alternativeIcon = repo.alternativeIcon
+            val appIconId = repo.appIconId
             val themeMode = repo.themeMode
             val miuixMonet = repo.miuixMonet
             val keyColor = repo.keyColor
@@ -111,7 +122,7 @@ class SettingsViewModel(
                     appLanguage = appLanguage,
                     checkUpdate = repo.checkUpdate,
                     checkModuleUpdate = repo.checkModuleUpdate,
-                    alternativeIcon = alternativeIcon,
+                    appIconId = appIconId,
                     themeMode = themeMode,
                     miuixMonet = miuixMonet,
                     keyColor = keyColor,
@@ -153,9 +164,435 @@ class SettingsViewModel(
                     moduleContributionEnabled = moduleContributionEnabled,
                     useSoftReboot = useSoftReboot,
                     isLateLoadMode = isLateLoadMode,
+                    customBackgroundUri = repo.customBackgroundUri,
+                    customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                    useSystemWallpaper = repo.useSystemWallpaper && BgStorage.systemWallpaperFile(ksuApp).isFile,
+                    systemWallpaperPath = BgStorage.systemWallpaperFile(ksuApp)
+                        .takeIf { it.isFile }?.absolutePath.orEmpty(),
+                    extractColorFromBackground = repo.extractColorFromBackground,
+                    cardBackgroundAlphaPercent = repo.cardBackgroundAlphaPercent,
+                    customBackgroundBlurPercent = repo.customBackgroundBlurPercent,
+                    customBackgroundScrimPercent = repo.customBackgroundScrimPercent,
                 )
             }
         }
+    }
+
+    /** Copies a newly picked image into the crop cache and hands its path to the crop screen. */
+    fun stagePickedBackground(context: Context, uri: Uri, onReady: (String?) -> Unit) {
+        viewModelScope.launch {
+            val path = BgStorage.stageUri(context, uri)
+            if (path == null) {
+                Toast.makeText(
+                    ksuApp,
+                    R.string.background_crop_prepare_failed,
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            onReady(path)
+        }
+    }
+
+    /** Copies the current background so the user can re-crop it without losing the original. */
+    fun stageCurrentBackground(context: Context, onReady: (String?) -> Unit) {
+        viewModelScope.launch {
+            val current = repo.customBackgroundUri
+            val path = if (current.isNotEmpty()) {
+                BgStorage.stageFile(context, File(current))
+            } else {
+                null
+            }
+            if (path == null) {
+                Toast.makeText(
+                    ksuApp,
+                    R.string.background_crop_prepare_failed,
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            onReady(path)
+        }
+    }
+
+    /** Applies the in-app or gallery crop result and refreshes the dynamic color seed. */
+    suspend fun finishBackgroundCrop(
+        context: Context,
+        output: File,
+        sourcePath: String?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val savedPath = BgStorage.replace(context, output) ?: return@withContext false
+        runCatching { if (output.isFile) output.delete() }
+        BgStorage.discardStaged(sourcePath)
+        val seed = if (repo.extractColorFromBackground) {
+            BgStorage.extractSeedColor(File(savedPath), repo.keyColor)
+        } else {
+            repo.keyColor
+        }
+        repo.customBackgroundUri = savedPath
+        repo.customBackgroundUpdatedAt = System.currentTimeMillis()
+        repo.keyColor = seed
+        _uiState.update {
+            it.copy(
+                customBackgroundUri = savedPath,
+                customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                keyColor = seed,
+            )
+        }
+        true
+    }
+
+    suspend fun applyOriginalBackground(context: Context, sourcePath: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val source = File(sourcePath)
+            if (!source.isFile) return@withContext false
+            finishBackgroundCrop(context, source, null)
+        }
+
+    /**
+     * Re-reads the appearance preferences. The crop screen owns a separate view model
+     * instance, so the theme screen needs this when it is resumed from the cropper.
+     */
+    fun refreshBackgroundAppearance() {
+        if (repo.useSystemWallpaper) {
+            viewModelScope.launch {
+                refreshSystemWallpaperCache()
+                updateBackgroundAppearanceState()
+            }
+        } else {
+            updateBackgroundAppearanceState()
+        }
+    }
+
+    /** Re-copies the launcher wallpaper when it changed since the last capture. */
+    private suspend fun refreshSystemWallpaperCache() {
+        val result = BgStorage.captureSystemWallpaper(ksuApp, force = false)
+        if (result.changed) {
+            repo.customBackgroundUpdatedAt = System.currentTimeMillis()
+            if (repo.extractColorFromBackground && result.path != null) {
+                repo.keyColor = BgStorage.extractSeedColor(File(result.path), repo.keyColor)
+            }
+        }
+        if (!BgStorage.systemWallpaperFile(ksuApp).isFile) {
+            // The cache is gone and cannot be rebuilt; fall back to the picked image.
+            repo.useSystemWallpaper = false
+        }
+    }
+
+    private fun updateBackgroundAppearanceState() {
+        val useSystemWallpaper = repo.useSystemWallpaper
+        val systemWallpaperPath = BgStorage.systemWallpaperFile(ksuApp)
+            .takeIf { it.isFile }?.absolutePath.orEmpty()
+        _uiState.update {
+            it.copy(
+                customBackgroundUri = repo.customBackgroundUri,
+                customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                cardBackgroundAlphaPercent = repo.cardBackgroundAlphaPercent,
+                customBackgroundBlurPercent = repo.customBackgroundBlurPercent,
+                customBackgroundScrimPercent = repo.customBackgroundScrimPercent,
+                keyColor = repo.keyColor,
+                useSystemWallpaper = useSystemWallpaper && systemWallpaperPath.isNotEmpty(),
+                systemWallpaperPath = systemWallpaperPath,
+                extractColorFromBackground = repo.extractColorFromBackground,
+            )
+        }
+    }
+
+    fun setUseSystemWallpaper(context: Context, enabled: Boolean) {
+        if (!enabled) {
+            repo.useSystemWallpaper = false
+            _uiState.update {
+                it.copy(
+                    useSystemWallpaper = false,
+                    systemWallpaperPath = "",
+                    isSystemWallpaperBusy = false,
+                )
+            }
+            return
+        }
+        if (_uiState.value.isSystemWallpaperBusy) return
+        _uiState.update { it.copy(isSystemWallpaperBusy = true) }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                BgStorage.captureSystemWallpaper(context, force = true)
+            }
+            if (result.path == null) {
+                Toast.makeText(
+                    ksuApp,
+                    R.string.settings_system_wallpaper_failed,
+                    Toast.LENGTH_SHORT,
+                ).show()
+                _uiState.update { it.copy(isSystemWallpaperBusy = false) }
+                return@launch
+            }
+            repo.useSystemWallpaper = true
+            repo.customBackgroundUpdatedAt = System.currentTimeMillis()
+            if (repo.extractColorFromBackground) {
+                repo.keyColor = withContext(Dispatchers.IO) {
+                    BgStorage.extractSeedColor(File(result.path), repo.keyColor)
+                }
+            }
+            _uiState.update {
+                it.copy(
+                    useSystemWallpaper = true,
+                    systemWallpaperPath = result.path,
+                    customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                    keyColor = repo.keyColor,
+                    isSystemWallpaperBusy = false,
+                )
+            }
+        }
+    }
+
+    /**
+     * Toggles deriving the key color from the background. Enabling it immediately re-seeds from
+     * the active background; disabling leaves the current color in place for manual selection.
+     */
+    fun setExtractColorFromBackground(enabled: Boolean) {
+        repo.extractColorFromBackground = enabled
+        _uiState.update { it.copy(extractColorFromBackground = enabled) }
+        if (!enabled) return
+
+        val backgroundPath = if (repo.useSystemWallpaper) {
+            BgStorage.systemWallpaperFile(ksuApp).takeIf { it.isFile }?.absolutePath
+        } else {
+            repo.customBackgroundUri.takeIf { it.isNotEmpty() }
+        } ?: return
+        val background = File(backgroundPath).takeIf { it.isFile } ?: return
+
+        viewModelScope.launch {
+            val seed = BgStorage.extractSeedColor(background, repo.keyColor)
+            repo.keyColor = seed
+            _uiState.update { it.copy(keyColor = seed) }
+        }
+    }
+
+    fun clearCustomBackground(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            BgStorage.clear(context)
+            repo.customBackgroundUri = ""
+            repo.customBackgroundUpdatedAt = System.currentTimeMillis()
+            _uiState.update {
+                it.copy(
+                    customBackgroundUri = "",
+                    customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                )
+            }
+        }
+    }
+
+    fun setCardBackgroundAlphaPercent(percent: Int) {
+        repo.cardBackgroundAlphaPercent = percent
+        _uiState.update { it.copy(cardBackgroundAlphaPercent = percent) }
+    }
+
+    fun setCustomBackgroundBlurPercent(percent: Int) {
+        repo.customBackgroundBlurPercent = percent
+        _uiState.update { it.copy(customBackgroundBlurPercent = percent) }
+    }
+
+    fun setCustomBackgroundScrimPercent(percent: Int) {
+        repo.customBackgroundScrimPercent = percent
+        _uiState.update { it.copy(customBackgroundScrimPercent = percent) }
+    }
+
+    fun exportTheme(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val backgroundFile = state.customBackgroundUri
+                .takeIf { it.isNotEmpty() }
+                ?.let { path -> File(path).takeIf { it.isFile } }
+            val builtinIconIds = setOf(
+                BuiltinAppIcons.DEFAULT_ID,
+                BuiltinAppIcons.KERNELSU_ID,
+                BuiltinAppIcons.LOGO_ID,
+                BuiltinAppIcons.ZAKO_ID,
+            )
+            val exportedIconId = if (state.appIconId in builtinIconIds) {
+                state.appIconId
+            } else {
+                BuiltinAppIcons.DEFAULT_ID
+            }
+            val data = ThemePackageData(
+                themeMode = state.themeMode,
+                miuixMonet = state.miuixMonet,
+                keyColor = state.keyColor,
+                colorStyle = state.colorStyle,
+                colorSpec = state.colorSpec,
+                cardBackgroundAlphaPercent = state.cardBackgroundAlphaPercent,
+                customBackgroundBlurPercent = state.customBackgroundBlurPercent,
+                customBackgroundScrimPercent = state.customBackgroundScrimPercent,
+                hasBackground = backgroundFile != null,
+                uiMode = state.uiMode,
+                appIconId = exportedIconId,
+                enableFloatingBottomBar = state.enableFloatingBottomBar,
+                enableFloatingBottomBarBlur = state.enableFloatingBottomBarBlur,
+                enableNavigationBadge = state.enableNavigationBadge,
+                enablePredictiveBack = repo.enablePredictiveBack,
+                enableSwipeDismiss = repo.enableSwipeDismiss,
+                moduleSortEnabledFirst = repo.moduleSortEnabledFirst,
+                moduleSortActionFirst = repo.moduleSortActionFirst,
+                moduleSortWebUiFirst = repo.moduleSortWebUiFirst,
+                moduleSortZygiskFirst = repo.moduleSortZygiskFirst,
+                moduleSortMetamoduleFirst = repo.moduleSortMetamoduleFirst,
+                moduleSortNameOrder = repo.moduleSortNameOrder,
+                moduleSortManual = repo.moduleSortManual,
+            )
+            ThemePackageStorage.export(context, uri, data, backgroundFile)
+                .onSuccess {
+                    Toast.makeText(ksuApp, R.string.theme_export_success, Toast.LENGTH_SHORT).show()
+                }
+                .onFailure {
+                    Toast.makeText(ksuApp, R.string.theme_export_failed, Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    fun importTheme(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            ThemePackageStorage.import(context, uri)
+                .onSuccess { imported ->
+                    applyImportedTheme(context, imported)
+                    Toast.makeText(ksuApp, R.string.theme_import_success, Toast.LENGTH_SHORT).show()
+                }
+                .onFailure {
+                    Toast.makeText(ksuApp, R.string.theme_import_failed, Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    private suspend fun applyImportedTheme(context: Context, imported: ImportedTheme) {
+        val current = _uiState.value
+        val data = imported.data
+        val themeMode = data.themeMode?.takeIf { it in 0..6 } ?: current.themeMode
+        val miuixMonet = data.miuixMonet ?: current.miuixMonet
+        val keyColor = data.keyColor ?: current.keyColor
+        val colorStyle = data.colorStyle
+            ?.takeIf { name -> runCatching { PaletteStyle.valueOf(name) }.isSuccess }
+            ?: current.colorStyle
+        val colorSpec = data.colorSpec
+            ?.takeIf { name -> runCatching { ColorSpec.SpecVersion.valueOf(name) }.isSuccess }
+            ?: current.colorSpec
+        val cardAlpha = (data.cardBackgroundAlphaPercent ?: current.cardBackgroundAlphaPercent)
+            .coerceIn(BgStorage.CARD_ALPHA_MIN, BgStorage.CARD_ALPHA_MAX)
+        val blurPercent = (data.customBackgroundBlurPercent ?: current.customBackgroundBlurPercent)
+            .coerceIn(BgStorage.BACKGROUND_BLUR_PERCENT_MIN, BgStorage.BACKGROUND_BLUR_PERCENT_MAX)
+        val scrimPercent = (data.customBackgroundScrimPercent ?: current.customBackgroundScrimPercent)
+            .coerceIn(BgStorage.BACKGROUND_SCRIM_MIN, BgStorage.BACKGROUND_SCRIM_MAX)
+        val backgroundUri = if (imported.backgroundPath != null) {
+            imported.backgroundPath
+        } else {
+            BgStorage.clear(context)
+            ""
+        }
+
+        // UI Mode
+        val targetUiMode = data.uiMode?.takeIf { it == "miuix" || it == "material" } ?: current.uiMode
+        repo.uiMode = targetUiMode
+
+        repo.themeMode = themeMode
+        repo.miuixMonet = miuixMonet
+        repo.keyColor = keyColor
+        repo.colorStyle = colorStyle
+        repo.colorSpec = colorSpec
+        repo.cardBackgroundAlphaPercent = cardAlpha
+        repo.customBackgroundBlurPercent = blurPercent
+        repo.customBackgroundScrimPercent = scrimPercent
+        repo.customBackgroundUri = backgroundUri
+        // The imported appearance owns the background; the device wallpaper is a local choice.
+        repo.useSystemWallpaper = false
+        if (imported.backgroundPath != null) {
+            repo.customBackgroundUpdatedAt = System.currentTimeMillis()
+        }
+
+        // App Icon (builtin icons only)
+        val builtinIconIds = setOf(
+            BuiltinAppIcons.DEFAULT_ID,
+            BuiltinAppIcons.KERNELSU_ID,
+            BuiltinAppIcons.LOGO_ID,
+            BuiltinAppIcons.ZAKO_ID,
+        )
+        val targetIconId = data.appIconId?.takeIf { it in builtinIconIds }
+        if (targetIconId != null) {
+            repo.appIconId = targetIconId
+            val icon = BuiltinAppIcons.find(targetIconId)
+            BuiltinAppIcons.apply(context, icon)
+        }
+        val effectiveIconId = targetIconId ?: current.appIconId
+
+        // Visual Appearance (Bottom Bar)
+        val floatingBottomBar = data.enableFloatingBottomBar ?: current.enableFloatingBottomBar
+        val floatingBottomBarBlur = data.enableFloatingBottomBarBlur ?: current.enableFloatingBottomBarBlur
+        val navigationBadge = data.enableNavigationBadge ?: current.enableNavigationBadge
+        repo.enableFloatingBottomBar = floatingBottomBar
+        repo.enableFloatingBottomBarBlur = floatingBottomBarBlur
+        repo.enableNavigationBadge = navigationBadge
+
+        // Gestures / Fluidity
+        val predictiveBack = data.enablePredictiveBack ?: repo.enablePredictiveBack
+        val swipeDismiss = data.enableSwipeDismiss ?: repo.enableSwipeDismiss
+        repo.enablePredictiveBack = predictiveBack
+        repo.enableSwipeDismiss = swipeDismiss
+
+        // Module Sorting
+        data.moduleSortEnabledFirst?.let { repo.moduleSortEnabledFirst = it }
+        data.moduleSortActionFirst?.let { repo.moduleSortActionFirst = it }
+        data.moduleSortWebUiFirst?.let { repo.moduleSortWebUiFirst = it }
+        data.moduleSortZygiskFirst?.let { repo.moduleSortZygiskFirst = it }
+        data.moduleSortMetamoduleFirst?.let { repo.moduleSortMetamoduleFirst = it }
+        data.moduleSortNameOrder?.let { order ->
+            if (runCatching { ModuleNameSort.valueOf(order) }.isSuccess) {
+                repo.moduleSortNameOrder = order
+            }
+        }
+        data.moduleSortManual?.let { repo.moduleSortManual = it }
+
+        _uiState.update {
+            it.copy(
+                uiMode = targetUiMode,
+                appIconId = effectiveIconId,
+                themeMode = themeMode,
+                miuixMonet = miuixMonet,
+                keyColor = keyColor,
+                colorStyle = colorStyle,
+                colorSpec = colorSpec,
+                cardBackgroundAlphaPercent = cardAlpha,
+                customBackgroundBlurPercent = blurPercent,
+                customBackgroundScrimPercent = scrimPercent,
+                customBackgroundUri = backgroundUri,
+                customBackgroundUpdatedAt = repo.customBackgroundUpdatedAt,
+                useSystemWallpaper = false,
+                systemWallpaperPath = "",
+                enableFloatingBottomBar = floatingBottomBar,
+                enableFloatingBottomBarBlur = floatingBottomBarBlur,
+                enableNavigationBadge = navigationBadge,
+                enablePredictiveBack = predictiveBack,
+                enableSwipeDismiss = swipeDismiss,
+            )
+        }
+    }
+
+    fun resetBackgroundAppearance() {
+        viewModelScope.launch {
+            val defaultBlur = BgStorage.defaultBackgroundBlurPercent(ksuApp)
+            repo.cardBackgroundAlphaPercent = BgStorage.DEFAULT_CARD_ALPHA
+            repo.customBackgroundBlurPercent = defaultBlur
+            repo.customBackgroundScrimPercent = BgStorage.DEFAULT_BACKGROUND_SCRIM
+
+            // Theme colors, dynamic color and the custom background image are user choices.
+            _uiState.update {
+                it.copy(
+                    cardBackgroundAlphaPercent = BgStorage.DEFAULT_CARD_ALPHA,
+                    customBackgroundBlurPercent = defaultBlur,
+                    customBackgroundScrimPercent = BgStorage.DEFAULT_BACKGROUND_SCRIM,
+                )
+            }
+
+            Toast.makeText(ksuApp, R.string.theme_reset_done, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun setCheckCiUpdate(enabled: Boolean) {
+        repo.checkCiUpdate = enabled
+        _uiState.update { it.copy(checkCiUpdate = enabled) }
     }
 
     fun setCheckUpdate(enabled: Boolean) {
@@ -211,10 +648,11 @@ class SettingsViewModel(
         repo.autoDeleteModuleZip = enabled
         _uiState.update { it.copy(autoDeleteModuleZip = enabled) }
     }
-    fun setAlternativeIcon(context: Context, enabled: Boolean) {
-        repo.alternativeIcon = enabled
-        _uiState.update { it.copy(alternativeIcon = enabled) }
-        com.sukisu.ultra.ui.util.toggleLauncherIcon(context, enabled)
+    fun setAppIcon(context: Context, iconId: String) {
+        val icon = BuiltinAppIcons.find(iconId)
+        repo.appIconId = icon.id
+        _uiState.update { it.copy(appIconId = icon.id) }
+        BuiltinAppIcons.apply(context, icon)
     }
 
     fun setThemeMode(mode: Int) {

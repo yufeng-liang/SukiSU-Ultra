@@ -15,8 +15,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.ui.component.WarningLevel
+import com.sukisu.ultra.ui.theme.backgroundAwareColor
 import com.sukisu.ultra.ui.theme.isInDarkTheme
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
@@ -34,11 +34,11 @@ fun WarningCard(
     onClick: (() -> Unit)? = null,
     action: (@Composable () -> Unit)? = null,
 ) {
-    Card(
+    AppCard(
         modifier = modifier,
         onClick = { onClick?.invoke() },
         colors = CardDefaults.defaultColors(
-            color = level.containerColor(),
+            color = backgroundAwareColor(level.containerColor()),
             contentColor = level.contentColor(),
         ),
         showIndication = onClick != null,

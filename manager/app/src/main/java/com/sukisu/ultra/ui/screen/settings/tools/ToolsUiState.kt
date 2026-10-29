@@ -14,6 +14,7 @@ data class ToolsActions(
     val onSelinuxToggle: (Boolean) -> Unit = {},
     val onBackupAllowlist: () -> Unit = {},
     val onRestoreAllowlist: () -> Unit = {},
+    val onOpenKernelModules: () -> Unit = {},
 )
 
 @Immutable

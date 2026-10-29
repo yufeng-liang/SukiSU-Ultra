@@ -15,5 +15,11 @@ data class MainActivityUiState(
     val enableSwipeDismiss: Boolean,
     val pagerInterceptionMode: Int,
     val moduleDescriptionMaxLines: Int = 4,
+    /** Effective background source: the picked image or the cached launcher wallpaper. */
+    val customBackgroundUri: String = "",
+    val customBackgroundUpdatedAt: Long = 0L,
+    val cardBackgroundAlphaPercent: Int = 60,
+    val customBackgroundBlurPercent: Int = 50,
+    val customBackgroundScrimPercent: Int = -35,
     val uiMode: UiMode,
 )

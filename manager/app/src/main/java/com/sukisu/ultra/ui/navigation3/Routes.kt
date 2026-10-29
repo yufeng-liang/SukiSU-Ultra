@@ -53,6 +53,16 @@ sealed interface Route : NavKey, Parcelable {
     @Serializable
     data object ColorPalette : Route
 
+    /** Launcher icon picker and icon pack manager. */
+    @Parcelize
+    @Serializable
+    data object AppIcon : Route
+
+    /** In-app background cropper. [sourcePath] is a private cache copy of the picked image. */
+    @Parcelize
+    @Serializable
+    data class BackgroundCrop(val sourcePath: String) : Route
+
     @Parcelize
     @Serializable
     data object AppProfileTemplate : Route
@@ -120,6 +130,11 @@ sealed interface Route : NavKey, Parcelable {
     @Parcelize
     @Serializable
     data object UmountManager: Route
+
+    /** Kernel module blacklist (block_modules=) overview. */
+    @Parcelize
+    @Serializable
+    data object KernelModules : Route
 
     @Parcelize
     @Serializable

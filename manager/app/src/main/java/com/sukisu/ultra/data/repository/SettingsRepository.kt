@@ -1,11 +1,24 @@
 package com.sukisu.ultra.data.repository
 
 interface SettingsRepository {
+    var customBackgroundUri: String
+    var customBackgroundUpdatedAt: Long
+    /** Use the launcher wallpaper as the app background instead of [customBackgroundUri]. */
+    var useSystemWallpaper: Boolean
+    /** Derive the theme key color from the active background image. */
+    var extractColorFromBackground: Boolean
+    var cardBackgroundAlphaPercent: Int
+    var customBackgroundBlurPercent: Int
+    var customBackgroundScrimPercent: Int
     var uiMode: String
     var appLanguage: String
     var checkUpdate: Boolean
     var checkModuleUpdate: Boolean
     var autoDeleteModuleZip: Boolean
+    var alternativeIcon : Boolean
+
+    /** Id of the selected launcher icon (see [com.sukisu.ultra.ui.util.BuiltinAppIcons]). */
+    var appIconId: String
 
     /**
      * 安装模块时把原始 zip 留一份，供上传页直接复用。
@@ -14,7 +27,6 @@ interface SettingsRepository {
      * 只是不再留新的（清理由上传页顶栏那个入口负责）。
      */
     var keepModuleZip: Boolean
-    var alternativeIcon : Boolean
     var themeMode: Int
     var miuixMonet: Boolean
     var keyColor: Int

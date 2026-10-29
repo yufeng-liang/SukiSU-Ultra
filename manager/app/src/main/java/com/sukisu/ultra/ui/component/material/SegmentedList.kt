@@ -78,6 +78,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.IntOffset
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
+import com.sukisu.ultra.ui.theme.backgroundAwareColor
 import androidx.compose.ui.unit.round
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
@@ -93,17 +95,32 @@ private const val SegmentedSpringDamping = 0.9f
 annotation class SegmentedColumnDsl
 
 @Composable
-private fun defaultSegmentedColors(): ListItemColors = ListItemDefaults.segmentedColors(
-    containerColor = colorScheme.surfaceBright,
-    disabledContainerColor = colorScheme.surfaceBright,
-    // 勾上之后整行不再换底色：勾选框自己已经在说"这个选中了"，再铺一层对比色是同一句话
-    // 说两遍；而且一行亮起来会把旁边没选中的行衬暗，看着像那几行不能点。选中行的底色和
-    // 两种文字色都保持与未选中时一致，变的只有勾选框本身。
-    selectedContainerColor = colorScheme.surfaceBright,
-    selectedContentColor = colorScheme.onSurface,
-    selectedSupportingContentColor = colorScheme.onSurfaceVariant,
-    supportingContentColor = colorScheme.onSurfaceVariant
-)
+private fun defaultSegmentedColors(): ListItemColors {
+    // 底色统一走 backgroundAwareColor：自定义背景图上卡片是半透明的，直接用
+    // surfaceBright 会在图亮的地方糊成一片。
+    val container = backgroundAwareColor(colorScheme.surfaceBright)
+    val base = ListItemDefaults.segmentedColors(
+        containerColor = container,
+        disabledContainerColor = container,
+        // 勾上之后整行不再换底色：勾选框自己已经在说"这个选中了"，再铺一层对比色是同一句话
+        // 说两遍；而且一行亮起来会把旁边没选中的行衬暗，看着像那几行不能点。选中行的底色和
+        // 两种文字色都保持与未选中时一致，变的只有勾选框本身。
+        selectedContainerColor = container,
+        selectedContentColor = colorScheme.onSurface,
+        selectedSupportingContentColor = colorScheme.onSurfaceVariant,
+        supportingContentColor = colorScheme.onSurfaceVariant
+    )
+    if (LocalBackgroundImagePath.current.isEmpty()) return base
+    // The default disabled foreground is ~38% alpha. On a translucent card above a custom
+    // background that is hard to read, so keep the muted look but raise the contrast.
+    return base.copy(
+        disabledContentColor = colorScheme.onSurface.copy(alpha = 0.85f),
+        disabledLeadingContentColor = colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+        disabledTrailingContentColor = colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+        disabledOverlineContentColor = colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+        disabledSupportingContentColor = colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+    )
+}
 
 @Composable
 private fun defaultSingleSegmentedShape(index: Int, count: Int): ListItemShapes {

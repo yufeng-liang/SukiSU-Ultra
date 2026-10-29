@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
 import com.sukisu.ultra.ui.UiMode
+import com.sukisu.ultra.ui.util.BuiltinAppIcons
 
 @Immutable
 data class SettingsUiState(
@@ -12,7 +13,7 @@ data class SettingsUiState(
     val checkUpdate: Boolean = true,
     val checkModuleUpdate: Boolean = true,
     val autoDeleteModuleZip: Boolean = false,
-    val alternativeIcon : Boolean = false,
+    val appIconId: String = BuiltinAppIcons.DEFAULT_ID,
     val themeMode: Int = 0,
     val miuixMonet: Boolean = false,
     val keyColor: Int = 0,
@@ -81,7 +82,18 @@ data class SettingsUiState(
     val moduleContributionEnabled: Boolean = false,
 
     // Soft Reboot
-    val useSoftReboot: Boolean = false
+    val useSoftReboot: Boolean = false,
+
+    val customBackgroundUri: String = "",
+    val customBackgroundUpdatedAt: Long = 0L,
+    val useSystemWallpaper: Boolean = false,
+    /** Cached launcher wallpaper used when [useSystemWallpaper] is on and the file exists. */
+    val systemWallpaperPath: String = "",
+    val isSystemWallpaperBusy: Boolean = false,
+    val extractColorFromBackground: Boolean = false,
+    val cardBackgroundAlphaPercent: Int = 60,
+    val customBackgroundBlurPercent: Int = 50,
+    val customBackgroundScrimPercent: Int = -35,
 )
 
 @Immutable

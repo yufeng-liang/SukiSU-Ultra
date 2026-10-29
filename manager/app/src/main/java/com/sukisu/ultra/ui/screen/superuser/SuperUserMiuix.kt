@@ -77,18 +77,21 @@ import com.sukisu.ultra.ui.component.AppIconImage
 import com.sukisu.ultra.ui.component.ListPopupDefaults
 import com.sukisu.ultra.ui.component.ScrollToTopOnChange
 import com.sukisu.ultra.ui.component.SearchStatus
+import com.sukisu.ultra.ui.component.miuix.AppCard
+import com.sukisu.ultra.ui.component.miuix.AppScaffold
 import com.sukisu.ultra.ui.component.miuix.SearchBarFake
 import com.sukisu.ultra.ui.component.miuix.SearchBox
 import com.sukisu.ultra.ui.component.miuix.SearchPager
 import com.sukisu.ultra.ui.component.statustag.StatusTag
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
+import com.sukisu.ultra.ui.theme.backgroundAwareCardColors
 import com.sukisu.ultra.ui.theme.isInDarkTheme
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.ownerNameForUid
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import com.sukisu.ultra.ui.viewmodel.AppSortType
 import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
@@ -97,7 +100,6 @@ import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.PullToRefresh
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
@@ -186,14 +188,16 @@ fun SuperUserPagerMiuix(
 
     val backdrop = rememberBlurBackdrop(enableBlur)
     val blurActive = backdrop != null
-    val barColor = if (blurActive) Color.Transparent else colorScheme.surface
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
+    val barColor = if (blurActive || hasCustomBackground) Color.Transparent else colorScheme.surface
 
-    Scaffold(
+    AppScaffold(
+        containerColor = if (hasCustomBackground) Color.Transparent else colorScheme.surface,
         topBar = {
-            BlurredBar(backdrop) {
-                searchStatus.TopAppBarAnim(backgroundColor = barColor) {
+            BlurredBar(backdrop = backdrop, scrollBehavior = scrollBehavior) {
+                searchStatus.TopAppBarAnim(backgroundColor = Color.Transparent) {
                     TopAppBar(
-                        color = barColor,
+                        color = Color.Transparent,
                         title = stringResource(R.string.superuser),
                         navigationIcon = {
                             IconButton(
@@ -587,9 +591,10 @@ private fun SimpleAppItem(
                 .clip(RoundedCornerShape(16.dp))
                 .background(if (matched) colorScheme.primary else colorScheme.primaryContainer)
         )
-        Card(
+        AppCard(
             modifier = Modifier
-                .padding(start = 6.dp, end = 12.dp, bottom = 6.dp)
+                .padding(start = 6.dp, end = 12.dp, bottom = 6.dp),
+            colors = backgroundAwareCardColors(),
         ) {
             BasicComponent(
                 title = app.label,
@@ -633,10 +638,11 @@ private fun GroupItem(
             if (userId != 0) add(StatusMeta("USER $userId", bg, fg))
         }
     }
-    Card(
+    AppCard(
         modifier = Modifier
             .padding(horizontal = 12.dp)
             .padding(bottom = 12.dp),
+        colors = backgroundAwareCardColors(),
         onClick = onClickPrimary,
         onLongPress = if (group.apps.size > 1) onToggleExpand else null,
         showIndication = true,

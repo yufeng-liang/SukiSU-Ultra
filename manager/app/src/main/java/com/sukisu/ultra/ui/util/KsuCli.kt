@@ -1042,7 +1042,7 @@ suspend fun getAvailablePartitions(): List<String> = withContext(Dispatchers.IO)
 }
 
 // Known vendor anti-root kernel modules that `--block-module` is meant for.
-private val KNOWN_BLOCKABLE_MODULES = listOf(
+internal val KNOWN_BLOCKABLE_MODULES = listOf(
     "vr", "vklp", "oplus_secure_guard", "oplus_secure_guard_new", "mkp"
 )
 

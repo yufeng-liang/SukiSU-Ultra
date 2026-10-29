@@ -115,11 +115,15 @@ import com.sukisu.ultra.ui.component.ScrollToTopOnChange
 import com.sukisu.ultra.ui.component.SearchStatus
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.component.dialog.rememberLoadingDialog
+import com.sukisu.ultra.ui.component.miuix.AppCard
+import com.sukisu.ultra.ui.component.miuix.AppScaffold
 import com.sukisu.ultra.ui.component.miuix.SearchBarFake
 import com.sukisu.ultra.ui.component.miuix.SearchBox
 import com.sukisu.ultra.ui.component.miuix.SearchPager
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.theme.LocalModuleDescriptionMaxLines
+import com.sukisu.ultra.ui.theme.backgroundAwareCardColors
 import com.sukisu.ultra.ui.theme.isInDarkTheme
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.getFileName
@@ -128,7 +132,6 @@ import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.FloatingActionButtonDefaults
@@ -139,7 +142,6 @@ import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.PullToRefresh
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarDuration
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -283,14 +285,16 @@ fun ModulePagerMiuix(
 
     val backdrop = rememberBlurBackdrop(enableBlur)
     val blurActive = backdrop != null
-    val barColor = if (blurActive) Color.Transparent else colorScheme.surface
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
+    val barColor = if (blurActive || hasCustomBackground) Color.Transparent else colorScheme.surface
 
-    Scaffold(
+    AppScaffold(
+        containerColor = if (hasCustomBackground) Color.Transparent else colorScheme.surface,
         topBar = {
-            BlurredBar(backdrop) {
-                searchStatus.TopAppBarAnim(backgroundColor = barColor) {
+            BlurredBar(backdrop = backdrop, scrollBehavior = scrollBehavior) {
+                searchStatus.TopAppBarAnim(backgroundColor = Color.Transparent) {
                     TopAppBar(
-                        color = barColor,
+                        color = Color.Transparent,
                         title = stringResource(R.string.module),
                         actions = {
                             Box {
@@ -556,7 +560,7 @@ fun ModulePagerMiuix(
                     textAlign = TextAlign.Center,
                 )
             }
-            return@Scaffold
+            return@AppScaffold
         }
         val layoutDirection = LocalLayoutDirection.current
         searchStatus.SearchBox {
@@ -601,7 +605,7 @@ fun ModulePagerMiuix(
                             Text(
                                 stringResource(R.string.module_empty),
                                 textAlign = TextAlign.Center,
-                                color = Color.Gray,
+                                color = colorScheme.onSurfaceVariantSummary,
                             )
                         }
                     }
@@ -918,11 +922,12 @@ fun ModuleItem(
     val dragHandleInteractionSource = remember { MutableInteractionSource() }
     val banner = rememberModuleBanner(module.id, module.bannerPath)
 
-    Card(
+    AppCard(
         modifier = Modifier
             .padding(horizontal = 12.dp)
             .padding(bottom = 12.dp),
         insideMargin = PaddingValues(0.dp),
+        colors = backgroundAwareCardColors(),
         onClick = if (hasDescription) {
             { expanded = !expanded }
         } else null

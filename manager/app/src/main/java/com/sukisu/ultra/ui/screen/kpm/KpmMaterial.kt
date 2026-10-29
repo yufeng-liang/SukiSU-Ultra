@@ -34,12 +34,16 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.ConfigResults
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.TonalCard
+import com.sukisu.ultra.ui.component.material.TopBarBackButton
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
+import com.sukisu.ultra.ui.navigation3.LocalNavigator
+import com.sukisu.ultra.ui.theme.backgroundAwareColor
 import com.sukisu.ultra.ui.viewmodel.KpmViewModel
 
 @Composable
 fun KpmMaterial(viewModel: KpmViewModel, actions: KpmActions, bottomInnerPadding: Dp = 0.dp) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val navigator = LocalNavigator.current
     val listState = rememberLazyListState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var expandInstallFab by remember { mutableStateOf(true) }
@@ -80,8 +84,11 @@ fun KpmMaterial(viewModel: KpmViewModel, actions: KpmActions, bottomInnerPadding
     ExpressiveScaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
+            LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.kpm_title)) },
+                navigationIcon = {
+                    TopBarBackButton(onClick = { navigator.pop() })
+                },
                 actions = {
                     IconButton(onClick = actions.onRefresh, enabled = !state.isRefreshing && !state.isBusy) {
                         Icon(Icons.Rounded.Refresh, stringResource(R.string.refresh))
@@ -227,7 +234,11 @@ private fun KpmMaterialModule(module: KpmViewModel.ModuleInfo, busy: Boolean, ac
             }
             if (module.description.isNotBlank()) Text(module.description, maxLines = 4, overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (module.args.isNotBlank()) Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) {
+            if (module.args.isNotBlank()) Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = backgroundAwareColor(MaterialTheme.colorScheme.surfaceContainer),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.kpm_args), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(module.args, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)

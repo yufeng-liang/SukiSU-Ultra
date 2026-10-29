@@ -84,12 +84,16 @@ import com.sukisu.ultra.ui.component.SearchStatus
 import com.sukisu.ultra.ui.component.dialog.ConfirmDialogHandle
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.component.markdown.GithubMarkdown
+import com.sukisu.ultra.ui.component.miuix.AppCard
+import com.sukisu.ultra.ui.component.miuix.AppScaffold
 import com.sukisu.ultra.ui.component.miuix.SearchBarFake
 import com.sukisu.ultra.ui.component.miuix.SearchBox
 import com.sukisu.ultra.ui.component.miuix.SearchPager
 import com.sukisu.ultra.ui.component.miuix.WarningCard
 import com.sukisu.ultra.ui.component.miuix.deferredTopPadding
+import com.sukisu.ultra.ui.theme.LocalBackgroundImagePath
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
+import com.sukisu.ultra.ui.theme.backgroundAwareColor
 import com.sukisu.ultra.ui.theme.isInDarkTheme
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.formatFileSize
@@ -97,7 +101,6 @@ import com.sukisu.ultra.ui.util.formatRepoTime
 import com.sukisu.ultra.ui.util.isDownloadAvailable
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import com.sukisu.ultra.ui.util.rememberContentReady
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.DropdownImpl
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
@@ -109,7 +112,6 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.RefreshState
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TabRow
@@ -163,9 +165,10 @@ fun ModuleRepoScreenMiuix(
     val enableBlur = LocalEnableBlur.current
     val backdrop = rememberBlurBackdrop(enableBlur)
     val blurActive = backdrop != null
-    val barColor = if (blurActive) Color.Transparent else colorScheme.surface
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
+    val barColor = if (blurActive || hasCustomBackground) Color.Transparent else colorScheme.surface
 
-    Scaffold(
+    AppScaffold(
         topBar = {
             BlurredBar(backdrop) {
                 searchStatus.TopAppBarAnim(backgroundColor = barColor) {
@@ -286,7 +289,7 @@ fun ModuleRepoScreenMiuix(
                         Spacer(Modifier.height(6.dp))
                     }
                     items(state.searchResults, key = { "${it.sourceId}|${it.moduleId}" }, contentType = { "module" }) { module ->
-                        Card(
+                        AppCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp)
@@ -551,7 +554,7 @@ fun ModuleRepoScreenMiuix(
                                     formatRepoTime(module.latestReleaseTime)
                                 }
 
-                                Card(
+                                AppCard(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 12.dp)
@@ -861,7 +864,7 @@ fun ReleasesPage(
                 }
                 itemsIndexed(items = detailReleases, key = { index, _ -> "release_$index" }, contentType = { _, _ -> "release" }) { _, rel ->
                     val title = remember(rel.name, rel.tagName) { rel.name.ifBlank { rel.tagName } }
-                    Card(
+                    AppCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp)
@@ -1118,7 +1121,7 @@ fun InfoPage(
                         text = stringResource(R.string.module_repo_source_label),
                         modifier = Modifier.padding(top = 6.dp)
                     )
-                    Card(
+                    AppCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp),
@@ -1138,7 +1141,7 @@ fun InfoPage(
                         text = stringResource(R.string.module_repo_source_also_in),
                         modifier = Modifier.padding(top = 6.dp)
                     )
-                    Card(
+                    AppCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp),
@@ -1161,7 +1164,7 @@ fun InfoPage(
                     SmallTitle(
                         text = stringResource(R.string.module_author), modifier = Modifier.padding(top = 6.dp)
                     )
-                    Card(
+                    AppCard(
                         modifier = Modifier.padding(horizontal = 12.dp), insideMargin = PaddingValues(16.dp)
                     ) {
                         Column {
@@ -1212,7 +1215,7 @@ fun InfoPage(
                     SmallTitle(
                         text = stringResource(R.string.module_repos_source_code), modifier = Modifier.padding(top = 6.dp)
                     )
-                    Card(
+                    AppCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp)
@@ -1294,7 +1297,8 @@ fun ModuleRepoDetailScreenMiuix(
 
     val backdrop = rememberBlurBackdrop(enableBlur)
     val blurActive = backdrop != null
-    val detailBarColor = if (blurActive) Color.Transparent else colorScheme.surface
+    val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
+    val detailBarColor = if (blurActive || hasCustomBackground) Color.Transparent else colorScheme.surface
 
     val tabs = listOf(
         stringResource(R.string.tab_readme), stringResource(R.string.tab_releases), stringResource(R.string.tab_info)
@@ -1306,7 +1310,7 @@ fun ModuleRepoDetailScreenMiuix(
     }
     val coroutineScope = rememberCoroutineScope()
 
-    Scaffold(
+    AppScaffold(
         topBar = {
             BlurredBar(backdrop) {
                 TopAppBar(color = detailBarColor, title = module.moduleName, scrollBehavior = scrollBehavior, navigationIcon = {
@@ -1349,7 +1353,8 @@ fun ModuleRepoDetailScreenMiuix(
                                 }
                             },
                             colors = TabRowDefaults.tabRowColors(
-                                backgroundColor = if (blurActive) Color.Transparent else colorScheme.surface
+                                backgroundColor = if (blurActive) Color.Transparent else colorScheme.surface,
+                                selectedBackgroundColor = backgroundAwareColor(colorScheme.surfaceContainer),
                             ),
                             height = tabRowHeight,
                         )
