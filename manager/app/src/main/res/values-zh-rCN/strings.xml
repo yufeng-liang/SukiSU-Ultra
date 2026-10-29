@@ -1172,13 +1172,15 @@
     <string name="module_upload_source">这个模块的酷安链接</string>
     <string name="module_upload_source_hint">必须是 coolapk.com 的链接</string>
     <string name="module_upload_source_empty">必填</string>
+    <!-- 分组标题右侧的必填徽标。出处与上传者共用，所以不带字段名。 -->
+    <string name="module_upload_required">必填</string>
     <string name="module_upload_source_invalid">必须是 coolapk.com 的链接</string>
     <string name="module_upload_apply_all">应用到全部</string>
     <string name="module_upload_size">大小</string>
     <string name="module_upload_sha">SHA-256</string>
     <string name="module_upload_remove">移除</string>
     <string name="module_upload_uid">酷安 UID</string>
-    <string name="module_upload_uid_hint">个人主页链接末尾那串数字（coolapk.com/u/…）</string>
+    <string name="module_upload_uid_hint">个人主页-右上角三个点-查看我的资料-点击UID自动复制</string>
     <string name="module_upload_uid_checking">正在核实…</string>
     <string name="module_upload_uid_verified">已验证：%1$s</string>
     <string name="module_upload_session_checking">正在确认上次的验证…</string>
@@ -1188,13 +1190,18 @@
     <string name="module_upload_uid_invalid">需要 4~12 位数字</string>
     <string name="module_upload_uid_unavailable">暂时无法核实（酷安不可达）</string>
     <string name="module_upload_uid_self_reported">服务端未开启核实</string>
-    <string name="module_upload_uid_public">UID 会随上传公开</string>
-    <string name="module_upload_uid_level_hint">酷安账号等级需达到 Lv2 及以上</string>
+    <!-- 原来分成「UID 会随上传公开」和「等级需达到 Lv2」两行，读起来是两条无关的规矩；
+         合并成一句把「为什么要 UID」也说了。 -->
+    <string name="module_upload_uid_note">为了防止上传恶意模块，需要记录上传者的UID，并要求上传者酷安等级达到Lv2 及以上</string>
     <string name="module_upload_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载；文件不含个人隐私与密钥；我是这些模块的作者或已获得授权。</string>
     <string name="module_upload_consent_required">请先勾选确认</string>
-    <string name="module_upload_proof_title">酷安签名（整批只用这一串）</string>
+    <string name="module_upload_proof_title">酷安签名临时改为下面所示</string>
     <string name="module_upload_proof_copy">复制</string>
-    <string name="module_upload_proof_hint">打开酷安「我的 &gt; 编辑资料 &gt; 签名」，填入这串后保存，再回来勾选下面的确认。我们读取你的签名，只有对上了才认定这次投稿是你本人提交的。它覆盖这一批里的每个模块：换一批、换包或换模块 ID 都会得到另一串。</string>
+    <!-- 三段分开：怎么做 / 为什么可信 / 之后怎么办。挤成一段时三件事糊成一团，
+         而「之后可以改回来」恰恰是最需要被看见的一句。 -->
+    <string name="module_upload_proof_hint">打开酷安「我的 &gt; 编辑资料 &gt; 签名」，填入这串后保存，再回来勾选下面的确认。</string>
+    <string name="module_upload_proof_why">我们读取、核对你的酷安签名，是为了确认你在上方填写的上传者酷安UID确实是你本人使用，而非盗用其他人的UID</string>
+    <string name="module_upload_proof_restore">签名通过核对后，你可以随时恢复你原来的签名，并且日后上传模块无需再更改签名</string>
     <string name="module_upload_proof_pending">正在读取选中的 zip…</string>
     <string name="module_upload_proof_confirm">我已写进酷安签名</string>
     <string name="module_upload_proof_changed">集合变了，签名要重抄</string>

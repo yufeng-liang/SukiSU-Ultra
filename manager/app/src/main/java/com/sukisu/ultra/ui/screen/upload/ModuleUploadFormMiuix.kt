@@ -241,6 +241,7 @@ fun ModuleUploadFormMiuix(
                         SectionLabelMiuix(
                             icon = Icons.Outlined.Info,
                             text = stringResource(R.string.module_upload_section_identity),
+                            required = true,
                         )
                         TextField(
                             value = state.uid,
@@ -265,12 +266,7 @@ fun ModuleUploadFormMiuix(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.module_upload_uid_public),
-                            fontSize = 12.sp,
-                            color = colorScheme.onSurfaceVariantSummary,
-                        )
-                        Text(
-                            text = stringResource(R.string.module_upload_uid_level_hint),
+                            text = stringResource(R.string.module_upload_uid_note),
                             fontSize = 12.sp,
                             color = colorScheme.onSurfaceVariantSummary,
                         )
@@ -731,6 +727,7 @@ private fun UploadZipCardMiuix(
             SectionLabelMiuix(
                 icon = Icons.Outlined.Link,
                 text = stringResource(R.string.module_upload_section_source),
+                required = true,
             )
             TextField(
                 value = item.source,
@@ -744,18 +741,20 @@ private fun UploadZipCardMiuix(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     modifier = Modifier.weight(1f),
+                    // 「必填」已上移到分组标题右边；这一行只留填在哪、填成什么样，
+                    // 只有真正填错（不是 coolapk 链接）才转成错误色。
                     text = stringResource(
-                        when (problem) {
-                            ModuleUploadRules.SourceProblem.EMPTY -> R.string.module_upload_source_empty
-                            ModuleUploadRules.SourceProblem.NOT_COOLAPK -> R.string.module_upload_source_invalid
-                            ModuleUploadRules.SourceProblem.OK -> R.string.module_upload_source_hint
+                        if (problem == ModuleUploadRules.SourceProblem.NOT_COOLAPK) {
+                            R.string.module_upload_source_invalid
+                        } else {
+                            R.string.module_upload_source_hint
                         }
                     ),
                     fontSize = 12.sp,
-                    color = if (problem == ModuleUploadRules.SourceProblem.OK) {
-                        colorScheme.onSurfaceVariantSummary
-                    } else {
+                    color = if (problem == ModuleUploadRules.SourceProblem.NOT_COOLAPK) {
                         colorScheme.error
+                    } else {
+                        colorScheme.onSurfaceVariantSummary
                     },
                 )
                 TextButton(
@@ -837,8 +836,20 @@ private fun ProofSectionMiuix(
                         )
                     }
                 }
+                // 怎么做 / 为什么可信 / 之后怎么办，三段各占一行：挤成一段时谁都不显眼，
+                // 而「之后可以改回来」恰恰是最需要被看见的一句。
                 Text(
                     text = stringResource(R.string.module_upload_proof_hint),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+                Text(
+                    text = stringResource(R.string.module_upload_proof_why),
+                    fontSize = 12.sp,
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+                Text(
+                    text = stringResource(R.string.module_upload_proof_restore),
                     fontSize = 12.sp,
                     color = colorScheme.onSurfaceVariantSummary,
                 )
@@ -846,7 +857,9 @@ private fun ProofSectionMiuix(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(enabled = enabled) { onSignatureConfirmedChange(!state.signatureValid) },
-                    verticalAlignment = Alignment.Top,
+                    // 文字只有一行，勾选框居中与文字同一条水平线上；
+                    // 原先的 Top 会让方框压在文字的上半截。
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Checkbox(
                         state = if (state.signatureValid) {
@@ -963,10 +976,19 @@ private fun UidStatusRowMiuix(
 }
 
 @Composable
-private fun SectionLabelMiuix(icon: ImageVector, text: String) {
+private fun SectionLabelMiuix(
+    icon: ImageVector,
+    text: String,
+    /**
+     * 必填分组：标题后面紧跟一枚红色星号，再右挂一个「必填」。
+     *
+     * 原来「必填」是输入框下方那行红字，只有把视线落到框下面才看得见，
+     * 而「这个字段必填」是决定要不要填的前提，应该和标题一起被读到。
+     */
+    required: Boolean = false,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(
             modifier = Modifier.size(14.dp),
@@ -974,12 +996,32 @@ private fun SectionLabelMiuix(icon: ImageVector, text: String) {
             contentDescription = null,
             tint = colorScheme.onSurfaceVariantSummary,
         )
-        Text(
-            text = text,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = colorScheme.onSurfaceVariantSummary,
-        )
+        // 同 Material 侧：星号贴着标题，外侧 6dp 只用来和图标分开。
+        Row(
+            modifier = Modifier.padding(start = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = text,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = colorScheme.onSurfaceVariantSummary,
+            )
+            if (required) {
+                Text(
+                    text = "*",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colorScheme.error,
+                )
+                Text(
+                    modifier = Modifier.padding(start = 6.dp),
+                    text = stringResource(R.string.module_upload_required),
+                    fontSize = 11.sp,
+                    color = colorScheme.error,
+                )
+            }
+        }
     }
 }
 

@@ -229,6 +229,7 @@ fun ModuleUploadFormMaterial(
                         SectionLabelMaterial(
                             icon = Icons.Outlined.Info,
                             text = stringResource(R.string.module_upload_section_identity),
+                            required = true,
                         )
                         OutlinedTextField(
                             value = state.uid,
@@ -266,12 +267,7 @@ fun ModuleUploadFormMaterial(
                             )
                         }
                         Text(
-                            text = stringResource(R.string.module_upload_uid_public),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = stringResource(R.string.module_upload_uid_level_hint),
+                            text = stringResource(R.string.module_upload_uid_note),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -738,6 +734,7 @@ private fun UploadZipCardMaterial(
             SectionLabelMaterial(
                 icon = Icons.Outlined.Link,
                 text = stringResource(R.string.module_upload_section_source),
+                required = true,
             )
             OutlinedTextField(
                 value = item.source,
@@ -748,14 +745,15 @@ private fun UploadZipCardMaterial(
                 isError = problem == ModuleUploadRules.SourceProblem.NOT_COOLAPK,
                 modifier = Modifier.fillMaxWidth(),
                 supportingText = {
-                    // 字段自己的提示/校验文案归位 supportingText（普通 Text 默认色，
-                    // 错误观感由上面的 isError 承担）；「应用到全部」按钮留在原位。
+                    // 「必填」已上移到分组标题右边（见 SectionLabelMaterial），这里只留
+                    // 填在哪、填成什么样；填错时换成 error 文案，错误观感由上面的
+                    // isError 承担。「应用到全部」按钮留在原位。
                     Text(
                         stringResource(
-                            when (problem) {
-                                ModuleUploadRules.SourceProblem.EMPTY -> R.string.module_upload_source_empty
-                                ModuleUploadRules.SourceProblem.NOT_COOLAPK -> R.string.module_upload_source_invalid
-                                ModuleUploadRules.SourceProblem.OK -> R.string.module_upload_source_hint
+                            if (problem == ModuleUploadRules.SourceProblem.NOT_COOLAPK) {
+                                R.string.module_upload_source_invalid
+                            } else {
+                                R.string.module_upload_source_hint
                             }
                         )
                     )
@@ -844,8 +842,20 @@ private fun ProofSectionMaterial(
                         }
                     }
                 }
+                // 怎么做 / 为什么可信 / 之后怎么办，三段各占一行：挤成一段时谁都不显眼，
+                // 而「之后可以改回来」恰恰是最需要被看见的一句。
                 Text(
                     text = stringResource(R.string.module_upload_proof_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = stringResource(R.string.module_upload_proof_why),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = stringResource(R.string.module_upload_proof_restore),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -853,7 +863,9 @@ private fun ProofSectionMaterial(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(enabled = enabled) { onSignatureConfirmedChange(!state.signatureValid) },
-                    verticalAlignment = Alignment.Top,
+                    // 文字只有一行，勾选框居中与文字同一条水平线上；
+                    // 原先的 Top 会让方框压在文字的上半截。
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Checkbox(
                         checked = state.signatureValid,
@@ -965,10 +977,19 @@ private fun UidStatusRowMaterial(
 }
 
 @Composable
-private fun SectionLabelMaterial(icon: ImageVector, text: String) {
+private fun SectionLabelMaterial(
+    icon: ImageVector,
+    text: String,
+    /**
+     * 必填分组：标题后面紧跟一枚红色星号，再右挂一个「必填」。
+     *
+     * 原来「必填」是输入框下方 supportingText 里的红字，只有把视线落到框下面才看得见，
+     * 而「这个字段必填」是决定要不要填的前提，应该和标题一起被读到。
+     */
+    required: Boolean = false,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(
             modifier = Modifier.size(14.dp),
@@ -976,11 +997,31 @@ private fun SectionLabelMaterial(icon: ImageVector, text: String) {
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // 标题与星号放在内层 Row 里、彼此不留间距：星号要贴着字，隔开一道缝
+        // 看上去就像「出处」和「*」是两个词。外侧的 6dp 只用来和图标分开。
+        Row(
+            modifier = Modifier.padding(start = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (required) {
+                Text(
+                    text = "*",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    modifier = Modifier.padding(start = 6.dp),
+                    text = stringResource(R.string.module_upload_required),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
     }
 }
 
