@@ -10,36 +10,42 @@ const BOOTSTRAP_OBJECT: &str = "lkm_image_bootstrap.o";
 const PREPARED_BOOTSTRAP_OBJECT: &str = ".lkm_image_bootstrap.o";
 
 fn get_git_version() -> Result<(u32, String), std::io::Error> {
-    // CI 里 ksud 在容器/独立工作副本中编译，`git rev-list --count HEAD` 可能数到
-    // 另一个 git 状态（浅历史、别的分支），从而算出与管理器、LKM 都不一致的版本号。
+    // CI 里 ksud 在独立工作副本/容器中编译，`git rev-list --count HEAD` 可能数到
+    // 另一个 git 状态（浅历史、tag 快照），从而算出与管理器、LKM 都不一致的版本号。
     // 上游 workflow 已统一算好 version_code 并注入，优先采信它。
     let injected_code = env::var("KSU_VERSION_CODE")
         .ok()
         .and_then(|value| value.trim().parse::<u32>().ok())
         .filter(|code| *code > 0);
 
+    // 版本名只是展示串，git 不可用时退化为空，不影响版本号本身。
+    let version_name = Command::new("git")
+        .args(["describe", "--tags", "--always"])
+        .output()
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .trim()
+                .trim_start_matches('v')
+                .to_string()
+        })
+        .unwrap_or_default();
+
+    if let Some(code) = injected_code {
+        return Ok((code, version_name));
+    }
+
     let output = Command::new("git")
         .args(["rev-list", "--count", "HEAD"])
         .output()?;
 
-    let output = output.stdout;
-    let version_code = String::from_utf8(output).expect("Failed to read git count stdout");
+    let version_code = String::from_utf8(output.stdout)
+        .map_err(|_| std::io::Error::other("Failed to read git count stdout"))?;
     let version_code: u32 = version_code
         .trim()
         .parse()
         .map_err(|_| std::io::Error::other("Failed to parse git count"))?;
-    let version_code = 40000 - 2815 + version_code; // For historical reasons
-    let version_code = injected_code.unwrap_or(version_code);
-
-    let version_name = String::from_utf8(
-        Command::new("git")
-            .args(["describe", "--tags", "--always"])
-            .output()?
-            .stdout,
-    )
-    .map_err(|_| std::io::Error::other("Failed to parse git count"))?;
-    let version_name = version_name.trim_start_matches('v').to_string();
-    Ok((version_code, version_name))
+    // For historical reasons
+    Ok((40000 - 2815 + version_code, version_name))
 }
 
 fn configure_bindgen() {
@@ -271,6 +277,11 @@ fn main() {
         }
     };
     println!("cargo:rerun-if-env-changed=KSU_PACKAGE_NAME");
+    // 注入的版本号来自 CI 的统一计算。必须声明 env 依赖，否则 rust-cache 复用
+    // 旧编译产物时本脚本不会重跑，版本号会永远停在上一轮（实测 ksud 因此一直
+    // 报 41151）。warning 打在日志里，方便出包后人工核对三处数字。
+    println!("cargo:rerun-if-env-changed=KSU_VERSION_CODE");
+    println!("cargo:warning=ksud version code: {code} ({name})");
     println!("cargo:rerun-if-env-changed=KSU_IS_PR_BUILD");
     if env::var("KSU_PACKAGE_NAME").is_err() {
         // PR 构建用 .pr 变体；与 Kbuild 的 KSU_IS_PR_BUILD 语义保持一致。
