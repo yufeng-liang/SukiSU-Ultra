@@ -135,5 +135,30 @@ class ModulePropTest {
 
         assertNull(ModuleProp.parseModuleProp(missing))
         assertNull(ModuleProp.zipSha256(missing))
+        // 探测安装器也要能容错：文件没了就当"没有"，而不是把异常抛给挑包流程。
+        assertTrue(!ModuleProp.hasInstallerEntry(missing))
+    }
+
+    @Test
+    fun `any of the three installer forms counts as a distributable package`() {
+        // 三种都要认：KSU 新模板认 customize.sh，老模板认 install.sh，
+        // Magisk/recovery 认 META-INF 里的 update-binary。只认一种会把作者原包误判成重建包。
+        assertTrue(ModuleProp.hasInstallerEntry(zip("module.prop" to prop, "customize.sh" to "#!/system/bin/sh")))
+        assertTrue(ModuleProp.hasInstallerEntry(zip("module.prop" to prop, "install.sh" to "#!/system/bin/sh")))
+        assertTrue(
+            ModuleProp.hasInstallerEntry(
+                zip("module.prop" to prop, "META-INF/com/google/android/update-binary" to "#MAGISK"),
+            ),
+        )
+    }
+
+    @Test
+    fun `a package rebuilt from an installed module carries no installer`() {
+        // 这就是「用已安装的模块生成」打出来的样子：只有 module.prop 和模块自己的文件。
+        // ksud 装完会删 customize.sh、也从不解压 META-INF，所以这棵树里不可能有安装器。
+        assertTrue(!ModuleProp.hasInstallerEntry(zip("module.prop" to prop, "system/bin/tool" to "")))
+
+        // 名字像但位置不对（子目录里、或只是个目录条目）也不算：ksud 只读 zip 根下的那一个。
+        assertTrue(!ModuleProp.hasInstallerEntry(zip("module.prop" to prop, "sub/customize.sh" to "")))
     }
 }

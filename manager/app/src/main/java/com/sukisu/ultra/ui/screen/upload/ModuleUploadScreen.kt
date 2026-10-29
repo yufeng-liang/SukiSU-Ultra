@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sukisu.ultra.R
@@ -121,6 +122,10 @@ fun ModuleUploadScreen() {
     // 用 rememberSaveable：面板开着时被系统回收，回来不该自己关掉（与上面 pendingRowId 同理）。
     var showArchiveSettings by rememberSaveable { mutableStateOf(false) }
 
+    // 「为什么只能传原始 zip」的说明。本地状态而不是 VM 状态：它跟数据无关，
+    // 只是这一段界面的开关，页面被回收后自己关掉也不可惜。
+    var showUploadInfo by rememberSaveable { mutableStateOf(false) }
+
     // 清理留存包是删数据，走一次确认；数字与容量在弹窗里说清楚，
     // 免得用户点完才发现「下次上传要手动挑包了」。
     val confirmDialog = rememberConfirmDialog()
@@ -184,7 +189,7 @@ fun ModuleUploadScreen() {
                 onToggleRow = viewModel::toggleExpanded,
                 onPickForRow = pickForRow,
                 onUseArchived = useArchived,
-                onRebuildFromInstalled = viewModel::stageFromInstalled,
+                onOpenInfo = { showUploadInfo = true },
                 onPickZip = pickMany,
                 onOpenArchiveSettings = { showArchiveSettings = true },
                 mine = mineState,
@@ -201,7 +206,7 @@ fun ModuleUploadScreen() {
                 onToggleRow = viewModel::toggleExpanded,
                 onPickForRow = pickForRow,
                 onUseArchived = useArchived,
-                onRebuildFromInstalled = viewModel::stageFromInstalled,
+                onOpenInfo = { showUploadInfo = true },
                 onPickZip = pickMany,
                 onOpenArchiveSettings = { showArchiveSettings = true },
                 mine = mineState,
@@ -283,6 +288,18 @@ fun ModuleUploadScreen() {
     }
 
     TurnstileDialog(turnstile)
+
+    // 顶栏 i 的说明。与「这个包不能用」共用同一个对话框外壳：两处都是「读完才关」，
+    // 而且都不能被系统截断。
+    if (showUploadInfo) {
+        ModuleUploadNoticeDialog(
+            notice = UploadNotice(
+                title = stringResource(R.string.module_upload_info_title),
+                body = stringResource(R.string.module_upload_info_body),
+            ),
+            onDismiss = { showUploadInfo = false },
+        )
+    }
 
     // 放在最外层：挑包可能发生在列表页（为某一行挑）也可能发生在表单/记录页
     // （为已收录的模块挑新版），而它是整屏级别的阻断提示，不该跟着某一屏走。

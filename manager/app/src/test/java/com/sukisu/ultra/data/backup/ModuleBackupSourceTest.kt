@@ -53,6 +53,22 @@ class ModuleBackupSourceTest {
         staging = StagingArea(temp.newFolder()),
     )
 
+    /**
+     * 一个「认得出来」的模块 zip。
+     *
+     * 恢复前要读包里的 `module.prop.id` 与条目对账（见 [ModuleBackupSource.restore]），
+     * 所以不能再拿任意字节当输入——那种输入现在会被判为"不是这个模块的包"。
+     */
+    private fun moduleZip(id: String): ByteArray {
+        val file = File(temp.newFolder(), "restore-$id.zip")
+        java.util.zip.ZipOutputStream(file.outputStream()).use { out ->
+            out.putNextEntry(java.util.zip.ZipEntry("module.prop"))
+            out.write("id=$id\nname=Name $id\nversion=1.0\nversionCode=1\n".toByteArray())
+            out.closeEntry()
+        }
+        return file.readBytes()
+    }
+
     @Test
     fun `export produces one artifact per module with meta`() {
         runBlocking {
@@ -148,7 +164,7 @@ class ModuleBackupSourceTest {
             val calls = mutableListOf<String>()
             val restorer = object : ModuleRestorer {
                 override suspend fun install(zip: File): Result<Unit> {
-                    calls += "install:${zip.readText()}"; return Result.success(Unit)
+                    calls += "install"; return Result.success(Unit)
                 }
 
                 override suspend fun setDisabled(id: String, disabled: Boolean): Result<Unit> {
@@ -159,10 +175,10 @@ class ModuleBackupSourceTest {
             val entry = BackupEntry(BackupKind.MODULE, "a", "module_a_12_20261008_120000.zip", null, 3L, "x", "2026-10-08T12:00:00Z")
 
             val outcome = source(emptyList(), restorer)
-                .restore(entry, BackupManifest.renderModuleMeta(meta), "zip".byteInputStream())
+                .restore(entry, BackupManifest.renderModuleMeta(meta), moduleZip("a").inputStream())
 
             assertTrue(outcome.getOrThrow().success)
-            assertEquals(listOf("install:zip", "disable:a=true"), calls)
+            assertEquals(listOf("install", "disable:a=true"), calls)
         }
     }
 
@@ -175,7 +191,7 @@ class ModuleBackupSourceTest {
             }
             val entry = BackupEntry(BackupKind.MODULE, "a", "module_a_12_20261008_120000.zip", null, 3L, "x", "2026-10-08T12:00:00Z")
 
-            val outcome = source(emptyList(), restorer).restore(entry, null, "zip".byteInputStream()).getOrThrow()
+            val outcome = source(emptyList(), restorer).restore(entry, null, moduleZip("a").inputStream()).getOrThrow()
 
             assertFalse(outcome.success)
             val reason = outcome.reason
@@ -209,13 +225,85 @@ class ModuleBackupSourceTest {
             )
 
             val outcome = source(emptyList(), restorer)
-                .restore(entry, BackupManifest.renderModuleMeta(meta), "zip".byteInputStream())
+                .restore(entry, BackupManifest.renderModuleMeta(meta), moduleZip("a").inputStream())
                 .getOrThrow()
 
             assertFalse(outcome.success)
             assertTrue(outcome.reason is BackupReason.ModuleIdUnusable)
             // 一条命令都不许发出去，安装也不行：这个 id 不可信，先装进去再谈别的没意义。
             assertEquals(emptyList<String>(), calls)
+        }
+    }
+
+    @Test
+    fun `restore refuses a zip that belongs to another module`() {
+        runBlocking {
+            // 索引与归档都在可写位置，别人换一个同名 zip 进去就能让「恢复 A」实际装上 B。
+            // 更糟的是紧随其后的 setDisabled 会照着 A 的 id 去执行。所以先认包，认不对就整条拒收。
+            val calls = mutableListOf<String>()
+            val restorer = object : ModuleRestorer {
+                override suspend fun install(zip: File): Result<Unit> {
+                    calls += "install"; return Result.success(Unit)
+                }
+
+                override suspend fun setDisabled(id: String, disabled: Boolean): Result<Unit> {
+                    calls += "disable:$id"; return Result.success(Unit)
+                }
+            }
+            val entry = BackupEntry(
+                BackupKind.MODULE, "a", "module_a_12_20261008_120000.zip", null, 3L, "x",
+                "2026-10-08T12:00:00Z",
+            )
+
+            val outcome = source(emptyList(), restorer)
+                .restore(entry, null, moduleZip("b").inputStream())
+                .getOrThrow()
+
+            assertFalse(outcome.success)
+            assertTrue(outcome.reason is BackupReason.ModuleZipUnusable)
+            assertEquals(emptyList<String>(), calls)
+        }
+    }
+
+    @Test
+    fun `restore refuses bytes that are not a module zip at all`() {
+        runBlocking {
+            val calls = mutableListOf<String>()
+            val restorer = object : ModuleRestorer {
+                override suspend fun install(zip: File): Result<Unit> {
+                    calls += "install"; return Result.success(Unit)
+                }
+
+                override suspend fun setDisabled(id: String, disabled: Boolean) = Result.success(Unit)
+            }
+            val entry = BackupEntry(
+                BackupKind.MODULE, "a", "module_a_12_20261008_120000.zip", null, 3L, "x",
+                "2026-10-08T12:00:00Z",
+            )
+
+            val outcome = source(emptyList(), restorer)
+                .restore(entry, null, "not a zip".byteInputStream())
+                .getOrThrow()
+
+            // 让 ksud 去猜同样是失败，但它的报错是给开发者看的；这里先说清「这份包不是模块包」。
+            assertFalse(outcome.success)
+            assertTrue(outcome.reason is BackupReason.ModuleZipUnusable)
+            assertEquals(emptyList<String>(), calls)
+        }
+    }
+
+    @Test
+    fun `export skips a module that is waiting to be removed`() {
+        runBlocking {
+            // 挂着 remove 的模块下次开机就没了。给它打包等于备份一个正在退场的状态：
+            // 用户重启后看着它消失，之后从这份备份恢复它又回来了。
+            val outcome = source(listOf(module("a").copy(remove = true), module("b")))
+                .export().getOrThrow()
+
+            assertEquals(listOf("b"), outcome.artifacts.map { it.entryId })
+            val failure = outcome.failures.single()
+            assertEquals("a", failure.path)
+            assertTrue(failure.reason is BackupReason.ModulePendingRemoval)
         }
     }
 

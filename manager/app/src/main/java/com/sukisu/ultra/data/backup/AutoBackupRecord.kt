@@ -108,6 +108,9 @@ object AutoBackupRecordJson {
             is BackupReason.ModuleDisableFailed -> put("type", "module_disable_failed")
                 .put("entryId", reason.entryId).putExternal(reason.external)
             is BackupReason.ModuleIdUnusable -> put("type", "module_id_unusable").put("entryId", reason.entryId)
+            is BackupReason.ModuleZipUnusable -> put("type", "module_zip_unusable").put("entryId", reason.entryId)
+            is BackupReason.ModulePendingRemoval ->
+                put("type", "module_pending_removal").put("entryId", reason.entryId)
             is BackupReason.RepoConfigInvalid -> put("type", "repo_config_invalid").putExternal(reason.external)
             is BackupReason.NoSource -> put("type", "no_source").put("kind", reason.kind.wireName)
             is BackupReason.LegacyKindUnsupported ->
@@ -163,6 +166,8 @@ object AutoBackupRecordJson {
             "module_install_failed" -> BackupReason.ModuleInstallFailed(json.optString("entryId"), json.externalOrNull())
             "module_disable_failed" -> BackupReason.ModuleDisableFailed(json.optString("entryId"), json.externalOrNull())
             "module_id_unusable" -> BackupReason.ModuleIdUnusable(json.optString("entryId"))
+            "module_zip_unusable" -> BackupReason.ModuleZipUnusable(json.optString("entryId"))
+            "module_pending_removal" -> BackupReason.ModulePendingRemoval(json.optString("entryId"))
             "repo_config_invalid" -> BackupReason.RepoConfigInvalid(json.externalOrNull())
             "no_source" -> BackupReason.NoSource(
                 BackupKind.entries.firstOrNull { it.wireName == json.optString("kind") } ?: BackupKind.MODULE,

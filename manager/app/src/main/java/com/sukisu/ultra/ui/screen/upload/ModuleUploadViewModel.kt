@@ -577,6 +577,8 @@ class ModuleUploadViewModel(
                     ModuleUploadStaging.Result.UnreadableModule ->
                         postMessage(res.getString(R.string.module_upload_unreadable_prop))
 
+                    ModuleUploadStaging.Result.NoInstaller -> postNoInstallerNotice()
+
                     is ModuleUploadStaging.Result.TooBig ->
                         postMessage(stageTooBigMessage(result))
 
@@ -653,6 +655,8 @@ class ModuleUploadViewModel(
                     ModuleUploadStaging.Result.UnreadableModule ->
                         postMessage(res.getString(R.string.module_upload_unreadable_prop))
 
+                    ModuleUploadStaging.Result.NoInstaller -> postNoInstallerNotice()
+
                     is ModuleUploadStaging.Result.TooBig ->
                         postMessage(stageTooBigMessage(result))
 
@@ -666,91 +670,17 @@ class ModuleUploadViewModel(
     }
 
     /**
-     * 用**已安装的模块目录**现打一份 zip，作为「找不到原始包」时的兜底来源。
+     * 「这个包没有安装脚本」的统一出口。
      *
-     * 和 [stageArchived]（取安装时留存的原始包）不是一回事：这里打出来的是**重建包**，
-     * 缺 `META-INF/` 与 `customize.sh` 这类只在安装期存在的文件，字节与作者发布的原包不同，
-     * 索引里存下的也就是这一份重建包。所以它排在最后，界面上的说明也直说这点。
-     *
-     * 存在的意义：设置里「安装后删除模块压缩包」会把用户挑的源文件删掉，
-     * 「安装时留存原始 zip」又被关掉时，原始包就真的没了 —— 那条路以前只能让用户
-     * 自己回忆文件名去存储里翻。这个入口让「已经装上的模块」在任何情况下都还能上传。
+     * 走确认框而不是 Toast：这条要说的不是「失败了」，而是「你得换一个包，以及为什么」——
+     * 两段话在 Toast 里既显示不全也留不住。三条挑包路径都会撞到它，所以文案只写一份，
+     * 由 [ModuleUploadStaging.Result.NoInstaller] 统一触发。
      */
-    fun stageFromInstalled(row: UploadRow) {
-        if (_formState.value.submitting) return
-        val current = _listState.value
-        if (current.pickingFor != null) return
-        val maxBytes = current.limits?.takeIf { it.usable }?.maxBytes
-        if (maxBytes == null) {
-            postMessage(res.getString(R.string.module_upload_limit_unknown))
-            return
-        }
-        _listState.update { it.copy(pickingFor = row.id) }
-        viewModelScope.launch {
-            try {
-                val module = withContext(Dispatchers.IO) {
-                    repo.getModules().getOrElse { emptyList() }.firstOrNull { it.id == row.id }
-                }
-                if (module == null) {
-                    postMessage(res.getString(R.string.module_upload_rebuild_failed))
-                    return@launch
-                }
-                // 打包走的是备份那套实现（ZipModuleArchiver），产物是 ksud 能直接装的模块 zip。
-                val built = ModuleContributionEntry.stageZip(module)
-                if (built == null) {
-                    postMessage(res.getString(R.string.module_upload_rebuild_failed))
-                    return@launch
-                }
-                val staged = try {
-                    ModuleUploadStaging.stageFile(built, maxBytes)
-                } finally {
-                    // stageFile 把内容复制进了自己的 staging，这份中间产物不留。
-                    built.delete()
-                }
-                when (staged) {
-                    is ModuleUploadStaging.Result.Ok -> {
-                        if (staged.zip.id != row.id) {
-                            File(staged.zip.path).delete()
-                            postNotice(
-                                title = res.getString(R.string.module_upload_pick_wrong_title),
-                                body = res.getString(
-                                    R.string.module_upload_id_mismatch,
-                                    row.id,
-                                    staged.zip.id,
-                                ),
-                            )
-                        } else if (staged.zip.versionCode != row.versionCode) {
-                            // 归档器优先读 modules_update（还没重启生效的那份）。它和列表里
-                            // 报的版本对不上时，传上去就成了「用待安装的版本冒充当前版本」。
-                            File(staged.zip.path).delete()
-                            postNotice(
-                                title = res.getString(R.string.module_upload_version_mismatch_title),
-                                body = res.getString(
-                                    R.string.module_upload_rebuild_version_mismatch,
-                                    staged.zip.version,
-                                    staged.zip.versionCode,
-                                    row.version,
-                                    row.versionCode,
-                                ),
-                            )
-                        } else {
-                            addToForm(listOf(staged.zip))
-                        }
-                    }
-
-                    ModuleUploadStaging.Result.UnreadableModule ->
-                        postMessage(res.getString(R.string.module_upload_unreadable_prop))
-
-                    is ModuleUploadStaging.Result.TooBig ->
-                        postMessage(stageTooBigMessage(staged))
-
-                    ModuleUploadStaging.Result.Failed ->
-                        postMessage(res.getString(R.string.module_upload_stage_failed))
-                }
-            } finally {
-                _listState.update { it.copy(pickingFor = null) }
-            }
-        }
+    private fun postNoInstallerNotice() {
+        postNotice(
+            title = res.getString(R.string.module_upload_no_installer_title),
+            body = res.getString(R.string.module_upload_no_installer_body),
+        )
     }
 
     /** 打开「上传记录」：它自己也要一份最新的 /mine，不能只靠进列表时那一次。 */
@@ -869,6 +799,7 @@ class ModuleUploadViewModel(
         viewModelScope.launch {
             var unreadable = 0
             var failed = 0
+            var noInstaller = 0
             var tooBig: ModuleUploadStaging.Result.TooBig? = null
             val staged = mutableListOf<UploadZip>()
             try {
@@ -876,6 +807,7 @@ class ModuleUploadViewModel(
                     when (val result = ModuleUploadStaging.stage(context, uri, maxBytes)) {
                         is ModuleUploadStaging.Result.Ok -> staged += result.zip
                         ModuleUploadStaging.Result.UnreadableModule -> unreadable++
+                        ModuleUploadStaging.Result.NoInstaller -> noInstaller++
                         is ModuleUploadStaging.Result.TooBig -> if (tooBig == null) tooBig = result
                         ModuleUploadStaging.Result.Failed -> failed++
                     }
@@ -888,6 +820,9 @@ class ModuleUploadViewModel(
             if (staged.isNotEmpty()) addToForm(staged)
             val oversize = tooBig
             when {
+                // 缺口号的包要单独说：它的下一步不是「换个文件重试」，而是「去拿作者原包」，
+                // 一句话塞不回 Toast 里，所以优先弹说明框。
+                noInstaller > 0 -> postNoInstallerNotice()
                 // 超限最具体，先说它；其余按「读不出」优先于「复制失败」。
                 oversize != null -> postMessage(stageTooBigMessage(oversize))
                 unreadable > 0 -> postMessage(
@@ -1582,6 +1517,11 @@ class ModuleUploadViewModel(
         val message = when {
             result.code == ModuleContribution.CLIENT_TIMEOUT_CODE ->
                 res.getString(R.string.module_upload_submit_timeout)
+
+            // 服务端也有一道「包里没有安装脚本」的闸（网页端与旧客户端绕得过本地那道），
+            // 它回的是机器码。把机器码换成本地那份同样详细的解释，别把一句英文丢给用户。
+            result.code == ModuleContribution.INSTALL_SCRIPT_MISSING_CODE ->
+                res.getString(R.string.module_upload_no_installer_body)
 
             result.message.isNotBlank() -> result.message
             else -> ContributionBatch.errorCopy(

@@ -42,6 +42,15 @@ data class BackupRow(
      * 拼进一句话里的时间拿不回来。
      */
     val createdAt: String,
+    /**
+     * 打包这份备份时所在的机型（模块行来自 meta，分区行不给）。
+     *
+     * 只在恢复前对比用：模块备份存的是**当时解包出来的文件**，里面已经含着当时选定的
+     * 架构变体与安装脚本写进去的机型配置，而恢复不会再跑一遍安装脚本。所以「在别的机器上
+     * 打的包」这件事必须摆到用户面前，而不是等装完发现不对劲（见 [restoreSourceDevices]）。
+     * 旧备份与导入的归档没有这个字段，为 null。
+     */
+    val sourceDevice: String? = null,
 )
 
 /**
@@ -134,6 +143,35 @@ internal fun restoreConfirmFor(selection: List<BackupRow>): RestoreConfirm {
     }
 }
 
+/** meta 里没记机型、或记的是兜底值时，两边都无从判断，这时不该弹窗。 */
+private const val UNKNOWN_DEVICE = "unknown"
+
+/**
+ * 这份恢复里有哪些模块备份是在**别的机型**上打的包。
+ *
+ * 返回空表示不必提醒。判断刻意保守：
+ * - 只看模块行（分区快照自己还有大小与 KMI 两道硬闸）；
+ * - 任一侧是空或 `unknown`（`Build.MODEL` 取不到时的兜底）就跳过——拿着不可靠的名字去吓人，
+ *   用户下次就会习惯性点「继续」；
+ * - 只比机型名。它挡不住「同型号不同 ROM」，但能把「从小米 14 换到 K60」这件最常见的事说出来。
+ *
+ * 拆成纯函数是为了能进 JVM 单测：真正会出错的不是比较本身，而是「哪些行该进比较」。
+ */
+internal fun restoreSourceDevices(
+    selection: List<BackupRow>,
+    currentDevice: String,
+): List<String> {
+    val current = currentDevice.trim()
+    if (current.isEmpty() || current.equals(UNKNOWN_DEVICE, ignoreCase = true)) return emptyList()
+    return oneCopyPerContent(selection)
+        .filter { it.kind == BackupKind.MODULE }
+        .mapNotNull { it.sourceDevice?.trim() }
+        .filter { it.isNotEmpty() && !it.equals(UNKNOWN_DEVICE, ignoreCase = true) }
+        .filterNot { it.equals(current, ignoreCase = true) }
+        .distinct()
+        .sorted()
+}
+
 object BackupListFormatter {
 
     /**
@@ -220,6 +258,7 @@ object BackupListFormatter {
             originLabel = labels.originLabel(origin),
             kind = BackupKind.MODULE,
             createdAt = entry.createdAt,
+            sourceDevice = meta?.sourceDevice?.takeIf { it.isNotBlank() },
         )
     }
 

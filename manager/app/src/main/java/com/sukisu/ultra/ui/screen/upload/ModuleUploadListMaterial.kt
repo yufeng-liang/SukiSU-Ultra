@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.animation.animateContentSize
@@ -83,8 +84,8 @@ fun ModuleUploadListMaterial(
     onToggleRow: (String) -> Unit,
     onPickForRow: (UploadRow) -> Unit,
     onUseArchived: (UploadRow) -> Unit,
-    /** 找不到原始包时，用已安装的模块目录现打一份（见 ViewModel.stageFromInstalled）。 */
-    onRebuildFromInstalled: (UploadRow) -> Unit,
+    /** 打开「为什么只能传原始 zip」的说明。 */
+    onOpenInfo: () -> Unit,
     onPickZip: () -> Unit,
     onOpenArchiveSettings: () -> Unit,
     /** 上传记录（`GET /mine`）：只用来算每行的「上传更新」标签，列表本身不再展开它。 */
@@ -114,6 +115,14 @@ fun ModuleUploadListMaterial(
                 // 刷新放顶栏而不是列表行里：列表一滚，行内按钮就看不见了；
                 // 而且在模块为空时那一行只剩一个孤零零的「刷新」。
                 actions = {
+                    // 「为什么只能传原始 zip」的说明入口。重建包那条路关掉之后，
+                    // 「已经装过的模块」上就没有上传入口了，用户会来找解释——就在这里。
+                    IconButton(onClick = onOpenInfo) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = stringResource(R.string.module_upload_info_open),
+                        )
+                    }
                     // 上传记录单独一个入口：它回答的是「我以前投过什么」，
                     // 与「这一版收录了没有」是两件事，塞进列表里只会把主列表顶长。
                     IconButton(onClick = onOpenHistory) {
@@ -202,7 +211,6 @@ fun ModuleUploadListMaterial(
                                     onToggle = { onToggleRow(row.id) },
                                     onPick = { onPickForRow(row) },
                                     onUseArchived = { onUseArchived(row) },
-                                    onRebuild = { onRebuildFromInstalled(row) },
                                     uploadUpdate = ModuleUploadRules.showsUploadUpdate(
                                         row.versionCode,
                                         row.status,
@@ -325,7 +333,6 @@ fun ModuleUploadListMaterial(
                         onToggle = { onToggleRow(row.id) },
                         onPick = { onPickForRow(row) },
                         onUseArchived = { onUseArchived(row) },
-                        onRebuild = { onRebuildFromInstalled(row) },
                         uploadUpdate = ModuleUploadRules.showsUploadUpdate(
                             row.versionCode,
                             row.status,
@@ -349,8 +356,6 @@ private fun UploadRowCardMaterial(
     onToggle: () -> Unit,
     onPick: () -> Unit,
     onUseArchived: () -> Unit,
-    /** 用已安装的模块目录现打一份 zip（原始包已经没有时的那条路）。 */
-    onRebuild: () -> Unit,
     /** 这个模块投过、而本地装着更新的版本：右侧显示「上传更新」。 */
     uploadUpdate: Boolean = false,
     modifier: Modifier = Modifier,
@@ -536,15 +541,6 @@ private fun UploadRowCardMaterial(
                             onClick = onPick,
                         )
                     }
-                    // 最后一条兜底路：原始包已经被「安装后删除模块压缩包」清掉、留存也没开时，
-                    // 就地按已安装的模块目录打一份。它排在最后是有意的——重建包缺安装脚本，
-                    // 能和作者原包一致的那两条路在上面。
-                    RowActionMaterial(
-                        label = stringResource(R.string.module_upload_rebuild_zip),
-                        summary = stringResource(R.string.module_upload_rebuild_zip_summary),
-                        enabled = !picking,
-                        onClick = onRebuild,
-                    )
                 }
             }
         }

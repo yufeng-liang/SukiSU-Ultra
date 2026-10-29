@@ -63,6 +63,23 @@ sealed interface BackupReason {
     data class ModuleIdUnusable(val entryId: String) : BackupReason
 
     /**
+     * 备份里的包不是这个模块的 —— 读不出 `module.prop`，或者里面写的 id 和条目对不上。
+     *
+     * 这两个包名都来自可写位置（共享存储 / WebDAV / 导入的归档），别人换一个同名 zip 进去
+     * 就能让「恢复 A」实际装上 B；`setDisabled` 还会照着 A 的 id 去执行。所以装之前先认包，
+     * 认不出就整条拒收 —— 与 [ModuleIdUnusable] 同一套「形状不对就别动手」的道理。
+     */
+    data class ModuleZipUnusable(val entryId: String) : BackupReason
+
+    /**
+     * 这个模块已被标记为「下次开机删除」，所以没有打包。
+     *
+     * 打进去的后果很具体：用户下次开机看着它消失，之后若从这份备份恢复，它又回来了。
+     * 备份是「当前状态的快照」，一个正在退场的模块不属于这个快照。
+     */
+    data class ModulePendingRemoval(val entryId: String) : BackupReason
+
+    /**
      * 仓库源配置归档解析不出来或字段不合法，拒绝整体覆盖。
      *
      * 恢复仓库源配置走的是"整批替换"：解析到一半的残缺列表一旦写下去，用户已有的源就没了。

@@ -868,6 +868,10 @@
     <string name="backup_reason_module_install_failed">安装 %1$s 失败。</string>
     <string name="backup_reason_module_disable_failed">%1$s 已安装，但没能恢复它的禁用状态。</string>
     <string name="backup_reason_module_id_unusable">这份备份里的模块标识不可用（%1$s），已拒绝安装。备份可能被别的东西改过。</string>
+    <string name="backup_reason_module_zip_unusable">这份备份里的 %1$s 读不出模块信息，或者和条目对不上，已拒绝安装。备份可能被别的东西改过。</string>
+    <string name="backup_reason_module_pending_removal">%1$s 已被标记为下次开机删除，这次没有打包。</string>
+    <string name="backup_device_mismatch_title">这份备份来自别的设备</string>
+    <string name="backup_device_mismatch_body">备份里的模块是在 %1$s 上打包的，当前设备是 %2$s。\n\n模块备份存的是当时解包出来的文件——包括当时选定的架构变体和安装脚本写进去的机型配置，恢复时不会重跑安装脚本。换一台机器恢复，有可能装进不匹配的文件。\n\n仍要继续吗？</string>
     <string name="backup_reason_repo_config_invalid">仓库源配置文件读不出来或格式不对，已拒绝恢复——你现有的源保持原样。</string>
     <string name="backup_reason_no_source">这个版本没有该类内容的备份源。</string>
     <string name="backup_reason_file_unreadable">无法打开所选文件，或文件实际大小与报告值不一致。</string>
@@ -1099,6 +1103,11 @@
     <string name="module_upload_pick_zip">选择 zip 上传</string>
     <string name="module_upload_pick_zip_summary">从存储中选择一个或多个模块原始 zip</string>
     <string name="module_upload_pick_original_zip">选择这个模块的原始 zip</string>
+    <string name="module_upload_info_open">上传说明</string>
+    <string name="module_upload_info_title">为什么只能上传原始安装包</string>
+    <string name="module_upload_info_body">索引里存的这份 zip 是别人要装的东西。安装时，模块自带的安装脚本（customize.sh / install.sh / META-INF 里的安装器）负责挑架构变体、设文件权限、查系统版本——少任何一步，装出来的模块就是错的。\n\n而已经装好的模块，目录里本来就没有安装脚本：装完那一刻它就被删掉了，META-INF 也从不解压。从那个目录打出来的包发给别人，对方安装时找不到脚本，会静默按默认方式解压，脚本本该做的事一件都不会发生。\n\n所以上传只接受作者发布的原始 zip。如果本机安装时开着「安装时留存原始 zip」，上传页那一行会直接给出入口，不用去文件管理器里翻。</string>
+    <string name="module_upload_no_installer_title">这个包不能上传</string>
+    <string name="module_upload_no_installer_body">包里没有安装脚本（customize.sh / install.sh / META-INF 安装器一个都没有）。这通常说明它是从已安装的模块重新打出来的包——安装脚本在装完那一刻就被删掉了，那棵树里不可能还留着它。\n\n别人装这样的包时，系统找不到脚本会直接按默认方式解压，挑架构、设权限、环境检查全都不发生。\n\n请改传作者发布的原始 zip；本机安装时留存过的话，上传页那一行会直接给出入口。</string>
     <string name="module_upload_pick_original_zip_summary">zip 里的模块 ID 必须是 %1$s</string>
     <string name="module_upload_picking">正在等待文件选择器…</string>
     <string name="module_upload_use_archived_zip">用安装时留存的包</string>
@@ -1152,10 +1161,6 @@
     <string name="module_upload_history_versions">%1$d 个版本</string>
     <string name="module_upload_history_update_summary">选这个模块的新版 zip，上传后会覆盖这一版</string>
     <string name="module_upload_tag_upload_update">上传更新</string>
-    <string name="module_upload_rebuild_zip">没有原始包？用已安装的模块生成</string>
-    <string name="module_upload_rebuild_zip_summary">生成的包不含安装脚本，与作者发布的原始包不完全一样，只在上面的原始包找不到时用</string>
-    <string name="module_upload_rebuild_failed">生成失败：读不到模块目录</string>
-    <string name="module_upload_rebuild_version_mismatch">重新打包出来的是 %1$s（%2$d），与当前装着的 %3$s（%4$d）对不上。这一份已跳过。</string>
 
     <string name="module_upload_form_title">上传模块</string>
     <string name="module_upload_wall_add">添加</string>

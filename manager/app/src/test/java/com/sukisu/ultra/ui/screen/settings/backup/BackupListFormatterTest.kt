@@ -196,6 +196,43 @@ class BackupListFormatterTest {
         assertEquals(2, groups.single().size)
     }
 
+    /**
+     * 换机型恢复必须提醒：模块备份里是**旧机器解包出来的文件**（含当时选定的架构变体、
+     * 安装脚本写进去的机型配置），而恢复不会再跑一遍安装脚本。
+     */
+    @Test
+    fun `a backup packed on another device is reported by name`() {
+        val rows = rowsOf(entry, metas = mapOf("m.meta.json" to meta.copy(sourceDevice = "Xiaomi 14")))
+
+        assertEquals(listOf("Xiaomi 14"), restoreSourceDevices(rows, "Redmi K60 Ultra"))
+    }
+
+    @Test
+    fun `the same device or an unknown one raises nothing`() {
+        val same = rowsOf(entry, metas = mapOf("m.meta.json" to meta.copy(sourceDevice = "Redmi K60 Ultra")))
+        assertTrue(restoreSourceDevices(same, "Redmi K60 Ultra").isEmpty())
+
+        // 旧备份没有这个字段（空串），或者 Build.MODEL 取不到（unknown / 空）：两边都无从判断。
+        // 拿不可靠的名字去弹窗，用户下次就会习惯性点「继续」，闸门等于没有。
+        val legacy = rowsOf(entry, metas = mapOf("m.meta.json" to meta.copy(sourceDevice = "")))
+        assertTrue(restoreSourceDevices(legacy, "Redmi K60 Ultra").isEmpty())
+        assertTrue(restoreSourceDevices(same, "unknown").isEmpty())
+        assertTrue(restoreSourceDevices(same, "").isEmpty())
+    }
+
+    @Test
+    fun `partition rows are not part of the device warning`() {
+        // 分区快照自己还有大小与 KMI 两道硬闸；这里既不该重复报，也不能因为分区行没有
+        // sourceDevice 就把同一批里的模块行一起漏掉。
+        val rows = rowsOf(
+            partitionEntry,
+            entry,
+            metas = mapOf("m.meta.json" to meta.copy(sourceDevice = "Xiaomi 14")),
+        )
+
+        assertEquals(listOf("Xiaomi 14"), restoreSourceDevices(rows, "Redmi K60 Ultra"))
+    }
+
     private companion object {
         val SEP = BackupListFormatter.SEPARATOR
     }

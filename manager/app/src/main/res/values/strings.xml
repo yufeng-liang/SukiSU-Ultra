@@ -874,6 +874,10 @@
     <string name="backup_reason_module_install_failed">Installing %1$s failed.</string>
     <string name="backup_reason_module_disable_failed">%1$s was installed, but its disabled state could not be restored.</string>
     <string name="backup_reason_module_id_unusable">The module id in this backup is not usable (%1$s), so nothing was installed. The backup may have been edited by something else.</string>
+    <string name="backup_reason_module_zip_unusable">The backup for %1$s has no readable module info or does not match its entry, so it was not installed. The backup may have been modified.</string>
+    <string name="backup_reason_module_pending_removal">%1$s is marked for removal on the next boot and was not packed.</string>
+    <string name="backup_device_mismatch_title">This backup came from another device</string>
+    <string name="backup_device_mismatch_body">The modules in this backup were packed on %1$s; this device is %2$s.\n\nA module backup stores the files as they were unpacked then — including the ABI variant that was chosen and any device-specific values the install script wrote. Restoring does not re-run the install script, so restoring on a different model can bring in files that do not match.\n\nContinue anyway?</string>
     <string name="backup_reason_repo_config_invalid">The repo sources file is unreadable or malformed, so your current sources were left untouched.</string>
     <string name="backup_reason_no_source">There is no backup source for this kind of item.</string>
     <string name="backup_reason_file_unreadable">The selected file could not be opened or its reported size changed.</string>
@@ -1115,6 +1119,11 @@
     <string name="module_upload_pick_zip">Choose a zip to upload</string>
     <string name="module_upload_pick_zip_summary">Pick one or more original module zips from storage</string>
     <string name="module_upload_pick_original_zip">Choose this module\'s original zip</string>
+    <string name="module_upload_info_open">Upload help</string>
+    <string name="module_upload_info_title">Why only the original package can be uploaded</string>
+    <string name="module_upload_info_body">The zip stored in the index is what other people install. During installation the installer shipped inside the module (customize.sh / install.sh / the installer under META-INF) picks the matching ABI variant, sets file permissions and checks the system version. Skip any of that and the module installs wrong.\n\nAn installed module has no installer left in its directory: it is deleted the moment installation finishes, and META-INF is never extracted. A zip rebuilt from that directory reaches other people without an installer, so installation silently falls back to plain extraction and none of those steps happen.\n\nUploads therefore only accept the zip the author published. If the original zip was kept at install time, the entry on this page opens it directly.</string>
+    <string name="module_upload_no_installer_title">This package cannot be uploaded</string>
+    <string name="module_upload_no_installer_body">The zip has no installer at all (neither customize.sh, install.sh nor the META-INF installer). That usually means it was rebuilt from an installed module: the installer is deleted as soon as installation completes, so the module directory can never still contain it.\n\nInstalling such a zip, the manager finds no script and silently extracts everything with defaults — picking the right ABI, setting permissions and the environment checks never happen.\n\nUpload the zip the author published instead. If the original was kept at install time, the entry on this page opens it directly.</string>
     <string name="module_upload_pick_original_zip_summary">The zip must contain this module id: %1$s</string>
     <string name="module_upload_picking">Waiting for the file picker…</string>
     <string name="module_upload_use_archived_zip">Use the zip kept at install time</string>
@@ -1168,10 +1177,6 @@
     <string name="module_upload_history_versions">%1$d version(s)</string>
     <string name="module_upload_history_update_summary">Pick the newer zip for this module; uploading it replaces the version shown here</string>
     <string name="module_upload_tag_upload_update">Upload update</string>
-    <string name="module_upload_rebuild_zip">No original zip? Rebuild from the installed module</string>
-    <string name="module_upload_rebuild_zip_summary">The rebuilt zip has no install script and is not identical to the author\'s release; use it only when the original zip is gone</string>
-    <string name="module_upload_rebuild_failed">Rebuild failed: the module directory cannot be read</string>
-    <string name="module_upload_rebuild_version_mismatch">The rebuilt zip is %1$s (%2$d), but %3$s (%4$d) is installed. It was skipped.</string>
 
     <string name="module_upload_form_title">Upload modules</string>
     <string name="module_upload_wall_add">Add</string>

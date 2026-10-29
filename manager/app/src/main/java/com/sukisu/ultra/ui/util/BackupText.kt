@@ -62,6 +62,10 @@ object BackupText {
         is BackupReason.ModuleDisableFailed -> ReasonText(R.string.backup_reason_module_disable_failed, listOf(reason.entryId))
         is BackupReason.ModuleIdUnusable ->
             ReasonText(R.string.backup_reason_module_id_unusable, listOf(Redaction.redactMessage(reason.entryId)))
+        is BackupReason.ModuleZipUnusable ->
+            ReasonText(R.string.backup_reason_module_zip_unusable, listOf(Redaction.redactMessage(reason.entryId)))
+        is BackupReason.ModulePendingRemoval ->
+            ReasonText(R.string.backup_reason_module_pending_removal, listOf(Redaction.redactMessage(reason.entryId)))
         is BackupReason.RepoConfigInvalid -> ReasonText(R.string.backup_reason_repo_config_invalid)
         is BackupReason.NoSource -> ReasonText(R.string.backup_reason_no_source)
         is BackupReason.LegacyKindUnsupported -> ReasonText(R.string.backup_reason_legacy_kind)

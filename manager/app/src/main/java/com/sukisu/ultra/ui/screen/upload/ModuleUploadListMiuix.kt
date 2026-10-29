@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -106,8 +108,8 @@ fun ModuleUploadListMiuix(
     onToggleRow: (String) -> Unit,
     onPickForRow: (UploadRow) -> Unit,
     onUseArchived: (UploadRow) -> Unit,
-    /** 找不到原始包时，用已安装的模块目录现打一份（见 ViewModel.stageFromInstalled）。 */
-    onRebuildFromInstalled: (UploadRow) -> Unit,
+    /** 打开「为什么只能传原始 zip」的说明。 */
+    onOpenInfo: () -> Unit,
     onPickZip: () -> Unit,
     onOpenArchiveSettings: () -> Unit,
     /** 上传记录（`GET /mine`）：只用来算每行的「上传更新」标签，列表本身不再展开它。 */
@@ -165,6 +167,15 @@ fun ModuleUploadListMiuix(
                         },
                         // 刷新放顶栏：列表一滚行内按钮就看不见了，空列表时那一行也只剩它一个。
                         actions = {
+                            // 「为什么只能传原始 zip」的说明入口：重建包那条路关掉之后，
+                            // 已经装过的模块在这页没有上传入口，解释放在这里。
+                            IconButton(onClick = onOpenInfo) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Info,
+                                    contentDescription = stringResource(R.string.module_upload_info_open),
+                                    tint = colorScheme.onSurface,
+                                )
+                            }
                             // 上传记录：回答「我以前投过什么」，与「这一版收录了没有」是两件事。
                             IconButton(onClick = onOpenHistory) {
                                 Icon(
@@ -295,7 +306,6 @@ fun ModuleUploadListMiuix(
                                 onToggle = { onToggleRow(row.id) },
                                 onPick = { onPickForRow(row) },
                                 onUseArchived = { onUseArchived(row) },
-                                onRebuild = { onRebuildFromInstalled(row) },
                                 uploadUpdate = ModuleUploadRules.showsUploadUpdate(
                                     row.versionCode,
                                     row.status,
@@ -409,7 +419,6 @@ fun ModuleUploadListMiuix(
                             onToggle = { onToggleRow(row.id) },
                             onPick = { onPickForRow(row) },
                             onUseArchived = { onUseArchived(row) },
-                            onRebuild = { onRebuildFromInstalled(row) },
                             uploadUpdate = ModuleUploadRules.showsUploadUpdate(
                                 row.versionCode,
                                 row.status,
@@ -584,8 +593,6 @@ private fun UploadRowCardMiuix(
     onToggle: () -> Unit,
     onPick: () -> Unit,
     onUseArchived: () -> Unit,
-    /** 用已安装的模块目录现打一份 zip（原始包已经没有时的那条路）。 */
-    onRebuild: () -> Unit,
     /** 这个模块投过、而本地装着更新的版本：右侧显示「上传更新」。 */
     uploadUpdate: Boolean = false,
     /** 有任意一行正在挑包（全局闸门生效中）。 */
@@ -776,18 +783,6 @@ private fun UploadRowCardMiuix(
                             color = colorScheme.onSurfaceVariantSummary,
                         )
                     }
-                    // 最后一条兜底路：原始包被「安装后删除模块压缩包」清掉、留存也没开时，
-                    // 就地按已安装的模块目录打一份。排在最后是有意的——重建包缺安装脚本。
-                    TextButton(
-                        text = stringResource(R.string.module_upload_rebuild_zip),
-                        onClick = onRebuild,
-                        enabled = !picking,
-                    )
-                    Text(
-                        text = stringResource(R.string.module_upload_rebuild_zip_summary),
-                        fontSize = 12.sp,
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
                 }
             }
         }

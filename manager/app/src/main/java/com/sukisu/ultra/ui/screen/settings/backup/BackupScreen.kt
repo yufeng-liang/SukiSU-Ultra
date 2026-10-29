@@ -1,6 +1,7 @@
 package com.sukisu.ultra.ui.screen.settings.backup
 
 import android.content.Intent
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -117,105 +118,127 @@ fun BackupScreen(viewModel: BackupViewModel = viewModel()) {
         onSetOriginEntries = viewModel::setOriginEntries,
         onToggleGroupEntry = viewModel::toggleGroupEntry,
         onRestoreSelected = {
-            // 选中的里面有分区快照就必须先问一次：恢复它是往块设备写镜像，不可逆，
-            // 而且用户未必知道自己勾上了它。
+            // 恢复要过两道确认：先问「这份包该不该装到这台机器上」（设备闸门），
+            // 再问「这一步会造成什么后果」（分区不可逆 / 多条覆盖 / 整批替换）。
             val selection = state.openGroupSelection
-            when (restoreConfirmFor(selection)) {
-                RestoreConfirm.PARTITION -> confirmScope.launch {
-                    // 原子选择保证勾中的分区一定是整组；把分区名说进正文，按下去之前
-                    // 用户知道刷回的是哪几个（boot_a / init_boot_a / vendor_boot_a）。
-                    // 这份快照同时也是执行的输入：KMI 检查/弹窗期间用户再改勾选，改的只是
-                    // 屏幕状态，不会让"弹窗说的"和"实际恢复的"变成两份东西。
-                    val chosen = oneCopyPerContent(selection)
-                    val moduleCount = chosen.count { it.kind == BackupKind.MODULE }
-                    val separator = context.getString(R.string.backup_list_separator)
-                    val partitions = chosen
-                        .filter { it.kind == BackupKind.PARTITION }
-                        .mapNotNull { partitionFromName(it.fileName) }
-                        // 名单必须数得齐：mapNotNull 漏掉的行进不了正文，那就退回通用文案——
-                        // 宁可少说细节，也不能把「将刷回 2 个分区」说成实际刷 3 个。
-                        .takeIf { it.size == chosen.count { row -> row.kind == BackupKind.PARTITION } }
-                    // 先比 KMI：快照记了拍它时的 uname，和当前的属于不同 KMI 时（系统升级过）
-                    // 刷回去大概率开不了机——这句话必须赶在普通确认之前说。检查期间恢复按钮
-                    // 已被 busy 禁掉（见 partitionKmiCheck），不会在等待中再点出第二个确认。
-                    val kmi = viewModel.partitionKmiCheck(selection)
-                    if (kmi != null) {
-                        val kmiConfirmed = confirmDialog.awaitConfirm(
-                            title = context.getString(R.string.backup_kmi_mismatch_title),
-                            content = context.getString(
-                                R.string.backup_kmi_mismatch_body,
-                                kmi.snapshotRelease,
-                                kmi.currentRelease,
+            // 设备闸门：比「恢复几条」「刷哪个分区」都更靠前——后两者问的是「怎么恢复」，
+            // 这一步问的是「这份包该不该装到这台机器上」。
+            //
+            // 模块备份存的是当时解包出来的文件（含当时选定的架构变体、安装脚本写进去的
+            // 机型配置），恢复不会重跑安装脚本。换机型恢复未必出事，但用户有权事先知道
+            // 自己在跨机型搬东西，而不是装完发现不对劲。
+            confirmScope.launch {
+                val foreign = restoreSourceDevices(oneCopyPerContent(selection), Build.MODEL.orEmpty())
+                if (foreign.isNotEmpty()) {
+                    val confirmed = confirmDialog.awaitConfirm(
+                        title = context.getString(R.string.backup_device_mismatch_title),
+                        content = context.getString(
+                            R.string.backup_device_mismatch_body,
+                            foreign.joinToString(
+                                context.getString(R.string.backup_list_separator),
                             ),
-                        ) == ConfirmResult.Confirmed
-                        // KMI 警告是多出来的一道提醒，不是替代：确认后仍走普通确认，
-                        // 分区名单/模块说明在普通框里说，两层各管各的信息。
-                        if (!kmiConfirmed) return@launch
-                    }
-                    val count = { n: Int ->
-                        context.resources.getQuantityString(R.plurals.backup_partition_count, n, n)
-                    }
-                    val body = when {
-                        // 理论上到不了（分区行必有可认的文件名），认不出时退回普通文案兜底。
-                        partitions.isNullOrEmpty() && moduleCount > 0 -> context.getString(
-                            R.string.backup_partition_restore_confirm_body_mixed,
-                            moduleCount,
-                        )
-                        partitions.isNullOrEmpty() -> partitionConfirmBody
-                        moduleCount > 0 -> context.getString(
-                            R.string.backup_partition_restore_confirm_body_mixed_partitions,
-                            count(partitions.size),
-                            partitions.joinToString(separator),
-                            moduleCount,
-                        )
-                        else -> context.getString(
-                            R.string.backup_partition_restore_confirm_body_partitions,
-                            count(partitions.size),
-                            partitions.joinToString(separator),
-                        )
-                    }
-                    val confirmed = confirmDialog.awaitConfirm(
-                        title = partitionConfirmTitle,
-                        content = body,
-                    ) == ConfirmResult.Confirmed
-                    if (confirmed) {
-                        viewModel.restoreSelected(chosen, deduped = chosen.size < selection.size)
-                    }
-                }
-
-                // 一次恢复好几条：详情页默认全选，这一下会把整组模块按备份里的版本重装一遍
-                // ——备份可能比现在旧，而且恢复没有撤销。多选里带仓库源时正文已说明会整批替换。
-                RestoreConfirm.MANY -> confirmScope.launch {
-                    // 弹窗数字和执行用同一份快照：等待确认的间隙改勾选，弹窗说的仍是确认时那份。
-                    val chosen = oneCopyPerContent(selection)
-                    val confirmed = confirmDialog.awaitConfirm(
-                        title = context.getString(
-                            R.string.backup_restore_many_confirm_title,
-                            chosen.size,
+                            Build.MODEL.orEmpty(),
                         ),
-                        content = restoreManyConfirmBody,
                     ) == ConfirmResult.Confirmed
-                    if (confirmed) {
+                    if (!confirmed) return@launch
+                }
+                when (restoreConfirmFor(selection)) {
+                    RestoreConfirm.PARTITION -> confirmScope.launch {
+                        // 原子选择保证勾中的分区一定是整组；把分区名说进正文，按下去之前
+                        // 用户知道刷回的是哪几个（boot_a / init_boot_a / vendor_boot_a）。
+                        // 这份快照同时也是执行的输入：KMI 检查/弹窗期间用户再改勾选，改的只是
+                        // 屏幕状态，不会让"弹窗说的"和"实际恢复的"变成两份东西。
+                        val chosen = oneCopyPerContent(selection)
+                        val moduleCount = chosen.count { it.kind == BackupKind.MODULE }
+                        val separator = context.getString(R.string.backup_list_separator)
+                        val partitions = chosen
+                            .filter { it.kind == BackupKind.PARTITION }
+                            .mapNotNull { partitionFromName(it.fileName) }
+                            // 名单必须数得齐：mapNotNull 漏掉的行进不了正文，那就退回通用文案——
+                            // 宁可少说细节，也不能把「将刷回 2 个分区」说成实际刷 3 个。
+                            .takeIf { it.size == chosen.count { row -> row.kind == BackupKind.PARTITION } }
+                        // 先比 KMI：快照记了拍它时的 uname，和当前的属于不同 KMI 时（系统升级过）
+                        // 刷回去大概率开不了机——这句话必须赶在普通确认之前说。检查期间恢复按钮
+                        // 已被 busy 禁掉（见 partitionKmiCheck），不会在等待中再点出第二个确认。
+                        val kmi = viewModel.partitionKmiCheck(selection)
+                        if (kmi != null) {
+                            val kmiConfirmed = confirmDialog.awaitConfirm(
+                                title = context.getString(R.string.backup_kmi_mismatch_title),
+                                content = context.getString(
+                                    R.string.backup_kmi_mismatch_body,
+                                    kmi.snapshotRelease,
+                                    kmi.currentRelease,
+                                ),
+                            ) == ConfirmResult.Confirmed
+                            // KMI 警告是多出来的一道提醒，不是替代：确认后仍走普通确认，
+                            // 分区名单/模块说明在普通框里说，两层各管各的信息。
+                            if (!kmiConfirmed) return@launch
+                        }
+                        val count = { n: Int ->
+                            context.resources.getQuantityString(R.plurals.backup_partition_count, n, n)
+                        }
+                        val body = when {
+                            // 理论上到不了（分区行必有可认的文件名），认不出时退回普通文案兜底。
+                            partitions.isNullOrEmpty() && moduleCount > 0 -> context.getString(
+                                R.string.backup_partition_restore_confirm_body_mixed,
+                                moduleCount,
+                            )
+                            partitions.isNullOrEmpty() -> partitionConfirmBody
+                            moduleCount > 0 -> context.getString(
+                                R.string.backup_partition_restore_confirm_body_mixed_partitions,
+                                count(partitions.size),
+                                partitions.joinToString(separator),
+                                moduleCount,
+                            )
+                            else -> context.getString(
+                                R.string.backup_partition_restore_confirm_body_partitions,
+                                count(partitions.size),
+                                partitions.joinToString(separator),
+                            )
+                        }
+                        val confirmed = confirmDialog.awaitConfirm(
+                            title = partitionConfirmTitle,
+                            content = body,
+                        ) == ConfirmResult.Confirmed
+                        if (confirmed) {
+                            viewModel.restoreSelected(chosen, deduped = chosen.size < selection.size)
+                        }
+                    }
+
+                    // 一次恢复好几条：详情页默认全选，这一下会把整组模块按备份里的版本重装一遍
+                    // ——备份可能比现在旧，而且恢复没有撤销。多选里带仓库源时正文已说明会整批替换。
+                    RestoreConfirm.MANY -> confirmScope.launch {
+                        // 弹窗数字和执行用同一份快照：等待确认的间隙改勾选，弹窗说的仍是确认时那份。
+                        val chosen = oneCopyPerContent(selection)
+                        val confirmed = confirmDialog.awaitConfirm(
+                            title = context.getString(
+                                R.string.backup_restore_many_confirm_title,
+                                chosen.size,
+                            ),
+                            content = restoreManyConfirmBody,
+                        ) == ConfirmResult.Confirmed
+                        if (confirmed) {
+                            viewModel.restoreSelected(chosen, deduped = chosen.size < selection.size)
+                        }
+                    }
+
+                    // 单条仓库源恢复同样是整批替换：只恢复一条不拦的豁免理由（"只动那一个模块"）
+                    // 对它不成立，所以单独问一次。
+                    RestoreConfirm.REPO_CONFIG -> confirmScope.launch {
+                        val chosen = oneCopyPerContent(selection)
+                        val confirmed = confirmDialog.awaitConfirm(
+                            title = repoRestoreConfirmTitle,
+                            content = repoRestoreConfirmBody,
+                        ) == ConfirmResult.Confirmed
+                        if (confirmed) {
+                            viewModel.restoreSelected(chosen, deduped = chosen.size < selection.size)
+                        }
+                    }
+
+                    RestoreConfirm.NONE -> {
+                        val chosen = oneCopyPerContent(selection)
                         viewModel.restoreSelected(chosen, deduped = chosen.size < selection.size)
                     }
-                }
-
-                // 单条仓库源恢复同样是整批替换：只恢复一条不拦的豁免理由（"只动那一个模块"）
-                // 对它不成立，所以单独问一次。
-                RestoreConfirm.REPO_CONFIG -> confirmScope.launch {
-                    val chosen = oneCopyPerContent(selection)
-                    val confirmed = confirmDialog.awaitConfirm(
-                        title = repoRestoreConfirmTitle,
-                        content = repoRestoreConfirmBody,
-                    ) == ConfirmResult.Confirmed
-                    if (confirmed) {
-                        viewModel.restoreSelected(chosen, deduped = chosen.size < selection.size)
-                    }
-                }
-
-                RestoreConfirm.NONE -> {
-                    val chosen = oneCopyPerContent(selection)
-                    viewModel.restoreSelected(chosen, deduped = chosen.size < selection.size)
                 }
             }
         },

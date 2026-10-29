@@ -40,6 +40,16 @@ object ModuleProp {
     private val KEYS = setOf("id", "name", "version", "versionCode", "author", "description")
 
     /**
+     * 三种安装器在 zip 里的位置，精确匹配（不带尾随斜杠的意义在于：`customize.sh/` 这种
+     * 同名目录不算）。
+     */
+    private val INSTALLER_ENTRIES = listOf(
+        "customize.sh",
+        "install.sh",
+        "META-INF/com/google/android/update-binary",
+    )
+
+    /**
      * 解析 [zipFile] 根目录下的 `module.prop`，返回 null 表示"读不出来"：
      * 不是 zip、zip 里没有根目录的 module.prop、或 id / name 为空。
      */
@@ -49,6 +59,25 @@ object ModuleProp {
     /** zip 整体的 SHA-256，小写十六进制；读不到文件时返回 null。 */
     fun zipSha256(zipFile: File): String? =
         runCatching { zipFile.inputStream().buffered().use { it.sha256Hex() } }.getOrNull()
+
+    /**
+     * 这个包是不是「作者打包出来准备分发的」——判据是它自带安装器。
+     *
+     * 三种都算，因为三种都能被某个管理器执行：
+     * - `customize.sh`：KernelSU / SukiSU 的安装脚本（新版模板）；
+     * - `install.sh`：Magisk 老模板的安装脚本，ksud 也认（`is_legacy_script`）；
+     * - `META-INF/com/google/android/update-binary`：Magisk 与 recovery 的安装器。
+     *
+     * 是用来挡「从已安装的模块目录现打的包」的：ksud 装完会删掉 `customize.sh`、也从不解压
+     * `META-INF`，所以设备上那棵目录树里这三样一个都不会有。反过来，一个**没有**脚本但只有
+     * `module.prop` + 文件的原包也能装（ksud 走默认解压），所以这道检查只证明「这不是设备上
+     * 打出来的包」，不证明「安装脚本一定会跑」——后者只能靠作者原包。
+     */
+    fun hasInstallerEntry(zipFile: File): Boolean = runCatching {
+        ZipFile(zipFile).use { zip ->
+            INSTALLER_ENTRIES.any { name -> zip.getEntry(name) != null }
+        }
+    }.getOrDefault(false)
 
     private fun readModuleProp(zipFile: File): ModulePropInfo? {
         val text = ZipFile(zipFile).use { zip ->

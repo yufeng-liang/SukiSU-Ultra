@@ -1,6 +1,7 @@
 package com.sukisu.ultra.data.backup
 
 import com.sukisu.ultra.data.model.Module
+import com.sukisu.ultra.ui.util.ModuleProp
 import java.io.File
 import java.io.InputStream
 import java.time.Instant
@@ -55,6 +56,17 @@ class ModuleBackupSource(
             // 报在这个模块打包**之前**：点完就要看到东西在动，等这一个打完才报等于又停了一次，
             // 而第一个模块往往就是最费时的那个。
             onPacking(PackingProgress(index + 1, modules.size))
+            // 已经挂了 remove 标记的模块下次开机就没了。给它打包等于备份一个正在退场的状态：
+            // 用户重启后看着它消失，之后从这份备份恢复它又回来了。跳过并说清原因，
+            // 而不是静默少一条（静默少一条会被读成"备份漏了"）。
+            if (module.remove) {
+                failures += BackupFailure(
+                    path = module.id,
+                    storage = SOURCE_STORAGE,
+                    reason = BackupReason.ModulePendingRemoval(module.id),
+                )
+                return@forEachIndexed
+            }
             val archived = archiver.archive(module).getOrElse { error ->
                 // 打包失败要报出来：静默跳过会让用户看到"written N"却不知道有模块没备上。
                 failures += BackupFailure(
@@ -106,6 +118,16 @@ class ModuleBackupSource(
         val staged = staging.newFile("restore-", ".zip")
         try {
             content.use { input -> staged.outputStream().use { input.copyTo(it) } }
+            // 装之前先认包：条目里的 entryId 来自索引（共享存储 / 远端 / 导入的归档，都可写），
+            // 而 ksud 只认包里的 module.prop.id。两者不一致时，「恢复 A」会实际装上 B，
+            // 紧接着 setDisabled 还会照着 A 的 id 去执行——所以这里必须先把关。
+            val actualId = ModuleProp.parseModuleProp(staged)?.id
+            if (actualId != entry.entryId) {
+                return@runCatchingCancellable RestoreOutcome(
+                    false,
+                    BackupReason.ModuleZipUnusable(entry.entryId),
+                )
+            }
             restorer.install(staged).getOrElse { error ->
                 return@runCatchingCancellable RestoreOutcome(
                     false,

@@ -337,6 +337,19 @@ object ModuleContribution {
     /** 客户端本地超时的机器可读码（服务端不会返回这个码）。文案由界面按 locale 取。 */
     const val CLIENT_TIMEOUT_CODE = "client_timeout"
 
+    /**
+     * 服务端拒收「包里没有安装脚本」的机器可读码。
+     *
+     * 本地已经拦了一道（见 [com.sukisu.ultra.ui.screen.upload.ModuleUploadStaging] 的
+     * `NoInstaller`），但本地拦不住所有来源：网页端、旧版 App、直接打接口的脚本都能绕过来。
+     * 所以服务端必须自己再判一次——**这一侧只负责把这句码说成人话**，判定在 Worker 上
+     * （`contrib/worker/src/index.ts`，不在本仓库）。
+     *
+     * 约定：服务端回 4xx + `{"code": "install_script_missing"}`，客户端用
+     * [com.sukisu.ultra.R.string.module_upload_no_installer_body] 解释原因与下一步。
+     */
+    const val INSTALL_SCRIPT_MISSING_CODE = "install_script_missing"
+
     private val PROOF_NONCE_RE = Regex("^[a-z0-9]{6}$")
 
     /**

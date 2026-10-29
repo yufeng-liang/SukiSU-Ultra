@@ -21,6 +21,9 @@ import java.io.File
  * `cacheDir/contribution-staging` 目录（旧入口留下的实现照旧可用），
  * 但这里不做「把已安装模块重新打包」那件事：新流程上传的是**用户自己选的原始 zip**，
  * 打包出来的字节与作者发布的包不同，口令绑的 sha 也会跟着不同。
+ *
+ * 而且那条路现在已经关了：任何**没有安装器**的包都在这里就被拒（[Result.NoInstaller]），
+ * 从已安装目录打出来的包必然落在这一类里。
  */
 object ModuleUploadStaging {
 
@@ -30,6 +33,16 @@ object ModuleUploadStaging {
 
         /** 读不出 module.prop（不是 zip / 没有根目录 module.prop / id 或 name 为空）。 */
         data object UnreadableModule : Result
+
+        /**
+         * 包里没有安装器（见 [ModuleProp.hasInstallerEntry]）。
+         *
+         * 最典型的来源是「用已安装的模块现打一份」：ksud 装完会删掉 `customize.sh`、
+         * 也从不解压 `META-INF`，所以那棵目录树里必然没有安装器。这种包发给别人，
+         * ksud 找不到脚本会静默按默认方式解压，脚本本该做的选架构、设权限、环境检查
+         * 全部不发生 —— 所以这条路上直接拒收，不让它进表单。
+         */
+        data object NoInstaller : Result
 
         /** 复制、读盘或算哈希失败（uri 失效、空间不足等）。 */
         data object Failed : Result
@@ -137,6 +150,12 @@ object ModuleUploadStaging {
         if (meta == null) {
             staged.delete()
             return Result.UnreadableModule
+        }
+        // 没有安装器的包一律不收：索引里存的就是别人要装的那一份，缺脚本等于给下载者
+        // 一个「装得上但装不对」的包。判据与理由见 [ModuleProp.hasInstallerEntry]。
+        if (!ModuleProp.hasInstallerEntry(staged)) {
+            staged.delete()
+            return Result.NoInstaller
         }
         val sha = ModuleProp.zipSha256(staged)
         if (sha.isNullOrBlank()) {

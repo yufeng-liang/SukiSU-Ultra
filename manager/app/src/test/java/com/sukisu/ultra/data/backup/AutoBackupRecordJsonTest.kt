@@ -28,6 +28,8 @@ class AutoBackupRecordJsonTest {
         BackupReason.ModuleInstallFailed("zygisk-assistant", "ksud said no"),
         BackupReason.ModuleDisableFailed("zygisk-assistant", null),
         BackupReason.ModuleIdUnusable("../../etc/passwd"),
+        BackupReason.ModuleZipUnusable("zygisk-assistant"),
+        BackupReason.ModulePendingRemoval("zygisk-assistant"),
         BackupReason.RepoConfigInvalid("not json"),
         BackupReason.NoSource(BackupKind.PARTITION),
         BackupReason.LegacyKindUnsupported(BackupKind.BOOT),
@@ -51,7 +53,7 @@ class AutoBackupRecordJsonTest {
         // 上面那份列表的全部价值在于"必须穷尽"。手工维护的列表迟早会漏（这次就漏了四个），
         // 而漏掉的那几个等于完全没有覆盖性保证。这里用已知成员数兜底：加了新原因就挂，
         // 逼着人来补一行。
-        assertEquals(30, everyReason.size)
+        assertEquals(32, everyReason.size)
     }
 
     @Test
