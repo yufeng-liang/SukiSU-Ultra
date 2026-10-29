@@ -116,6 +116,13 @@ data class ModuleUploadListState(
     val refreshing: Boolean = false,
     val checking: Boolean = false,
     val rows: List<UploadRow> = emptyList(),
+    /**
+     * 上一次扫描已安装模块失败了。
+     *
+     * 与「一个模块都没装」必须分开：失败时 [rows] 会保留上一次的结果，
+     * 列表空着也不能画「装个模块再来看看」，孤儿包清理更不能按空名单去删。
+     */
+    val scanFailed: Boolean = false,
     val filter: ModuleUploadRules.Filter = ModuleUploadRules.Filter.ALL,
     val query: String = "",
     /**
@@ -280,7 +287,7 @@ data class ModuleUploadFormState(
 
     /** 提交按钮的最终判据（限制由调用方另行传入，见 [canSubmit]）。 */
     fun canSubmit(limits: BatchLimits?): Boolean =
-        outcome !is UploadOutcome.Success && ModuleUploadRules.canSubmit(
+        ModuleUploadRules.canSubmit(
             items = items,
             uidVerified = uidVerified,
             consent = consent,
@@ -288,5 +295,19 @@ data class ModuleUploadFormState(
             submitting = submitting,
             limitProblem = ModuleUploadRules.limitProblem(items.size, items.map { it.sizeBytes }, limits),
             sessionActive = sessionMatchesUid,
+            submitted = outcome is UploadOutcome.Success,
+        )
+
+    /** 按钮为灰的全部原因；文案由界面翻译（见 [ModuleUploadRules.submitBlockers]）。 */
+    fun blockers(limits: BatchLimits?): List<ModuleUploadRules.SubmitBlocker> =
+        ModuleUploadRules.submitBlockers(
+            items = items,
+            uidVerified = uidVerified,
+            consent = consent,
+            signatureValid = signatureValid,
+            submitting = submitting,
+            limitProblem = ModuleUploadRules.limitProblem(items.size, items.map { it.sizeBytes }, limits),
+            sessionActive = sessionMatchesUid,
+            submitted = outcome is UploadOutcome.Success,
         )
 }

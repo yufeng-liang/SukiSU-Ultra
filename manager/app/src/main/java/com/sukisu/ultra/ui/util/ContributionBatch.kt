@@ -38,6 +38,14 @@ data class BatchZip(
     val meta: ModulePropInfo,
     val sha256: String,
     val source: String,
+    /**
+     * 上传时给服务端看的文件名，形如 `{id}-{versionCode}.zip`。
+     *
+     * 不能直接用 [file] 的名字：staging 里那份是 `File.createTempFile("upload-", ".zip")`
+     * 生成的随机名，服务端如果按 part 文件名给资产命名，索引里就会出现一串 `upload-1234.zip`。
+     * 留空时退回 id-versionCode（单测与旧调用点不必都改）。
+     */
+    val fileName: String = "",
 )
 
 /** 成功应答里的逐枚回显。 */

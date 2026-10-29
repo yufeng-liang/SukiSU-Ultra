@@ -1,5 +1,7 @@
 package com.sukisu.ultra.ui.screen.upload
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,11 +10,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
@@ -29,8 +34,6 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.SearchOff
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -48,6 +51,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -59,6 +63,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.ScrollToTopOnChange
 import com.sukisu.ultra.ui.component.SearchStatus
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.IconTile
@@ -100,6 +105,11 @@ fun ModuleUploadListMaterial(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val snackbarHostState = remember { SnackbarHostState() }
     val visible = state.visibleRows
+    // 筛选/搜索一变就把列表拉回顶部：结果变短后 LazyColumn 会把滚动位置夹到末尾，
+    // 用户看到的是「筛完只剩一个尾巴」，连筛选 chip 都滚出了屏幕。
+    val listState = rememberLazyListState()
+    val latestVisible = rememberUpdatedState(visible)
+    ScrollToTopOnChange(listState, state.filter, state.query) { latestVisible.value }
     val checked = state.rows.count { it.status != null }
     // 每个模块投过的最新版本号；「上传更新」标签的判据之一（另一个是这一行的版本号）。
     val uploadedMax = remember(mine.modules) { ModuleUploadRules.uploadedMaxVersions(mine.modules) }
@@ -253,14 +263,18 @@ fun ModuleUploadListMaterial(
                 // item 之间的纵向间距统一由 spacedBy(12.dp) 负责，不再靠各 item 手工垫。
                 // 顶部不再叠 innerPadding：它已经被外面那层 PullToRefreshBox 吃掉了，
                 // 这里再加一次会平白空出整条顶栏的高度。
+                state = listState,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    bottom = 24.dp,
+                    // 底边补上系统导航栏：contentWindowInsets 只留了水平方向，
+                    // 不补的话最后一张卡会被三键导航/手势条压住，且已经滚到底。
+                    bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues()
+                        .calculateBottomPadding(),
                 ),
             ) {
-                item {
+                item(key = "filter_row") {
                     // 四个筛选项在 360dp 窄屏上放不下，原来的定宽 Row 会把最后两个裁掉一半。
                     // 换横向滚动；外层列表已经留了 16dp，这里不再叠 contentPadding，
                     // 否则筛选条和上下内容的左缘对不齐。
@@ -289,7 +303,7 @@ fun ModuleUploadListMaterial(
                 // 这里不重复画第二条。一次都没查过、也不在查（checked == 0 && !checking）
                 // 时整块不占位，否则列表顶上会平白多出一行空白。
                 if (checked > 0 || state.checking) {
-                    item {
+                    item(key = "check_progress") {
                         CheckProgressMaterial(
                             checked = checked,
                             total = state.rows.size,
@@ -299,7 +313,7 @@ fun ModuleUploadListMaterial(
                     }
                 }
 
-                item {
+                item(key = "pick_zip") {
                     SegmentedColumn(
                         content = listOf {
                             SegmentedListItem(
@@ -325,17 +339,20 @@ fun ModuleUploadListMaterial(
 
                 // 第三块「已装在本机」也补上标题：三块并列成同一级的分组，
                 // 而不是「两块有标题 + 一堆平铺卡片」。
-                item {
+                item(key = "section_installed") {
                     SectionHeaderMaterial(
                         modifier = Modifier.padding(top = 20.dp),
                         text = stringResource(R.string.module_upload_section_installed),
                     )
                 }
 
-                if (visible.isEmpty()) {
-                    item {
+                // 加载中不画空态：首帧 rows 一定是空的，先报一句「没有已安装的模块」，
+                // 等扫描回来又变成有，用户看到的是系统在说假话。
+                if (visible.isEmpty() && !state.loading) {
+                    item(key = "empty_state") {
                         EmptyStateMaterial(
                             filtered = state.rows.isNotEmpty(),
+                            failed = state.scanFailed,
                             // 只组合既有回调：筛选与搜索词一起复位，不为这个按钮新增参数。
                             onClear = {
                                 onFilter(ModuleUploadRules.Filter.ALL)
@@ -620,7 +637,12 @@ private fun SectionHeaderMaterial(text: String, modifier: Modifier = Modifier) {
  * 所以多给一个一键回到全量的出口——只组合既有回调，不新增参数。
  */
 @Composable
-private fun EmptyStateMaterial(filtered: Boolean, onClear: () -> Unit) {
+private fun EmptyStateMaterial(
+    filtered: Boolean,
+    /** true 表示上一次扫描已安装模块失败——不能把它说成「一个都没装」。 */
+    failed: Boolean,
+    onClear: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -637,10 +659,10 @@ private fun EmptyStateMaterial(filtered: Boolean, onClear: () -> Unit) {
         )
         Text(
             text = stringResource(
-                if (filtered) {
-                    R.string.module_upload_empty_filtered
-                } else {
-                    R.string.module_upload_empty
+                when {
+                    filtered -> R.string.module_upload_empty_filtered
+                    failed -> R.string.module_upload_scan_failed
+                    else -> R.string.module_upload_empty
                 }
             ),
             style = MaterialTheme.typography.titleSmall,
@@ -649,10 +671,10 @@ private fun EmptyStateMaterial(filtered: Boolean, onClear: () -> Unit) {
         )
         Text(
             text = stringResource(
-                if (filtered) {
-                    R.string.module_upload_empty_filtered_summary
-                } else {
-                    R.string.module_upload_empty_summary
+                when {
+                    filtered -> R.string.module_upload_empty_filtered_summary
+                    failed -> R.string.module_upload_scan_failed_summary
+                    else -> R.string.module_upload_empty_summary
                 }
             ),
             style = MaterialTheme.typography.bodySmall,

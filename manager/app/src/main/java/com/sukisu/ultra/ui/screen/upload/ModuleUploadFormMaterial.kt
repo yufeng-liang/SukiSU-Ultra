@@ -4,6 +4,8 @@ import android.content.ClipData
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -66,6 +68,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -112,7 +115,7 @@ fun ModuleUploadFormMaterial(
         limits = limits,
     )
     val canSubmit = state.canSubmit(limits)
-    val blockers = remainingBlockers(state, limitProblem)
+    val blockers = state.blockers(limits)
     val ownershipBlock = ModuleUploadRules.ownershipBlockReason(state.items)
 
     ExpressiveScaffold(
@@ -239,6 +242,8 @@ fun ModuleUploadFormMaterial(
                             label = { Text(stringResource(R.string.module_upload_uid)) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            // 与出处字段一致：非法时输入框本身变红，而不是只在下面换一句话。
+                            isError = state.uidState is CoolapkUidState.Empty && state.uid.isNotBlank(),
                             modifier = Modifier.fillMaxWidth(),
                             supportingText = {
                                 // 字段自己的提示/校验文案归位 supportingText：还没填显示
@@ -375,29 +380,6 @@ fun ModuleUploadFormMaterial(
     }
 }
 
-/**
- * 还差几项才能提交。只数「用户还得动手」的项，判据与 [ModuleUploadRules.canSubmit] 一一对应，
- * 不新增规则 —— 这里只负责把「差什么」说清楚。
- *
- * 归属闸【不】计入这里：那一条用户动手也解决不了（模块已经记在别人名下），把它算进
- * 「还差 N 项」等于派给他一件做不完的事。那一类由 [ModuleUploadRules.ownershipBlockReason]
- * 单独出一句原话，界面上优先显示它。
- */
-private fun remainingBlockers(
-    state: ModuleUploadFormState,
-    limitProblem: ModuleUploadRules.LimitProblem,
-): Int {
-    var count = 0
-    if (!state.uidVerified) count++
-    if (!state.sessionMatchesUid && !state.signatureValid) count++
-    if (!state.consent) count++
-    if (limitProblem != ModuleUploadRules.LimitProblem.NONE) count++
-    if (state.items.any { ModuleUploadRules.sourceProblem(it.source) != ModuleUploadRules.SourceProblem.OK }) {
-        count++
-    }
-    return count
-}
-
 /** 顶部汇总：几枚、多大 —— 一进屏就知道这一批装了什么，不用滚到底。能不能传由底部提交栏说。 */
 @Composable
 private fun BatchSummaryMaterial(
@@ -464,7 +446,7 @@ private fun BatchSummaryMaterial(
 private fun SubmitBarMaterial(
     canSubmit: Boolean,
     submitting: Boolean,
-    blockers: Int,
+    blockers: List<ModuleUploadRules.SubmitBlocker>,
     ownershipBlock: String,
     onSubmit: () -> Unit,
 ) {
@@ -475,7 +457,16 @@ private fun SubmitBarMaterial(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                // 底部导航栏：Scaffold 的 contentWindowInsets 只留了水平方向（内容要能
+                // 顶到状态栏/导航栏下面去），所以这条钉底的栏得自己把导航栏高度补上，
+                // 否则三键导航下按钮直接被压住、手势导航下下半截落在手势条里。
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 10.dp,
+                    bottom = 10.dp + WindowInsets.navigationBars.asPaddingValues()
+                        .calculateBottomPadding(),
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -487,7 +478,8 @@ private fun SubmitBarMaterial(
                     ownershipBlock.isNotEmpty() -> MaterialTheme.colorScheme.error
                     // 「还差 N 项」也是「现在传不了」，与归属被拦同一个观感：
                     // 一律错误色，但不加红底块——这两句话本身已经够长，再垫一块红就成了警告横幅。
-                    !canSubmit && blockers > 0 -> MaterialTheme.colorScheme.error
+                    // 「已上传 / 正在查 / 正在传」不是错误，交给下面的中性色。
+                    ModuleUploadRules.hasActionableBlocker(blockers) -> MaterialTheme.colorScheme.error
                     canSubmit -> MaterialTheme.colorScheme.primary
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
@@ -752,6 +744,13 @@ private fun UploadZipCardMaterial(
                 enabled = enabled,
                 label = { Text(stringResource(R.string.module_upload_source)) },
                 singleLine = true,
+                // 这是一个 URL 输入框：给 URI 键盘（带 / 与 .com），并关掉自动纠错/首字母大写，
+                // 否则手打链接会被输入法改写。
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                    autoCorrectEnabled = false,
+                ),
                 isError = problem == ModuleUploadRules.SourceProblem.NOT_COOLAPK,
                 modifier = Modifier.fillMaxWidth(),
                 supportingText = {
@@ -775,7 +774,13 @@ private fun UploadZipCardMaterial(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
             ) {
-                TextButton(onClick = onApplyToAll, enabled = enabled && item.source.isNotBlank()) {
+                TextButton(
+                    onClick = onApplyToAll,
+                    // 只判非空会把半截链接（`www.cool`）灌进全部条目，之后每一枚都成 blocker，
+                    // 而红字只在当前这一枚上显示。
+                    enabled = enabled &&
+                        ModuleUploadRules.sourceProblem(item.source) == ModuleUploadRules.SourceProblem.OK,
+                ) {
                     Text(stringResource(R.string.module_upload_apply_all))
                 }
             }

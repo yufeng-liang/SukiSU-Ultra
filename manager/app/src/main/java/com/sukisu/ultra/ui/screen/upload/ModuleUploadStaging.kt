@@ -54,6 +54,17 @@ object ModuleUploadStaging {
     private fun staging(): StagingArea = StagingArea(File(ksuApp.cacheDir, "contribution-staging"))
 
     /**
+     * 回收陈旧的暂存副本，[preserve] 里的文件一律不动。
+     *
+     * 只在「进入上传页」时调用，不在每次挑包时调用：挑包时清理会顺手删掉表单里
+     * 已经在引用的那几份（用户隔夜回来再挑第二枚，第一枚就消失了，状态还留着它）。
+     * 陈旧阈值沿用 [StagingArea] 的 6 小时——远大于一次正常上传的耗时。
+     */
+    suspend fun purgeStale(preserve: Collection<String>): Unit = withContext(Dispatchers.IO) {
+        runCatching { staging().cleanupStale(preserve) }
+    }
+
+    /**
      * 复制并解析一个 uri。
      *
      * 整个动作在 IO 上跑：zip 最大 8MB，在主线程读一遍就是一次掉帧；sha256 还要再读一遍。
@@ -105,7 +116,6 @@ object ModuleUploadStaging {
         var target: File? = null
         val staged = try {
             val area = staging()
-            area.cleanupStale()
             val file = area.newFile("upload-", ".zip")
             target = file
             val input = open()

@@ -361,6 +361,168 @@ class ModuleUploadRulesTest {
         assertTrue(can(items = listOf(zip("a").copy(status = CheckStatus.NEW))))
     }
 
+    /**
+     * 按钮的灰与那句「还差 N 项」必须来自同一份判据。
+     *
+     * 以前界面另抄了一份只有 5 项的小账，按钮实际却要过 9 道门，于是出现过
+     * 「还差 0 项才能上传」而按钮是灰的。这条测试锁住两份判据不再分叉。
+     */
+    @Test
+    fun `blockers and canSubmit agree on the same input`() {
+        val defaultItems = listOf(zip("a"))
+        fun probe(
+            items: List<UploadZip> = defaultItems,
+            uid: Boolean = true,
+            consent: Boolean = true,
+            signature: Boolean = true,
+            submitting: Boolean = false,
+            limit: ModuleUploadRules.LimitProblem = ModuleUploadRules.LimitProblem.NONE,
+            sessionActive: Boolean = false,
+            submitted: Boolean = false,
+        ): Pair<Boolean, List<ModuleUploadRules.SubmitBlocker>> {
+            val blockers = ModuleUploadRules.submitBlockers(
+                items = items,
+                uidVerified = uid,
+                consent = consent,
+                signatureValid = signature,
+                submitting = submitting,
+                limitProblem = limit,
+                sessionActive = sessionActive,
+                submitted = submitted,
+            )
+            val can = ModuleUploadRules.canSubmit(
+                items = items,
+                uidVerified = uid,
+                consent = consent,
+                signatureValid = signature,
+                submitting = submitting,
+                limitProblem = limit,
+                sessionActive = sessionActive,
+                submitted = submitted,
+            )
+            return can to blockers
+        }
+
+        // 全绿：能传，且一条原因都没有。
+        val ok = probe()
+        assertTrue(ok.first)
+        assertTrue(ok.second.isEmpty())
+
+        // 每一种「传不了」都要在 blockers 里留下对应的那一条。
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.UID in probe(uid = false).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.CONSENT in probe(consent = false).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.PROOF in probe(signature = false).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.SUBMITTING in probe(submitting = true).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.ALREADY_SUBMITTED in probe(submitted = true).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.EMPTY in probe(items = emptyList()).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.LIMITS in
+                probe(limit = ModuleUploadRules.LimitProblem.TOO_MANY).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.CHECKING in
+                probe(items = listOf(zip("a").copy(checking = true))).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.RECORDED in
+                probe(items = listOf(zip("a").copy(status = CheckStatus.RECORDED))).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.SOURCE in
+                probe(items = listOf(zip("a", source = ""))).second,
+        )
+        assertTrue(
+            ModuleUploadRules.SubmitBlocker.OWNERSHIP in
+                probe(items = listOf(zip("a").copy(eligibility = UpdateEligibility.NOT_MINE))).second,
+        )
+
+        // 每一组探针都要满足：canSubmit == blockers.isEmpty()。
+        listOf(
+            probe(),
+            probe(uid = false),
+            probe(consent = false),
+            probe(signature = false),
+            probe(submitting = true),
+            probe(submitted = true),
+            probe(items = emptyList()),
+            probe(sessionActive = true, signature = false),
+        ).forEach { (can, blockers) ->
+            assertEquals(can, blockers.isEmpty())
+        }
+    }
+
+    /**
+     * 「还差 N 项」只数用户动手能消掉的那些。
+     *
+     * 已提交成功 / 正在查 / 已收录 / 正在上传这几类，用户做什么都消不掉：
+     * 把它们算进 N 等于派给他一件做不完的事（界面上就出现「还差 1 项」而按钮怎么点都不亮）。
+     */
+    @Test
+    fun `actionable count excludes states the user cannot change`() {
+        val ownership = ModuleUploadRules.submitBlockers(
+            items = listOf(zip("a").copy(eligibility = UpdateEligibility.NOT_MINE)),
+            uidVerified = true,
+            consent = true,
+            signatureValid = true,
+            submitting = false,
+            limitProblem = ModuleUploadRules.LimitProblem.NONE,
+        )
+        // 归属被拦不是「用户还得做什么」：他做不了——只有原作者能发更新版本。
+        assertEquals(0, ModuleUploadRules.actionableBlockerCount(ownership))
+        assertFalse(ModuleUploadRules.hasActionableBlocker(ownership))
+
+        // 但 UID 没核实这种是用户自己能补的，要算进去。
+        val uidMissing = ModuleUploadRules.submitBlockers(
+            items = listOf(zip("a")),
+            uidVerified = false,
+            consent = true,
+            signatureValid = true,
+            submitting = false,
+            limitProblem = ModuleUploadRules.LimitProblem.NONE,
+        )
+        assertEquals(1, ModuleUploadRules.actionableBlockerCount(uidMissing))
+        assertTrue(ModuleUploadRules.hasActionableBlocker(uidMissing))
+    }
+
+    @Test
+    fun `a valid session replaces the signature requirement`() {
+        // 令牌那条路：签名没勾也能放行（服务端认这张九十天有效的令牌）。
+        val withSession = ModuleUploadRules.submitBlockers(
+            items = listOf(zip("a")),
+            uidVerified = true,
+            consent = true,
+            signatureValid = false,
+            submitting = false,
+            limitProblem = ModuleUploadRules.LimitProblem.NONE,
+            sessionActive = true,
+        )
+        assertFalse(ModuleUploadRules.SubmitBlocker.PROOF in withSession)
+
+        // 没有令牌才需要「改签名 + 勾选确认」那条路。
+        val withoutSession = ModuleUploadRules.submitBlockers(
+            items = listOf(zip("a")),
+            uidVerified = true,
+            consent = true,
+            signatureValid = false,
+            submitting = false,
+            limitProblem = ModuleUploadRules.LimitProblem.NONE,
+            sessionActive = false,
+        )
+        assertTrue(ModuleUploadRules.SubmitBlocker.PROOF in withoutSession)
+    }
+
     @Test
     fun `an upload the server says belongs to someone else never reaches submit`() {
         fun can(items: List<UploadZip>) = ModuleUploadRules.canSubmit(
@@ -404,12 +566,14 @@ class ModuleUploadRulesTest {
                 )
             ),
         )
-        // 服务端没给话（纯空白也算没给）：回落本地兜底句，绝不能返回空串让界面显示一片空白。
-        val fallback = ModuleUploadRules.ownershipBlockReason(
-            listOf(zip("a").copy(eligibility = UpdateEligibility.NOT_MINE, eligibilityReason = "   "))
+        // 服务端没给话（纯空白也算没给）：返回空串，由界面取**本地化**兜底句。
+        // 这里以前返回一句写死的中文，那句话会原样出现在英文/日文界面上。
+        assertEquals(
+            "",
+            ModuleUploadRules.ownershipBlockReason(
+                listOf(zip("a").copy(eligibility = UpdateEligibility.NOT_MINE, eligibilityReason = "   "))
+            ),
         )
-        assertTrue("兜底句不能说空话", fallback.isNotBlank())
-        assertTrue("兜底句要讲清楚为什么被拦", fallback.contains("原作者"))
         // 没有归属问题时不该有理由 —— 界面据此决定这一行显示不显示。
         assertEquals("", ModuleUploadRules.ownershipBlockReason(listOf(zip("a"))))
         // MINE 即使带着一句残留的原话，也不该被界面当成「被拦」的理由。

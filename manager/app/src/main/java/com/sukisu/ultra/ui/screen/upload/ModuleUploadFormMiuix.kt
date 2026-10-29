@@ -9,7 +9,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,7 +82,6 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Close2
-import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.UploadCloud
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -122,7 +123,7 @@ fun ModuleUploadFormMiuix(
         limits = limits,
     )
     val canSubmit = state.canSubmit(limits)
-    val blockers = remainingBlockersMiuix(state, limitProblem)
+    val blockers = state.blockers(limits)
     val ownershipBlock = ModuleUploadRules.ownershipBlockReason(state.items)
 
     Scaffold(
@@ -379,89 +380,12 @@ fun ModuleUploadFormMiuix(
     }
 }
 
-/**
- * 还差几项才能提交。只数「用户还得动手」的项，判据与 [ModuleUploadRules.canSubmit] 一一对应，
- * 不新增规则 —— 这里只负责把「差什么」说清楚。
- *
- * 归属闸【不】计入这里：那一条用户动手也解决不了（模块已经记在别人名下），把它算进
- * 「还差 N 项」等于派给他一件做不完的事。那一类由 [ModuleUploadRules.ownershipBlockReason]
- * 单独出一句原话，界面上优先显示它。
- */
-private fun remainingBlockersMiuix(
-    state: ModuleUploadFormState,
-    limitProblem: ModuleUploadRules.LimitProblem,
-): Int {
-    var count = 0
-    if (!state.uidVerified) count++
-    if (!state.sessionMatchesUid && !state.signatureValid) count++
-    if (!state.consent) count++
-    if (limitProblem != ModuleUploadRules.LimitProblem.NONE) count++
-    if (state.items.any { ModuleUploadRules.sourceProblem(it.source) != ModuleUploadRules.SourceProblem.OK }) {
-        count++
-    }
-    return count
-}
-
-/** 顶部汇总：几枚、多大 —— 一进屏就知道这一批装了什么，不用滚到底。能不能传由底部提交栏说。 */
-@Composable
-private fun BatchSummaryMiuix(
-    state: ModuleUploadFormState,
-    canSubmit: Boolean,
-) {
-    Card(
-        modifier = Modifier
-            .padding(top = 16.dp)
-            .fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // 图标块延用列表行卡片那套语言（圆角块 + 淡底色）：两屏之间不换视觉习惯。
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(colorScheme.secondaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    modifier = Modifier.size(18.dp),
-                    imageVector = MiuixIcons.File,
-                    contentDescription = null,
-                    tint = colorScheme.onSecondaryContainer,
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                // 数量与总量是同一条带格式的文案（不许新造字符串），整行按 16sp SemiBold 立起来。
-                Text(
-                    text = stringResource(
-                        R.string.module_upload_summary_count,
-                        state.items.size,
-                        ModuleUploadRules.formatBytes(state.totalBytes),
-                    ),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                // 这里原有一行 submitHint(...)，和底部常驻提交栏那行是同一句。提交栏钉在屏底、
-                // 从不离开视野，顶部再复读一遍只是噪音 —— 「为什么还不能传」只在按钮旁边说一次。
-            }
-        }
-    }
-}
-
 /** 底部常驻提交栏：按钮永远在手边，左边一句说清能不能传。 */
 @Composable
 private fun SubmitBarMiuix(
     canSubmit: Boolean,
     submitting: Boolean,
-    blockers: Int,
+    blockers: List<ModuleUploadRules.SubmitBlocker>,
     ownershipBlock: String,
     onSubmit: () -> Unit,
 ) {
@@ -471,7 +395,16 @@ private fun SubmitBarMiuix(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                // 底部导航栏：Scaffold 的 contentWindowInsets 只留了水平方向（内容要能
+                // 顶到状态栏/导航栏下面去），所以这条钉底的栏得自己把导航栏高度补上，
+                // 否则三键导航下按钮直接被压住、手势导航下下半截落在手势条里。
+                .padding(
+                    start = 12.dp,
+                    end = 12.dp,
+                    top = 10.dp,
+                    bottom = 10.dp + WindowInsets.navigationBars.asPaddingValues()
+                        .calculateBottomPadding(),
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -483,7 +416,11 @@ private fun SubmitBarMiuix(
                 // 对用户是同一件事——按钮是灰的。但不给底色，这两句本来就够长。
                 color = when {
                     canSubmit -> colorScheme.primary
-                    ownershipBlock.isNotEmpty() || blockers > 0 -> colorScheme.error
+                    // 归属判决与「还差 N 项」都是「现在传不了」，同一个观感；
+                    // 「已上传 / 正在查 / 正在传」不是错误，走中性色。
+                    ownershipBlock.isNotEmpty() ||
+                        ModuleUploadRules.hasActionableBlocker(blockers) -> colorScheme.error
+
                     else -> colorScheme.onSurfaceVariantSummary
                 },
                 // 长文案最多两行：宁可截断，也不能把提交按钮挤出屏幕。
@@ -744,6 +681,12 @@ private fun UploadZipCardMiuix(
                 label = stringResource(R.string.module_upload_source),
                 useLabelAsPlaceholder = true,
                 singleLine = true,
+                // 与 Material 侧一致：URL 键盘 + 关掉自动纠错，别让输入法改坏链接。
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                    autoCorrectEnabled = false,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -768,7 +711,9 @@ private fun UploadZipCardMiuix(
                 TextButton(
                     text = stringResource(R.string.module_upload_apply_all),
                     onClick = onApplyToAll,
-                    enabled = enabled && item.source.isNotBlank(),
+                    // 与 Material 侧一致：只判非空会把半截链接灌进全部条目。
+                    enabled = enabled &&
+                        ModuleUploadRules.sourceProblem(item.source) == ModuleUploadRules.SourceProblem.OK,
                 )
             }
         }

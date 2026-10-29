@@ -1140,6 +1140,8 @@
     <string name="module_upload_empty_filtered_action">Clear filter and search</string>
     <string name="module_upload_empty_filtered_summary">Try a different filter, or clear the search word.</string>
     <string name="module_upload_empty_summary">Refresh to scan again, or pick a zip above — uploading does not wait for this list.</string>
+    <string name="module_upload_scan_failed">Could not scan installed modules</string>
+    <string name="module_upload_scan_failed_summary">Pull down to try again. Picking a zip above still works.</string>
     <string name="module_upload_tag_disabled">Disabled</string>
     <string name="module_upload_tag_remove">Marked for removal</string>
     <string name="module_upload_tag_metamodule">META</string>
@@ -1229,6 +1231,7 @@
     <string name="module_upload_uid_checking">Checking…</string>
     <string name="module_upload_uid_verified">Verified: %1$s</string>
     <string name="module_upload_session_checking">Checking the saved verification…</string>
+    <string name="module_upload_session_expired">The saved session is no longer valid, please sign again</string>
     <string name="module_upload_session_hint">No signature change needed for 90 days. Switching accounts? Sign out.</string>
     <string name="module_upload_session_signout">Sign out</string>
     <string name="module_upload_uid_not_found">No such Coolapk user — please check the UID</string>
@@ -1261,6 +1264,7 @@
     <string name="module_upload_limit_unknown">Couldn\'t read the server limits; upload is disabled for now</string>
     <string name="module_upload_turnstile_title">Human verification</string>
     <string name="module_upload_turnstile_failed">Verification was not completed, nothing was uploaded</string>
+    <string name="module_upload_session_expired_submit">The saved session expired, please sign again</string>
     <string name="susfs_runtime_available">Available</string>
     <string name="susfs_runtime_unavailable">Unavailable</string>
     <string name="susfs_runtime_status">Status</string>

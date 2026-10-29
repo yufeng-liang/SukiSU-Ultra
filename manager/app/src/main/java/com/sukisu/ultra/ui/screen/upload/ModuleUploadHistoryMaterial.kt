@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -87,12 +89,12 @@ fun ModuleUploadHistoryMaterial(
     var expandedId by rememberSaveable { mutableStateOf<String?>(null) }
 
     // 提示条一次只说一件事，顺序即优先级：先答「能不能用」，再答「为什么是空的」。
-    // 刷新中且手里已经有名单时不报「正在加载」：列表还在，顶栏那颗转着的刷新键
-    // 已经把「在刷」说清楚了，再来一行文字只会把上面的内容往下推。
+    // 刷新中且手里已经有名单时不报「正在加载」：列表还在，下拉指示器
+    // （isRefreshing = mine.loading）已经把「在刷」说清楚了，再来一行文字只会把上面的内容往下推。
+    //
+    // 这里不再消费 mine.message：那是「一次性补充说明」，由 Screen 统一弹一次 Toast
+    // 并立刻 consume。两边都读的话，这一行只存在一帧就被清掉，等于闪一下。
     val notice: String? = when {
-        // 服务端/网络给了具体说法时优先说它：有旧名单又刷新失败，只说「请重试」
-        // 会让人以为名单本来就是空的。
-        mine.message != null -> mine.message
         mine.loading && groups.isEmpty() -> stringResource(R.string.module_upload_mine_loading)
         mine.needVerify -> stringResource(R.string.module_upload_mine_need_verify)
         mine.failed -> stringResource(R.string.module_upload_mine_failed)
@@ -156,7 +158,9 @@ fun ModuleUploadHistoryMaterial(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    bottom = 24.dp,
+                    // 同列表页：底边自己补导航栏高度。
+                    bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues()
+                        .calculateBottomPadding(),
                 ),
             ) {
                 item {

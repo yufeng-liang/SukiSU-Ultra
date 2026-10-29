@@ -84,8 +84,15 @@ object ModuleProp {
             // 精确匹配：getEntry("module.prop") 不会命中 "some_dir/module.prop"，
             // 而那份文件 ksud 也不会读，解析它等于报出一个装不上的模块。
             val entry = zip.getEntry(PROP_ENTRY) ?: return null
+            // 先看 zip 头里声明的大小：deflate 的压缩比可以到 1000:1，一个 8MB 的包
+            // 完全能声明出一条解压后几个 GB 的 module.prop。只靠「读完再比大小」的话，
+            // 那道 64KB 的闸要在内存已经被撑爆之后才生效。
+            if (entry.size > MAX_PROP_BYTES) return null
             zip.getInputStream(entry).use { input ->
-                val bytes = input.readBytes()
+                // entry.size 是 -1（未知）时也不能整份读：按上限多读一个字节，
+                // 读满了就说明超限。不用 InputStream.readNBytes(long)：那是 API 33 才有的，
+                // 本项目的 minSdk 是 26。
+                val bytes = readAtMost(input, MAX_PROP_BYTES + 1)
                 if (bytes.size > MAX_PROP_BYTES) return null
                 bytes.decodeToString()
             }
@@ -102,6 +109,24 @@ object ModuleProp {
             author = values["author"].orEmpty(),
             description = values["description"].orEmpty(),
         )
+    }
+
+    /**
+     * 最多读 [limit] 字节；流还没结束时返回值一定等于 [limit]。
+     *
+     * 存在的理由：`module.prop` 的大小在没读之前不可信，而 `readBytes()` 会一直读到 EOF。
+     */
+    private fun readAtMost(input: java.io.InputStream, limit: Int): ByteArray {
+        val buffer = java.io.ByteArrayOutputStream(minOf(limit, 8 * 1024))
+        val chunk = ByteArray(8 * 1024)
+        var remaining = limit
+        while (remaining > 0) {
+            val read = input.read(chunk, 0, minOf(chunk.size, remaining))
+            if (read <= 0) break
+            buffer.write(chunk, 0, read)
+            remaining -= read
+        }
+        return buffer.toByteArray()
     }
 
     /** 逐行 `key=value`：跳过空行与 `#` 注释，只按第一个 `=` 切，值里的 `=` 保留。 */

@@ -5,8 +5,11 @@ import com.sukisu.ultra.ksuApp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -23,6 +26,8 @@ import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import java.util.Locale
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /** nonce 的字符集：6 位小写字母数字，与 Worker 的 `PROOF_NONCE_RE`（`/^[a-z0-9]{6}$/`）同一形状。 */
 private val NONCE_ALPHABET = ('a'..'z') + ('0'..'9')
@@ -521,11 +526,14 @@ object ModuleContribution {
     suspend fun checkBatch(
         modules: List<Pair<String, Int>>,
         uid: String = "",
+        /** 单批上限；调用方拿到服务端自报的 `maxModules` 时应当传进来。 */
+        maxPerChunk: Int = CHECK_BATCH_MAX,
     ): Map<String, CheckAnswer> =
         withContext(Dispatchers.IO) {
             if (modules.isEmpty()) return@withContext emptyMap()
+            val batch = maxPerChunk.coerceIn(1, CHECK_BATCH_MAX)
             val out = LinkedHashMap<String, CheckAnswer>()
-            for (chunk in modules.chunked(CHECK_BATCH_MAX)) {
+            for (chunk in modules.chunked(batch)) {
                 out.putAll(checkBatchChunk(chunk, uid))
             }
             out
@@ -629,11 +637,27 @@ object ModuleContribution {
             ContributionBatch.localRejection(modules, limits)?.let { reason ->
                 return@withContext BatchSubmitResult(false, null, emptyList(), reason)
             }
-            val call = runCatching { client().newCall(builder.build()) }.getOrNull()
+            val call = runCatching {
+                // 专门给上传造一个客户端：共享客户端没设 read/write 超时，OkHttp 的默认值是
+                // 10 秒——而服务端要先核 Turnstile、再建 PR，慢一点就超过 10 秒。调用级
+                // `call.timeout` 只兜总时长，管不住单次读等待，于是客户端先报超时、服务端
+                // 却已经把 PR 建好、把这串口令用掉了，用户重发必吃 proof_used。
+                //
+                // 同时关掉 retryOnConnectionFailure：请求体是文件（不是 one-shot），
+                // 连接层失败时 OkHttp 默认会把整包重发一遍，而 /submit 不是幂等的。
+                client().newBuilder()
+                    .readTimeout(BATCH_SUBMIT_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .writeTimeout(BATCH_SUBMIT_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .retryOnConnectionFailure(false)
+                    .build()
+                    .newCall(builder.build())
+            }.getOrNull()
                 ?: return@withContext BatchSubmitResult(false, null, emptyList(), "无法发起上传请求")
             try {
                 withTimeout(BATCH_SUBMIT_TIMEOUT_MS) {
-                    execute(call, BATCH_SUBMIT_TIMEOUT_MS)
+                    // 不再用阻塞的 execute()：协程取消（离开路由、取消提交）要能真的
+                    // 掐断 socket，否则 onCleared 一边删上传文件、请求一边还在读它。
+                    awaitResponse(call, BATCH_SUBMIT_TIMEOUT_MS)
                 }.use { response -> readBatchSubmitResult(response, limits) }
             } catch (e: TimeoutCancellationException) {
                 // 内层超时不是「调用方取消」：这里把它收成一句可显示的失败，
@@ -693,7 +717,9 @@ object ModuleContribution {
             for (module in modules) {
                 addFormDataPart(
                     "zip",
-                    module.file.name.ifBlank { "${module.meta.id}-${module.meta.versionCode}.zip" },
+                    // 优先用调用方算好的 `{id}-{versionCode}.zip`：`file.name` 是 staging 的
+                    // 随机临时名（upload-xxxxxxxx.zip），拿它当资产名会让索引里全是随机串。
+                    module.fileName.ifBlank { "${module.meta.id}-${module.meta.versionCode}.zip" },
                     module.file.asRequestBody(ZIP_MEDIA_TYPE),
                 )
             }
@@ -995,6 +1021,38 @@ object ModuleContribution {
     private fun execute(call: okhttp3.Call, timeoutMs: Long): Response {
         runCatching { call.timeout().timeout(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
         return call.execute()
+    }
+
+    /**
+     * 异步执行一个请求，并且**可被协程取消**。
+     *
+     * 只有上传用这条路：`call.execute()` 是阻塞的，协程取消打断不了它，于是
+     * 「离开路由」与「请求还在读上传文件」会同时发生（见 ViewModel.onCleared）。
+     * 走 `enqueue` 之后，取消能真的 `call.cancel()` 掐断 socket。
+     *
+     * 取消之后回调可能仍会到（OkHttp 会把断开的请求报成 IOException）：靠
+     * `isCancelled` 拦下，不往已经取消的 continuation 里 resume。
+     */
+    private suspend fun awaitResponse(call: Call, timeoutMs: Long): Response {
+        runCatching { call.timeout().timeout(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
+        return suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation { runCatching { call.cancel() } }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isCancelled) return
+                    continuation.resumeWithException(e)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (continuation.isCancelled) {
+                        // 已经没人接了：把连接让回去，别让响应体挂在那里。
+                        runCatching { response.close() }
+                        return
+                    }
+                    continuation.resume(response)
+                }
+            })
+        }
     }
 
     /**

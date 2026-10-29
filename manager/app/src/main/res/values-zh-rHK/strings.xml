@@ -328,6 +328,8 @@
     <string name="module_upload_empty_filtered_action">清除篩選與搜尋</string>
     <string name="module_upload_empty_filtered_summary">換個篩選條件，或者清掉搜尋字。</string>
     <string name="module_upload_empty_summary">重新整理可重新掃描；也可以直接從上方挑 zip，上傳不必等這份列表。</string>
+    <string name="module_upload_scan_failed">讀取已安裝模組失敗</string>
+    <string name="module_upload_scan_failed_summary">下拉可重試；仍可直接從上方挑 zip 上傳。</string>
     <string name="module_upload_tag_disabled">已停用</string>
     <string name="module_upload_tag_remove">待刪除</string>
     <string name="module_upload_tag_metamodule">META</string>
@@ -416,6 +418,7 @@
     <string name="module_upload_uid_checking">正在核實…</string>
     <string name="module_upload_uid_verified">將以 %1$s 署名</string>
     <string name="module_upload_session_checking">正在確認上次的驗證…</string>
+    <string name="module_upload_session_expired">上次的驗證已失效，請重新改一次簽名</string>
     <string name="module_upload_session_hint">90 天內再投稿不用改簽名。換帳號請點右邊。</string>
     <string name="module_upload_session_signout">退出驗證</string>
     <string name="module_upload_uid_not_found">酷安查無此人，請核對 UID</string>
@@ -448,6 +451,7 @@
     <string name="module_upload_limit_unknown">暫時拿不到伺服器上限，先不能提交</string>
     <string name="module_upload_turnstile_title">人機驗證</string>
     <string name="module_upload_turnstile_failed">人機驗證沒完成，本次沒有提交</string>
+    <string name="module_upload_session_expired_submit">會話令牌已過期，請重新改一次簽名</string>
     <string name="settings_hide_home_warnings">隱藏首頁警告</string>
     <string name="settings_hide_home_warnings_summary">隱藏首頁的警告卡片（PR 建置、核心/管理器更新、LKM 更新、預覽模式）</string>
 

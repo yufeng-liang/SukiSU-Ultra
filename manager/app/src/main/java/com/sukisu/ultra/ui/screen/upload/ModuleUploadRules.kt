@@ -47,13 +47,6 @@ object ModuleUploadRules {
     /** 口令长度：12 位前缀 + `-` + 6 位 nonce。测试里钉住它，两套界面不必各自数一遍。 */
     const val PROOF_LENGTH = 19
 
-    /**
-     * 服务端没给归属原因（`reason` 为空）时的兜底句。
-     *
-     * 只陈述 [UpdateEligibility.NOT_MINE] 这一个事实，不猜它为什么不算你的。
-     */
-    private const val FALLBACK_OWNERSHIP_REASON = "该模块已由其他上传者收录，只有原作者能发更新版本"
-
     /** 列表里一行：模块 + 当前查到的状态（null = 还没查）。 */
     data class RowView(
         val id: String,
@@ -313,6 +306,28 @@ object ModuleUploadRules {
     fun formatBytes(bytes: Long): String = formatFileSize(bytes)
 
     /**
+     * 提交按钮为灰的原因；见 [submitBlockers]。
+     *
+     * 这份枚举是**唯一**的判据来源：[canSubmit] 与界面上的「还差 N 项」都从
+     * [submitBlockers] 取。以前界面另抄了一份只有 5 项的小账，而按钮实际要过 9 道门，
+     * 于是会出现「还差 0 项才能上传」而按钮是灰的——两份判据迟早会分叉。
+     */
+    enum class SubmitBlocker {
+        /** 这一批已经传成功了。 */
+        ALREADY_SUBMITTED,
+        SUBMITTING,
+        EMPTY,
+        LIMITS,
+        UID,
+        CONSENT,
+        PROOF,
+        CHECKING,
+        RECORDED,
+        SOURCE,
+        OWNERSHIP,
+    }
+
+    /**
      * 提交按钮的唯一判据。
      *
      * 七道门缺一不可：每个包都有 sha、UID 核实通过、每个包都有合法出处、勾了确认、
@@ -346,21 +361,85 @@ object ModuleUploadRules {
         submitting: Boolean,
         limitProblem: LimitProblem,
         sessionActive: Boolean = false,
-    ): Boolean = items.isNotEmpty() &&
-        !submitting &&
-        limitProblem == LimitProblem.NONE &&
-        uidVerified &&
-        consent &&
-        (signatureValid || sessionActive) &&
-        proofReady(items) &&
+        /** 这一批已经提交成功过：再点一次没有意义（UI 用同一份判据画按钮）。 */
+        submitted: Boolean = false,
+    ): Boolean = submitBlockers(
+        items = items,
+        uidVerified = uidVerified,
+        consent = consent,
+        signatureValid = signatureValid,
+        submitting = submitting,
+        limitProblem = limitProblem,
+        sessionActive = sessionActive,
+        submitted = submitted,
+    ).isEmpty()
+
+    /**
+     * 提交按钮为灰的**全部**原因；为空即「可以上传」。
+     *
+     * [canSubmit] 与界面上的「还差 N 项」都从这里取：以前界面另抄了一份只有 5 项的小账，
+     * 而按钮实际要过 9 道门，于是会出现「还差 0 项才能上传」而按钮是灰的——
+     * 两份判据迟早会分叉，所以只留一份，界面只负责把这些原因翻成人话。
+     */
+    fun submitBlockers(
+        items: List<UploadZip>,
+        uidVerified: Boolean,
+        consent: Boolean,
+        signatureValid: Boolean,
+        submitting: Boolean,
+        limitProblem: LimitProblem,
+        sessionActive: Boolean = false,
+        submitted: Boolean = false,
+    ): List<SubmitBlocker> {
+        val blockers = LinkedHashSet<SubmitBlocker>()
+        if (submitted) blockers += SubmitBlocker.ALREADY_SUBMITTED
+        if (submitting) blockers += SubmitBlocker.SUBMITTING
+        if (items.isEmpty()) blockers += SubmitBlocker.EMPTY
+        if (limitProblem != LimitProblem.NONE) blockers += SubmitBlocker.LIMITS
+        if (!uidVerified) blockers += SubmitBlocker.UID
+        if (!consent) blockers += SubmitBlocker.CONSENT
+        if (!signatureValid && !sessionActive) blockers += SubmitBlocker.PROOF
+        if (!proofReady(items)) blockers += SubmitBlocker.PROOF
         // 手选包的收录状态查完再放行：正在查时别让用户抢在结果前面提交；
         // 已经收录的那一版不再重复投（要换内容走下架/更新那条路，不在本屏）。
-        items.none { it.checking } &&
-        items.none { it.status == CheckStatus.RECORDED } &&
-        items.all { sourceProblem(it.source) == SourceProblem.OK } &&
+        if (items.any { it.checking }) blockers += SubmitBlocker.CHECKING
+        if (items.any { it.status == CheckStatus.RECORDED }) blockers += SubmitBlocker.RECORDED
+        if (items.any { sourceProblem(it.source) != SourceProblem.OK }) blockers += SubmitBlocker.SOURCE
         // 归属闸：只要有一枚被服务端判成「别人的」，整批都不许发。
         // 一批是原子提交（一个 PR、一次口令），放过这一枚等于让整批带着一次必然的拒绝走完全程。
-        items.none { it.eligibility.blocksSubmit }
+        if (items.any { it.eligibility.blocksSubmit }) blockers += SubmitBlocker.OWNERSHIP
+        return blockers.toList()
+    }
+
+    /**
+     * 用户「还得自己动手」才能消掉的原因数。
+     *
+     * 已提交成功、正在查/已收录、正在上传这几类不算：它们要么用户做不了什么，
+     * 要么等一下就好，把它们算进「还差 N 项」等于派给用户一件做不完的事。
+     */
+    fun actionableBlockerCount(blockers: List<SubmitBlocker>): Int = blockers.count { it.actionable }
+
+    /** 有没有「用户得自己动手」的原因——界面用它决定提示要不要用错误色。 */
+    fun hasActionableBlocker(blockers: List<SubmitBlocker>): Boolean = blockers.any { it.actionable }
+
+    /** 这一条原因是不是用户动手就能消掉的。 */
+    private val SubmitBlocker.actionable: Boolean
+        get() = when (this) {
+            SubmitBlocker.UID,
+            SubmitBlocker.CONSENT,
+            SubmitBlocker.PROOF,
+            SubmitBlocker.SOURCE,
+            SubmitBlocker.LIMITS,
+            SubmitBlocker.EMPTY,
+            -> true
+
+            SubmitBlocker.ALREADY_SUBMITTED,
+            SubmitBlocker.SUBMITTING,
+            SubmitBlocker.CHECKING,
+            SubmitBlocker.RECORDED,
+            SubmitBlocker.OWNERSHIP,
+            -> false
+        }
 
     /**
      * 提交按钮上方那句「为什么点不了」的文案，没有归属问题时返回空串。
@@ -376,6 +455,9 @@ object ModuleUploadRules {
      */
     fun ownershipBlockReason(items: List<UploadZip>): String {
         val blocked = items.firstOrNull { it.eligibility.blocksSubmit } ?: return ""
-        return blocked.eligibilityReason.takeIf { it.isNotBlank() } ?: FALLBACK_OWNERSHIP_REASON
+        // 服务端没给原话就返回空串，由界面取本地化兜底句
+        // （`module_upload_ownership_not_mine_summary`）。这里不再写死中文：
+        // 那句硬编码会原样出现在英文/日文界面上。
+        return blocked.eligibilityReason.trim()
     }
 }

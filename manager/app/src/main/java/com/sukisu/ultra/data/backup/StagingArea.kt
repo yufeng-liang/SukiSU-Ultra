@@ -42,11 +42,21 @@ class StagingArea(
         return File.createTempFile(prefix, suffix, root)
     }
 
-    /** 删掉陈旧孤儿。单个文件删不掉不影响其他文件。 */
-    fun cleanupStale() {
+    /**
+     * 删掉陈旧孤儿。单个文件删不掉不影响其他文件。
+     *
+     * [preserve] 是「调用方此刻还在引用」的文件路径：它们即使看起来陈旧也不能删。
+     * 典型场景是上传页——表单里那几份 zip 可能已经放了几个小时，下一次挑包时
+     * 顺带清理会把它们删掉，而界面上的条目仍然指着这些路径。
+     */
+    fun cleanupStale(preserve: Collection<String> = emptyList()) {
         val deadline = System.currentTimeMillis() - staleAfterMs
+        // 只比文件名：本目录里的文件都是单层的（见 [file] 的压平规则）。
+        val keep = preserve.mapTo(mutableSetOf()) { it.substringAfterLast('/') }
         root.listFiles().orEmpty().forEach { candidate ->
-            if (candidate.isFile && candidate.lastModified() < deadline) candidate.delete()
+            if (candidate.isFile && candidate.name !in keep && candidate.lastModified() < deadline) {
+                candidate.delete()
+            }
         }
     }
 

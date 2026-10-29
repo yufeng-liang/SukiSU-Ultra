@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.displayCutout
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
@@ -93,10 +95,11 @@ fun ModuleUploadHistoryMiuix(
     var expandedId by rememberSaveable { mutableStateOf<String?>(null) }
 
     // 提示条一次只说一件事，顺序即优先级：先答「能不能用」，再答「为什么是空的」。
-    // 刷新中且手里已经有名单时不报「正在加载」：顶栏那颗转着的刷新键已经说明了。
+    // 刷新中且手里已经有名单时不报「正在加载」：下拉指示器已经说明了。
+    //
+    // mine.message 交给 Screen 的 Toast（弹完就 consume）：这里再读一次的话，
+    // 这一行只存在一帧就被清掉。
     val notice: String? = when {
-        // 有旧名单又刷新失败时，服务端消息比「请重试」更具体，优先说它。
-        mine.message != null -> mine.message
         mine.loading && groups.isEmpty() -> stringResource(R.string.module_upload_mine_loading)
         mine.needVerify -> stringResource(R.string.module_upload_mine_need_verify)
         mine.failed -> stringResource(R.string.module_upload_mine_failed)
@@ -155,7 +158,12 @@ fun ModuleUploadHistoryMiuix(
                     .overScrollVertical()
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     .padding(horizontal = 12.dp),
-                contentPadding = innerPadding,
+                contentPadding = PaddingValues(
+                    top = innerPadding.calculateTopPadding(),
+                    // 底边自己补导航栏：Scaffold 的 insets 只留了水平方向。
+                    bottom = innerPadding.calculateBottomPadding() +
+                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                ),
                 // 卡片间的纵向间距统一由列表负责：卡片自己再带 padding，两种间距会叠起来。
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 overscrollEffect = null,

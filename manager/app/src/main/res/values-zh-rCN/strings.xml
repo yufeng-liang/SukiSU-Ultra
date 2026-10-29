@@ -1124,6 +1124,8 @@
     <string name="module_upload_empty_filtered_action">清除筛选与搜索</string>
     <string name="module_upload_empty_filtered_summary">换个筛选条件，或者清掉搜索词。</string>
     <string name="module_upload_empty_summary">刷新可重新扫描；也可以直接从上方挑 zip，上传不必等这份列表。</string>
+    <string name="module_upload_scan_failed">读取已安装模块失败</string>
+    <string name="module_upload_scan_failed_summary">下拉可重试；仍可直接从上方挑 zip 上传。</string>
     <string name="module_upload_tag_disabled">已禁用</string>
     <string name="module_upload_tag_remove">待删除</string>
     <string name="module_upload_tag_metamodule">META</string>
@@ -1214,6 +1216,7 @@
     <string name="module_upload_uid_checking">正在核实…</string>
     <string name="module_upload_uid_verified">已验证：%1$s</string>
     <string name="module_upload_session_checking">正在确认上次的验证…</string>
+    <string name="module_upload_session_expired">上次的验证已失效，请重新改一次签名</string>
     <string name="module_upload_session_hint">90 天内再投稿不用改签名。换账号请点右边。</string>
     <string name="module_upload_session_signout">退出验证</string>
     <string name="module_upload_uid_not_found">酷安查无此人，请核对 UID</string>
@@ -1250,6 +1253,7 @@
     <string name="module_upload_limit_unknown">暂时拿不到服务端上限，先不能提交</string>
     <string name="module_upload_turnstile_title">人机校验</string>
     <string name="module_upload_turnstile_failed">人机校验没完成，本次没有提交</string>
+    <string name="module_upload_session_expired_submit">会话令牌已过期，请重新改一次签名</string>
     <string name="susfs_runtime_available">可用</string>
     <string name="susfs_runtime_unavailable">不可用</string>
     <string name="susfs_runtime_status">状态</string>

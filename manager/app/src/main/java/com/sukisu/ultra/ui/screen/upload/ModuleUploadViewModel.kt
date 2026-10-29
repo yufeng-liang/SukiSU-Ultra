@@ -20,7 +20,6 @@ import com.sukisu.ultra.ui.screen.module.ModuleContributionEntry
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.BatchSubmitResult
 import com.sukisu.ultra.ui.util.BatchZip
-import com.sukisu.ultra.ui.util.CheckAnswer
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.ContributionBatch
 import com.sukisu.ultra.ui.util.CoolapkUidLookup
@@ -161,6 +160,11 @@ class ModuleUploadViewModel(
         // 令牌先读出来：用户一进表单就该看到「已验证」，不该等网络。
         refreshSession()
         startSessionTicker()
+        // 顺手回收上一次进程被杀时留下的暂存副本：onCleared 在那种情况下不会执行，
+        // 不在这里清就只能等下一次挑包（而挑包只在 copyIntoStaging 之前顺带清一次）。
+        // 当前表单里正在引用的那几份要留着——它们正是「下一批」要接着用的文件。
+        val keep = _formState.value.items.map { it.path }
+        viewModelScope.launch { ModuleUploadStaging.purgeStale(keep) }
         loadModules(thenCheck = true)
     }
 
@@ -237,15 +241,29 @@ class ModuleUploadViewModel(
         _listState.update { it.copy(loading = it.rows.isEmpty(), refreshing = refreshing) }
         val epoch = archiveEpoch
         loadJob = viewModelScope.launch {
-            val (modules, archived, usage) = withContext(Dispatchers.IO) {
-                val modules = repo.getModules().getOrElse { emptyList() }
-                Triple(modules, archive.ids(), archive.usage())
+            val (modulesResult, archived, usage) = withContext(Dispatchers.IO) {
+                Triple(repo.getModules(), archive.ids(), archive.usage())
             }
             // 读快照期间用户清空了留存包：这份快照已经过期，落地只会把计数填回去。
             // 但两个进行中标志必须复位——清空流程不碰它们，早退不还回去的话，
             // 下拉刷新的转圈会一直挂在界面上。
             if (epoch != archiveEpoch) {
                 _listState.update { it.copy(loading = false, refreshing = false) }
+                return@launch
+            }
+            val modules = modulesResult.getOrNull()
+            if (modules == null) {
+                // 「扫描失败」不能当成「一个模块都没装」：后者会让列表被清空、
+                // 让孤儿包计数变成全部留存包（顺带把「只清孤儿」变成一次全删）。
+                // 保留上一次的行与计数，只把失败说出来。
+                _listState.update {
+                    it.copy(
+                        loading = false,
+                        refreshing = false,
+                        scanFailed = true,
+                        message = res.getString(R.string.module_upload_scan_failed),
+                    )
+                }
                 return@launch
             }
             _listState.update {
@@ -256,6 +274,7 @@ class ModuleUploadViewModel(
                 it.copy(
                     loading = false,
                     refreshing = false,
+                    scanFailed = false,
                     rows = rows,
                     remaining = rows.count { row -> row.status == null },
                     keepZip = settings.keepModuleZip,
@@ -434,6 +453,10 @@ class ModuleUploadViewModel(
         val fresh = LinkedHashMap<String, ModuleUploadCheckCache.Entry>(chunk.size)
         chunk.forEach { row ->
             result[row.id]?.let { answer ->
+                // 「查不出来」不是结论：存下来的话，applyCached 会把它当 status != null 垫上，
+                // startCheck 的候选（status == null）就再也挑不到这一行，半小时内一直显示
+                // 「查不了」且不再重问。服务端索引降级的时段里这会让整屏卡住。
+                if (answer.status == CheckStatus.UNKNOWN) return@let
                 fresh[row.id] = ModuleUploadCheckCache.Entry(
                     versionCode = row.versionCode,
                     status = answer.status,
@@ -762,6 +785,13 @@ class ModuleUploadViewModel(
      */
     fun clearOrphanArchived() {
         if (_listState.value.pickingFor != null) return
+        // 「哪些是孤儿」只能从已安装列表算出来。列表为空不是「一个都没装」，而是
+        // 还没扫到/扫失败——这时动 clearExcept(空集合) 等于把全部留存包删掉，
+        // 而入口上写的是「只清已卸载模块遗留的那几份」。
+        if (_listState.value.rows.isEmpty()) {
+            postMessage(res.getString(R.string.module_upload_scan_failed))
+            return
+        }
         val installed = _listState.value.rows.mapTo(mutableSetOf()) { row -> ModuleZipArchive.safeId(row.id) }
         archiveEpoch++
         viewModelScope.launch {
@@ -950,7 +980,13 @@ class ModuleUploadViewModel(
             val uid = verifiedFormUid()
             syncEligibilityUid(uid)
             val result = try {
-                ModuleContribution.checkBatch(query, uid)
+                // 分批大小跟服务端自报的 maxModules 走：写死 8 的话，服务端一调到更小
+                // 就是整批 400，这一整批全落成「查不了」。
+                ModuleContribution.checkBatch(
+                    query,
+                    uid,
+                    maxPerChunk = ModuleUploadRules.checkChunkSize(_listState.value.limits),
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -964,11 +1000,15 @@ class ModuleUploadViewModel(
                         // 上一版那次查询的结论不能落到它头上。
                         val asked = byPath[item.path]
                         if (asked != null && item.versionCode == asked.versionCode) {
-                            val answer = result[item.id] ?: CheckAnswer.UNKNOWN
+                            // 服务端漏了这一格（整批失败 / 没回这个 id）：保留已知结论。
+                            // 以前这里无条件写 UNKNOWN，于是一次超时就把刚查到的
+                            // 「已收录」抹掉，canSubmit 里那道 RECORDED 闸跟着失效——
+                            // 已收录的包重新变得可以提交。
+                            val answer = result[item.id]
                             item.copy(
-                                status = answer.status,
-                                eligibility = answer.eligibility,
-                                eligibilityReason = answer.reason,
+                                status = answer?.status ?: item.status ?: CheckStatus.UNKNOWN,
+                                eligibility = answer?.eligibility ?: item.eligibility,
+                                eligibilityReason = answer?.reason ?: item.eligibilityReason,
                                 checking = false,
                             )
                         } else {
@@ -1030,9 +1070,12 @@ class ModuleUploadViewModel(
     }
 
     fun updateSource(path: String, value: String) {
+        // 出处是一个链接，长到几百字符已经不合理；不设上限的话粘贴一整篇文章
+        // 会原样进状态并跟着提交发给服务端。
+        val trimmed = value.take(SOURCE_MAX_CHARS)
         _formState.update { state ->
             state.copy(
-                items = state.items.map { if (it.path == path) it.copy(source = value) else it },
+                items = state.items.map { if (it.path == path) it.copy(source = trimmed) else it },
                 outcome = state.outcome.keepUnlessSuccess(),
             )
         }
@@ -1040,9 +1083,10 @@ class ModuleUploadViewModel(
 
     /** 「应用到全部」：把这一张卡上的出处写给所有条目。 */
     fun applySourceToAll(value: String) {
+        val trimmed = value.take(SOURCE_MAX_CHARS)
         _formState.update { state ->
             state.copy(
-                items = state.items.map { it.copy(source = value) },
+                items = state.items.map { it.copy(source = trimmed) },
                 outcome = state.outcome.keepUnlessSuccess(),
             )
         }
@@ -1059,9 +1103,21 @@ class ModuleUploadViewModel(
 
     fun updateUid(raw: String) {
         val cleaned = ModuleUploadPrefs.sanitizeUid(raw)
+        val previous = _formState.value.uid.trim()
+        // 换了号就把「我已写进签名」的确认作废：口令只绑 (id, sha, nonce)，与 UID 无关，
+        // 不清的话 A 号抄好的口令会一路亮到提交，而服务端读的是 B 号的签名 ——
+        // 结果是整包传完才收到 403。令牌那条路已经用 sessionMatchesUid 绑定了身份，
+        // 签名这条路必须在这里补上同一个绑定。
+        val uidChanged = cleaned != previous
         lookupJob?.cancel()
         if (!ModuleContribution.isValidUid(cleaned)) {
-            _formState.update { it.copy(uid = cleaned, uidState = CoolapkUidState.Empty) }
+            _formState.update {
+                it.copy(
+                    uid = cleaned,
+                    uidState = CoolapkUidState.Empty,
+                    confirmedSetKey = if (uidChanged) null else it.confirmedSetKey,
+                )
+            }
             return
         }
         // 手里那张令牌绑的就是这个 UID：直接用令牌里那份身份，不再打一次 `/user`。
@@ -1075,13 +1131,20 @@ class ModuleUploadViewModel(
                 it.copy(
                     uid = cleaned,
                     uidState = CoolapkUidState.Verified(session.nickname),
+                    confirmedSetKey = if (uidChanged) null else it.confirmedSetKey,
                 )
             }
             // 号可能刚换过：手里那几枚包的归属是照上一个号问的，补问一次。
             recheckEligibility()
             return
         }
-        _formState.update { it.copy(uid = cleaned, uidState = CoolapkUidState.Checking) }
+        _formState.update {
+            it.copy(
+                uid = cleaned,
+                uidState = CoolapkUidState.Checking,
+                confirmedSetKey = if (uidChanged) null else it.confirmedSetKey,
+            )
+        }
         lookupJob = viewModelScope.launch {
             delay(UID_DEBOUNCE_MS)
             runLookup(cleaned)
@@ -1219,6 +1282,9 @@ class ModuleUploadViewModel(
         tickerJob = viewModelScope.launch {
             while (isActive) {
                 delay(SESSION_TICK_MS)
+                // 只有表单页会把 sessionActive 画出来；停在列表/记录页时每 30 秒唤醒一次
+                // 进程改状态纯属浪费电。
+                if (_step.value != UploadStep.FORM) continue
                 val now = System.currentTimeMillis()
                 _formState.update { state ->
                     if (state.session == null) state else state.copy(nowTick = now)
@@ -1344,12 +1410,16 @@ class ModuleUploadViewModel(
      * 把服务端这一趟签发的令牌收进状态与磁盘。
      *
      * 三态（见 [BatchSubmitResult.session]）：null = 没签，保持原样；合法 = 换上新的
-     * （有旧的就在旧的基础上续，身份沿用）；脏数据已经在网络层被滤成 null。
+     * （有旧的就在旧的基础上续，身份沿用）。
+     *
+     * [submittedUid] 是**发请求时**那个 UID，不读实时状态：令牌是服务端按那一次的 uid
+     * 签的，而提交期间输入框虽然被禁用，将来一旦放开就会出现「A 的令牌被记成 B 的身份」。
      */
-    private fun adoptGrant(grant: SessionGrant?) {
+    private fun adoptGrant(grant: SessionGrant?, submittedUid: String) {
         if (grant == null) return
         val current = _formState.value
-        val uid = current.uid.trim()
+        val uid = submittedUid.trim()
+        if (uid.isEmpty()) return
         val base = current.session?.takeIf { it.uid == uid }
             ?: UploadSession(
                 token = grant.token,
@@ -1410,12 +1480,16 @@ class ModuleUploadViewModel(
     fun submit(turnstile: TurnstileTokenProvider) {
         val snapshot = _formState.value
         val limits = _listState.value.limits
-        // 手里还攥着一张**已过期**的令牌：canSubmit 恒为 false（它只认 sessionMatchesUid），
-        // 静默 return 会让用户对着一个灰掉的按钮猜原因。这里明说一句。
-        // 正常情况下按钮本来就是禁用的，这条只在「点下去那一刻刚好跨过到期」时命中。
-        if (snapshot.session != null && !snapshot.sessionActive) {
-            _formState.update {
-                it.copy(notice = res.getString(R.string.module_upload_session_expired_submit))
+        // 两条路都不通时才拦：令牌那条（有效且绑的就是这个 UID）或签名那条（勾选后集合没变）。
+        // 只看令牌的话，令牌过期/换了号而用户已经老老实实写好签名时，按钮亮着、
+        // 点下去却只弹一句「请重新改一次签名」——正是他刚做完的事。
+        if (!snapshot.sessionMatchesUid && !snapshot.signatureValid) {
+            // 手里还攥着一张过期令牌：canSubmit 恒为 false，静默 return 会让用户对着
+            // 一个灰掉的按钮猜原因。这里明说一句。
+            if (snapshot.session != null) {
+                _formState.update {
+                    it.copy(notice = res.getString(R.string.module_upload_session_expired_submit))
+                }
             }
             return
         }
@@ -1431,44 +1505,56 @@ class ModuleUploadViewModel(
                     totalBytes = snapshot.items.sumOf { item -> item.sizeBytes },
                 )
             }
-            val token = try {
-                turnstile.getToken()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                null
-            }
-            if (token.isNullOrBlank()) {
-                _formState.update {
-                    it.copy(
-                        submitting = false,
-                        notice = res.getString(R.string.module_upload_turnstile_failed),
+            var settled = false
+            try {
+                val token = try {
+                    turnstile.getToken()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    null
+                }
+                if (token.isNullOrBlank()) {
+                    _formState.update {
+                        it.copy(
+                            submitting = false,
+                            notice = res.getString(R.string.module_upload_turnstile_failed),
+                        )
+                    }
+                    settled = true
+                    return@launch
+                }
+
+                val batch = snapshot.items.map { item ->
+                    BatchZip(
+                        file = File(item.path),
+                        meta = ModuleUploadStaging.metaOf(item),
+                        sha256 = item.sha256,
+                        source = item.source.trim(),
+                        fileName = item.fileName,
                     )
                 }
-                return@launch
-            }
-
-            val batch = snapshot.items.map { item ->
-                BatchZip(
-                    file = File(item.path),
-                    meta = ModuleUploadStaging.metaOf(item),
-                    sha256 = item.sha256,
-                    source = item.source.trim(),
+                val result = ModuleContribution.submitBatch(
+                    modules = batch,
+                    uid = snapshot.uid,
+                    nickname = snapshot.nickname,
+                    nonce = snapshot.nonce,
+                    turnstileToken = token,
+                    limits = limits,
+                    // 只有「令牌绑的 UID 就是这次提交的 UID」才带上：换了号还带着旧令牌，
+                    // 服务端会按「签名里没有本次口令」拒，而用户完全看不出为什么。
+                    sessionToken = snapshot.session?.takeIf { snapshot.sessionMatchesUid }?.token,
                 )
-            }
-            val result = ModuleContribution.submitBatch(
-                modules = batch,
-                uid = snapshot.uid,
-                nickname = snapshot.nickname,
-                nonce = snapshot.nonce,
-                turnstileToken = token,
-                limits = limits,
-                // 只有「令牌绑的 UID 就是这次提交的 UID」才带上：换了号还带着旧令牌，
-                // 服务端会按「签名里没有本次口令」拒，而用户完全看不出为什么。
-                sessionToken = snapshot.session?.takeIf { snapshot.sessionMatchesUid }?.token,
-            )
 
-            applySubmitResult(result, snapshot.nonce, generation)
+                applySubmitResult(result, snapshot.nonce, generation, snapshot.uid)
+                settled = true
+            } finally {
+                // 协程被取消（离开路由）时不会有结果回来：submitting 停在 true 会让
+                // backToList 永远被挡、按钮永远灰着。取消也要把界面还原成一个可用状态。
+                if (!settled) {
+                    _formState.update { it.copy(submitting = false) }
+                }
+            }
         }
     }
 
@@ -1476,13 +1562,15 @@ class ModuleUploadViewModel(
         result: BatchSubmitResult,
         submittedNonce: String,
         generation: Int,
+        /** 发请求时用的 UID：令牌要记在这个身份下（见 [adoptGrant]）。 */
+        submittedUid: String,
     ) {
         if (generation != submitGeneration) return
         if (result.ok) {
             val count = result.modules.size
             // 服务端这一次可能签了一张新令牌（只有真过了一遍签名核对才会签）。
             // 手里已经有一张就换上新的（续期），没有就按这一次核实到的身份建一张。
-            adoptGrant(result.session)
+            adoptGrant(result.session, submittedUid)
             // 成功这一批留在屏幕上（用户要能对照自己投了哪几枚），但 outcome 是 Success
             // 之后 canSubmit 恒为 false：改出处、改 UID 都不会再放出一次提交。
             // 文件等「下一批」或离开路由时再删（见 addToForm / onCleared）。
@@ -1550,13 +1638,21 @@ class ModuleUploadViewModel(
     override fun onCleared() {
         sessionJob?.cancel()
         tickerJob?.cancel()
-        _formState.value.items.forEach { item -> File(item.path).delete() }
+        // 上传在飞时先不删：请求体正是这些文件，而取消与 socket 收尾是异步的，
+        // 抢在它前面删会让上传线程读到半截文件。残留副本由下一次进页面的
+        // ModuleUploadStaging.purgeStale 回收（陈旧阈值 6 小时）。
+        if (!_formState.value.submitting) {
+            _formState.value.items.forEach { item -> File(item.path).delete() }
+        }
         super.onCleared()
     }
 
     private val res get() = ksuApp.resources
 
     private companion object {
+        /** 出处链接的最大长度：够放任何酷安链接，又不至于让人把整篇文章粘进来。 */
+        const val SOURCE_MAX_CHARS = 512
+
         /** 与旧投稿对话框一致：输入停止 500ms 后再核实 UID。 */
         const val UID_DEBOUNCE_MS = 500L
 

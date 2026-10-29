@@ -5,9 +5,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,17 +14,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
@@ -35,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -57,6 +61,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.ScrollToTopOnChange
 import com.sukisu.ultra.ui.component.SearchStatus
 import com.sukisu.ultra.ui.component.miuix.SearchBarFake
 import com.sukisu.ultra.ui.component.miuix.SearchBox
@@ -123,6 +128,10 @@ fun ModuleUploadListMiuix(
     val backdrop = rememberBlurBackdrop(enableBlur)
     val barColor = if (backdrop != null) Color.Transparent else colorScheme.surface
     val visible = state.visibleRows
+    // 筛选/搜索一变就把列表拉回顶部：结果变短后 LazyColumn 会把滚动位置夹到末尾。
+    val listState = rememberLazyListState()
+    val latestVisible = rememberUpdatedState(visible)
+    ScrollToTopOnChange(listState, state.filter, state.query) { latestVisible.value }
     val checked = state.rows.count { it.status != null }
     // 每个模块投过的最新版本号；「上传更新」标签的判据之一（另一个是这一行的版本号）。
     val uploadedMax = remember(mine.modules) { ModuleUploadRules.uploadedMaxVersions(mine.modules) }
@@ -336,7 +345,13 @@ fun ModuleUploadListMiuix(
                         .overScrollVertical()
                         .nestedScroll(scrollBehavior.nestedScrollConnection)
                         .padding(horizontal = 12.dp),
-                    contentPadding = innerPadding,
+                    state = listState,
+                    contentPadding = PaddingValues(
+                        top = innerPadding.calculateTopPadding(),
+                        // 底边自己补导航栏：Scaffold 的 insets 只留了水平方向。
+                        bottom = innerPadding.calculateBottomPadding() +
+                            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                    ),
                     overscrollEffect = null,
                 ) {
                     item {
@@ -349,7 +364,7 @@ fun ModuleUploadListMiuix(
                     // 查重进度：只有一句计数，永远占一行 —— 「继续查」按钮和它下面那句说明
                     // 会随 remaining 消失，查完那一刻整块缩一行、下面内容跟着上移一截。
                     if (state.checking || checked > 0) {
-                        item {
+                        item(key = "check_progress") {
                             CheckProgressMiuix(
                                 checked = checked,
                                 total = state.rows.size,
@@ -400,12 +415,15 @@ fun ModuleUploadListMiuix(
                         )
                     }
 
-                    if (visible.isEmpty()) {
+                    // 加载中不画空态：首帧 rows 一定是空的，先报「没有已安装的模块」，
+                    // 等扫描回来又变成有，用户看到的是系统在说假话。
+                    if (visible.isEmpty() && !state.loading) {
                         // 空态：图标 + 主文案 + 副说明；筛选筛空时再给一枚「清掉筛选」的动作。
                         // 组标题仍然保留，否则「已装在本机」下面突然空一块说不清是哪一组空了。
-                        item {
+                        item(key = "empty_state") {
                             EmptyStateMiuix(
                                 filtered = state.rows.isNotEmpty(),
+                                failed = state.scanFailed,
                                 onReset = {
                                     onFilter(ModuleUploadRules.Filter.ALL)
                                     handleSearchStatusChange(searchStatus.copy(searchText = ""))
@@ -540,6 +558,8 @@ private fun CheckProgressMiuix(
 private fun EmptyStateMiuix(
     /** true 表示列表本身有数据，只是当前筛选/搜索把它们全滤掉了。 */
     filtered: Boolean,
+    /** true 表示上一次扫描已安装模块失败——不能把它说成「一个都没装」。 */
+    failed: Boolean,
     onReset: () -> Unit,
 ) {
     Column(
@@ -558,7 +578,11 @@ private fun EmptyStateMiuix(
         Text(
             modifier = Modifier.padding(top = 10.dp),
             text = stringResource(
-                if (filtered) R.string.module_upload_empty_filtered else R.string.module_upload_empty,
+                when {
+                    filtered -> R.string.module_upload_empty_filtered
+                    failed -> R.string.module_upload_scan_failed
+                    else -> R.string.module_upload_empty
+                },
             ),
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
@@ -568,10 +592,10 @@ private fun EmptyStateMiuix(
         Text(
             modifier = Modifier.padding(top = 4.dp),
             text = stringResource(
-                if (filtered) {
-                    R.string.module_upload_empty_filtered_summary
-                } else {
-                    R.string.module_upload_empty_summary
+                when {
+                    filtered -> R.string.module_upload_empty_filtered_summary
+                    failed -> R.string.module_upload_scan_failed_summary
+                    else -> R.string.module_upload_empty_summary
                 },
             ),
             fontSize = 12.sp,
