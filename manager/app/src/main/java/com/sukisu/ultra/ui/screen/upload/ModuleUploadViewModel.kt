@@ -272,7 +272,12 @@ class ModuleUploadViewModel(
      * 把还没查过的模块送去查，一次最多 [ModuleUploadRules.CHECK_CAP] 条。
      *
      * 「还没查过」现在有两种：缓存里没有（或已过期），以及这一趟还没问过。所以进页面
-     * 与点「继续查」走的是同一条路——先把缓存垫上，剩下的才发请求。
+     * 与手动刷新走的是同一条路——先把缓存垫上，剩下的才发请求。
+     *
+     * **UI 目前没有调用它**：列表页那个「继续查」按钮已经删掉（它随 `remaining` 出现/
+     * 消失，让整块高度跳变，见 CheckProgressMaterial）。留在这里是因为 `CHECK_CAP` 的
+     * 分页上限还在——模块数超过 200 时仍然只有前 200 个有结论，将来若要给这种极端情况
+     * 一个入口，接这里就行，不必重新写一遍调度。
      */
     fun checkPending() {
         startCheck(force = false)

@@ -101,7 +101,6 @@ fun ModuleUploadListMiuix(
     state: ModuleUploadListState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onContinueCheck: () -> Unit,
     onFilter: (ModuleUploadRules.Filter) -> Unit,
     onSearchStatusChange: (SearchStatus) -> Unit,
     onToggleRow: (String) -> Unit,
@@ -336,17 +335,15 @@ fun ModuleUploadListMiuix(
                     )
                 }
 
-                // 查重进度：原先是「一行字 + 一个按钮」，看不出整体进度。这里换成「条 + 已查/总数」，
-                // 正在查时条走不确定态；一次都没查过、也不在查时整块不占位（否则顶部留白像没加载）。
+                // 查重进度：只有一句计数，永远占一行 —— 「继续查」按钮和它下面那句说明
+                // 会随 remaining 消失，查完那一刻整块缩一行、下面内容跟着上移一截。
                 if (state.checking || checked > 0) {
                     item {
                         CheckProgressMiuix(
                             checked = checked,
                             total = state.rows.size,
-                            remaining = state.remaining,
                             checking = state.checking,
                             fromCache = state.fromCache,
-                            onContinue = onContinueCheck,
                         )
                     }
                 }
@@ -482,11 +479,15 @@ private fun FilterRow(
 }
 
 /**
- * 查重进度：「已查 N / 共 M」+ 右侧「继续查」。
+ * 查重进度：**只有一句计数**，永远一行。
  *
  * 这里**不画进度条**——顶栏底边那条已经在表达「正在忙」，同一屏两条进度条纯属重复。
- * 原来还为了「查完不顶动下面卡片」常驻过一条 4dp 空槽位，条删掉后这一行的高度
- * 由文本决定，「在查」与「查完」是同一个字号，天然恒定。
+ *
+ * 也**没有「继续查」按钮和它下面那句说明**：这两块都只在 `remaining > 0` 时出现，
+ * 于是「查完」那一刻这一行会从两行缩成一行，下面的挑包卡和模块卡整体上移一截——
+ * 进页面时先看到按钮、等查询结束按钮又消失，观感像内容跳了一下。
+ * 现在这一块的高度是恒定的：同一句话、同一个字号，`remaining` 再大也不多长一行。
+ * 没查完这件事仍然看得出来——计数本身就是「已查询 200 / 350」。
  *
  * [fromCache] 为真时那句话后面挂一句「缓存」：这批读数一条请求都没发（见
  * [ModuleUploadCheckCache]），得让人知道它最多是半小时前的，而不是刚才那一刻的。
@@ -495,57 +496,27 @@ private fun FilterRow(
 private fun CheckProgressMiuix(
     checked: Int,
     total: Int,
-    remaining: Int,
     checking: Boolean,
     fromCache: Boolean,
-    onContinue: () -> Unit,
 ) {
-    Row(
+    Text(
         modifier = Modifier
             .fillMaxWidth()
             // 顶部节奏统一 12dp：与筛选行、挑包入口卡同一口径。
             .padding(top = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = when {
-                    checking -> stringResource(R.string.module_upload_checking)
-                    fromCache -> stringResource(
-                        R.string.module_upload_progress_checked_cached,
-                        checked,
-                        total,
-                    )
+        text = when {
+            checking -> stringResource(R.string.module_upload_checking)
+            fromCache -> stringResource(
+                R.string.module_upload_progress_checked_cached,
+                checked,
+                total,
+            )
 
-                    else -> stringResource(R.string.module_upload_progress_checked, checked, total)
-                },
-                fontSize = 12.sp,
-                color = colorScheme.onSurfaceVariantSummary,
-            )
-            if (remaining > 0) {
-                // 一次只查 CHECK_CAP 条，剩下的靠「继续查」：说清楚为什么没查完。
-                Text(
-                    text = stringResource(
-                        R.string.module_upload_continue_hint,
-                        ModuleUploadRules.CHECK_CAP,
-                    ),
-                    fontSize = 12.sp,
-                    color = colorScheme.onSurfaceVariantSummary,
-                )
-            }
-        }
-        if (remaining > 0) {
-            TextButton(
-                text = stringResource(R.string.module_upload_continue_check),
-                onClick = onContinue,
-                enabled = !checking,
-            )
-        }
-    }
+            else -> stringResource(R.string.module_upload_progress_checked, checked, total)
+        },
+        fontSize = 12.sp,
+        color = colorScheme.onSurfaceVariantSummary,
+    )
 }
 
 /**

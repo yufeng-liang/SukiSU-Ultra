@@ -289,13 +289,14 @@ fun ModuleUploadFormMaterial(
                         .padding(top = 20.dp)
                         .fillMaxWidth(),
                 ) {
-                    // 整行可点：勾选框在左上、文字占三行时，只点那个小方块太窄。
+                    // 整行可点：勾选框在左侧、文字占三行时，只点那个小方块太窄。
+                    // 勾选框与文字垂直居中：Top 会让方框压在首行文字的上半截，看着像没对齐。
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable(enabled = !state.submitting) { onConsentChange(!state.consent) }
                             .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.Top,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(
                             checked = state.consent,

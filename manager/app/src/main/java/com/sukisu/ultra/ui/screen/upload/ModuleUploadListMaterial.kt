@@ -77,7 +77,6 @@ fun ModuleUploadListMaterial(
     state: ModuleUploadListState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onContinueCheck: () -> Unit,
     onFilter: (ModuleUploadRules.Filter) -> Unit,
     onSearchTextChange: (String) -> Unit,
     onSearchStatusChange: (SearchStatus) -> Unit,
@@ -270,8 +269,6 @@ fun ModuleUploadListMaterial(
                         total = state.rows.size,
                         checking = state.checking,
                         fromCache = state.fromCache,
-                        remaining = state.remaining,
-                        onContinue = onContinueCheck,
                     )
                 }
             }
@@ -656,15 +653,16 @@ private fun EmptyStateMaterial(filtered: Boolean, onClear: () -> Unit) {
 }
 
 /**
- * 查重进度：一句计数，「继续查」与它同一行右对齐。
+ * 查重进度：**只有一句计数**，永远一行。
  *
  * 这里**不再画进度条**——顶栏底边那条（`bottomProgress`）已经在表达「正在忙」，
- * 同一屏出现两条进度条纯属重复。这个位置只留一句给数字：正在查时说「在查」，
- * 不报数字（数字一直在变，读起来只是噪音）；查完才报「查了多少」。
+ * 同一屏出现两条进度条纯属重复。
  *
- * 原来的实现为了不顶动下面的卡片，还常驻了一条 4dp 高的空槽位。进度条整个删掉后，
- * 那一行的高度由文本本身决定、且「在查」与「查完」都是同一句话的同一个字号，
- * 高度天然恒定，不需要再留占位。
+ * 也**没有「继续查」按钮和它下面那句说明**：这两块都只在 `remaining > 0` 时出现，
+ * 于是「查完」那一刻这一行会从两行缩成一行，下面的挑包卡和模块卡整体上移一截——
+ * 进页面时先看到按钮、等查询结束按钮又消失，观感像内容跳了一下。
+ * 现在这一块的高度是恒定的：同一句话、同一个字号，`remaining` 再大也不多长一行。
+ * 没查完这件事仍然看得出来——计数本身就是「已查询 200 / 350」。
  *
  * [fromCache] 为真时那句话后面挂一句「缓存」：这批读数一条请求都没发（见
  * [ModuleUploadCheckCache]），得让人知道它最多是半小时前的，而不是刚才那一刻的。
@@ -675,49 +673,24 @@ private fun CheckProgressMaterial(
     total: Int,
     checking: Boolean,
     fromCache: Boolean,
-    remaining: Int,
-    onContinue: () -> Unit,
 ) {
-    Column(
+    Text(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                modifier = Modifier.weight(1f),
-                text = when {
-                    checking -> stringResource(R.string.module_upload_checking)
-                    fromCache -> stringResource(
-                        R.string.module_upload_progress_checked_cached,
-                        checked,
-                        total,
-                    )
+        text = when {
+            checking -> stringResource(R.string.module_upload_checking)
+            fromCache -> stringResource(
+                R.string.module_upload_progress_checked_cached,
+                checked,
+                total,
+            )
 
-                    else -> stringResource(R.string.module_upload_progress_checked, checked, total)
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (remaining > 0) {
-                TextButton(onClick = onContinue, enabled = !checking) {
-                    Text(stringResource(R.string.module_upload_continue_check))
-                }
-            }
-        }
-        if (remaining > 0) {
-            // 一次只查 200 条；剩下的靠「继续查」，这里说清楚为什么没查完。
-            Text(
-                modifier = Modifier.padding(top = 2.dp),
-                text = stringResource(
-                    R.string.module_upload_continue_hint,
-                    ModuleUploadRules.CHECK_CAP,
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+            else -> stringResource(R.string.module_upload_progress_checked, checked, total)
+        },
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

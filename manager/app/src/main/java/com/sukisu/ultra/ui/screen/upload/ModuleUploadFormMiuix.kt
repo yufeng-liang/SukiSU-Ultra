@@ -63,6 +63,7 @@ import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -289,13 +290,14 @@ fun ModuleUploadFormMiuix(
                         .padding(top = 20.dp)
                         .fillMaxWidth(),
                 ) {
-                    // 整行可点：勾选框在左上、文字占三行时，只点那个小方块太窄。
+                    // 整行可点：勾选框在左侧、文字占三行时，只点那个小方块太窄。
+                    // 勾选框与文字垂直居中：Top 会让方框压在首行文字的上半截，看着像没对齐。
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable(enabled = !state.submitting) { onConsentChange(!state.consent) }
                             .padding(14.dp),
-                        verticalAlignment = Alignment.Top,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(
                             state = if (state.consent) {
@@ -669,6 +671,12 @@ private fun UploadZipCardMiuix(
                     text = stringResource(R.string.module_upload_remove),
                     onClick = onRemove,
                     enabled = enabled,
+                    // 移除是破坏性动作：与 Material 侧同一个色（colorScheme.error），
+                    // 两套主题在这里不该各红各的。
+                    colors = ButtonDefaults.textButtonColors(
+                        color = Color.Transparent,
+                        textColor = colorScheme.error,
+                    ),
                 )
             }
 

@@ -1084,11 +1084,9 @@
     <string name="module_upload_search_hint">搜索模块</string>
     <string name="module_upload_search_clear">清除搜索</string>
     <string name="module_upload_refresh">刷新</string>
-    <string name="module_upload_continue_check">继续查</string>
 
     <string name="module_upload_progress_checked">已查 %1$d / 共 %2$d</string>
     <string name="module_upload_progress_checked_cached">已查 %1$d / 共 %2$d · 缓存</string>
-    <string name="module_upload_continue_hint">当前显示前 %1$d 个模块</string>
     <string name="module_upload_section_installed">已装在本机</string>
     <string name="module_upload_empty">没有已安装的模块</string>
     <string name="module_upload_empty_filtered">没有符合筛选条件的模块</string>
