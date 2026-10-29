@@ -39,6 +39,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -661,7 +662,15 @@ private fun UploadZipCardMaterial(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                TextButton(onClick = onRemove, enabled = enabled) {
+                // 「移除」是破坏性动作，用 error 色，别跟主题主色混在一起——
+                // 与模块页的「卸载」同一个写法（ModuleMaterial）。
+                TextButton(
+                    onClick = onRemove,
+                    enabled = enabled,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
                     Text(stringResource(R.string.module_upload_remove))
                 }
             }
