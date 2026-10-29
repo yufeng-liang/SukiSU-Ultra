@@ -128,7 +128,11 @@ fun ModuleUploadHistoryMaterial(
         val pullToRefreshState = rememberPullToRefreshState()
         val haptic = LocalHapticFeedback.current
         PullToRefreshBox(
-            modifier = Modifier.fillMaxSize(),
+            // padding(innerPadding) 与模块页/仓库页同一个写法：不加这层，
+            // 指示器会被顶栏盖住（它是在内容区顶部 0 点往下钻的）。
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
             isRefreshing = mine.loading,
             onRefresh = {
                 haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
@@ -148,11 +152,11 @@ fun ModuleUploadHistoryMaterial(
                     .fillMaxHeight()
                     .nestedScroll(scrollBehavior.nestedScrollConnection),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
+                // 顶部不叠 innerPadding：外面那层 PullToRefreshBox 已经在吃了。
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = innerPadding.calculateBottomPadding() + 24.dp,
+                    bottom = 24.dp,
                 ),
             ) {
                 item {

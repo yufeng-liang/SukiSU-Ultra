@@ -222,7 +222,11 @@ fun ModuleUploadListMaterial(
         val pullToRefreshState = rememberPullToRefreshState()
         val haptic = LocalHapticFeedback.current
         PullToRefreshBox(
-            modifier = Modifier.fillMaxSize(),
+            // padding(innerPadding) 是这几页的统一写法：指示器要从顶栏下沿钻出来，
+            // 不加这层 padding 它会被顶栏盖住，只剩一滴看不见的水珠。
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
             // 只跟刷新走，不跟 busy：busy 里还含「查重」和首次载入，
             // 那两件事由顶栏底边那条细进度条负责，不该让下拉指示器一直转着。
             isRefreshing = state.refreshing,
@@ -247,12 +251,13 @@ fun ModuleUploadListMaterial(
                     .nestedScroll(scrollBehavior.nestedScrollConnection),
                 // 上游列表规范：水平 16dp 走 contentPadding（内容可以滚出屏幕边缘），
                 // item 之间的纵向间距统一由 spacedBy(12.dp) 负责，不再靠各 item 手工垫。
+                // 顶部不再叠 innerPadding：它已经被外面那层 PullToRefreshBox 吃掉了，
+                // 这里再加一次会平白空出整条顶栏的高度。
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = innerPadding.calculateBottomPadding() + 24.dp,
+                    bottom = 24.dp,
                 ),
             ) {
                 item {
