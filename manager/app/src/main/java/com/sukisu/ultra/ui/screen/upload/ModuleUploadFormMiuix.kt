@@ -9,6 +9,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Column
@@ -82,6 +83,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Close2
+import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.UploadCloud
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -376,6 +378,60 @@ fun ModuleUploadFormMiuix(
             }
 
             item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+/** 顶部汇总：几枚、多大 —— 一进屏就知道这一批装了什么，不用滚到底。能不能传由底部提交栏说。 */
+@Composable
+private fun BatchSummaryMiuix(
+    state: ModuleUploadFormState,
+    canSubmit: Boolean,
+) {
+    Card(
+        modifier = Modifier
+            .padding(top = 16.dp)
+            .fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // 图标块延用列表行卡片那套语言（圆角块 + 淡底色）：两屏之间不换视觉习惯。
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    modifier = Modifier.size(18.dp),
+                    imageVector = MiuixIcons.File,
+                    contentDescription = null,
+                    tint = colorScheme.onSecondaryContainer,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                // 数量与总量是同一条带格式的文案（不许新造字符串），整行按 16sp SemiBold 立起来。
+                Text(
+                    text = stringResource(
+                        R.string.module_upload_summary_count,
+                        state.items.size,
+                        ModuleUploadRules.formatBytes(state.totalBytes),
+                    ),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                // 这里原有一行 submitHint(...)，和底部常驻提交栏那行是同一句。提交栏钉在屏底、
+                // 从不离开视野，顶部再复读一遍只是噪音 —— 「为什么还不能传」只在按钮旁边说一次。
+            }
         }
     }
 }

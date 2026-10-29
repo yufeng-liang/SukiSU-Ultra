@@ -285,6 +285,8 @@ fun ModuleUploadListMiuix(
                         item(key = "search_empty") {
                             EmptyStateMiuix(
                                 filtered = state.rows.isNotEmpty(),
+                                // 同 Material 侧：扫描失败与「筛选后为空」说不同的话。
+                                failed = state.scanFailed,
                                 onReset = {
                                     onFilter(ModuleUploadRules.Filter.ALL)
                                     handleSearchStatusChange(searchStatus.copy(searchText = ""))

@@ -195,6 +195,9 @@ fun ModuleUploadListMaterial(
                             item {
                                 EmptyStateMaterial(
                                     filtered = state.rows.isNotEmpty(),
+                                    // 扫描失败时 rows 保留着上一次的结果，但当前筛选可能把它们都滤掉了；
+                                    // 这两种情况要说不同的话，所以 failed 单独传，不靠 filtered 推断。
+                                    failed = state.scanFailed,
                                     onClear = {
                                         onFilter(ModuleUploadRules.Filter.ALL)
                                         onSearchTextChange("")
