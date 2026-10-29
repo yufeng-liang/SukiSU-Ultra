@@ -190,6 +190,11 @@ git_branch       = $(if $(strip $(KSU_BUILD_REF)),$(KSU_BUILD_REF),$(shell cd $(
 # 数 main 会得到偏小且与管理器不一致的版本号。
 git_commit_count = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-list --count HEAD 2>/dev/null)
 git_latest_tag   = $(shell cd $(KSU_SRC) && $(GIT_BIN) describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+# LKM 指纹：kernel/ 子树的 tree hash。它只在 kernel/ 内容真正变化时才变，改管理器、
+# 改文档、改 CI 都不会动它。管理器拿 APK 里记的同名指纹与内核上报的这个值比对，
+# 就能分辨「这次升级带来了新的 .ko」还是「只换了个 UI」，避免每次提交都催人刷内核。
+# CI 通过 KSU_LKM_REV 显式传入（与 KSU_VERSION 同理，避免 Kbuild 自己猜错路径）。
+git_lkm_rev      = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD:$(notdir $(KSU_SRC)) 2>/dev/null)
 
 $(shell cd $(KSU_SRC) 2>/dev/null && [ -f ../.git/shallow ] && $(GIT_BIN) fetch --unshallow 2>/dev/null)
 
@@ -203,6 +208,14 @@ LOCAL_COUNT     := $(if $(git_commit_count),$(git_commit_count),$(GITHUB_COMMITS
 KSU_VERSION     := $(if $(LOCAL_COUNT),$(shell expr $(VERSION_BASE) + $(LOCAL_COUNT) - $(VERSION_OFFSET)),$(VERSION_BASE))
 VERSION_TAG     := $(or $(KSU_GITHUB_VER),$(git_latest_tag),4.2.1)
 KSU_VERSION_FULL := $(if $(call git_short_sha),v$(VERSION_TAG)-$(call git_short_sha)@$(call git_branch),v$(VERSION_TAG)-$(REPO_NAME)-unknown@unknown)
+# 只有 CI/本地真能算出指纹时才拼后缀，算不出来（无 .git 的 tarball 构建）就保持原样，
+# 管理器侧解析不到后缀会自动退回「比版本号」的老逻辑。
+ifeq ($(strip $(KSU_LKM_REV)),)
+KSU_LKM_REV := $(call git_lkm_rev)
+endif
+ifneq ($(strip $(KSU_LKM_REV)),)
+KSU_VERSION_FULL := $(KSU_VERSION_FULL)+lkm.$(strip $(KSU_LKM_REV))
+endif
 $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])
 
 ccflags-y += -DKSU_VERSION=$(KSU_VERSION)

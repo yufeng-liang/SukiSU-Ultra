@@ -188,6 +188,15 @@ android {
         buildConfigField("boolean", "IS_PR_BUILD", isPrBuild.toString())
         val commit = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.get().trim()
         buildConfigField("String", "MANAGER_COMMIT", "\"$commit\"")
+        // LKM 指纹：kernel/ 子树的 tree hash。内核编译时会把同一个值编进版本串
+        // （v4.3.0-<commit>@<branch>+lkm.<rev>），首页据此判断这次升级是否真的带来了
+        // 新的 .ko —— 指纹一致就不催用户再刷一次内核。CI 通过 -PlkmRev 显式传入，
+        // 本地构建则自己算。
+        val lkmRev = (findProperty("lkmRev") as String?)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: providers.exec {
+                commandLine("git", "rev-parse", "--short=8", "HEAD:kernel")
+            }.standardOutput.asText.get().trim()
+        buildConfigField("String", "LKM_REV", "\"$lkmRev\"")
         resValue("string", "app_name", managerName)
 
         externalNativeBuild {

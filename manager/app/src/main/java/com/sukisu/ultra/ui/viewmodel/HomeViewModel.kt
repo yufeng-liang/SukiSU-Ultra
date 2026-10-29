@@ -32,6 +32,7 @@ import com.sukisu.ultra.ui.screen.home.SystemInfo
 import com.sukisu.ultra.ui.screen.home.getHomeModuleCount
 import com.sukisu.ultra.ui.screen.home.getManagerVersion
 import com.sukisu.ultra.ui.screen.home.getZygiskImplementation
+import com.sukisu.ultra.ui.screen.home.parseLkmRev
 import com.sukisu.ultra.ui.util.checkNewVersion
 import com.sukisu.ultra.ui.util.getKpmModuleCount
 import com.sukisu.ultra.ui.util.getKpmVersion
@@ -181,6 +182,10 @@ class HomeViewModel(
             ksuVersion = ksuVersion,
             lkmMode = lkmMode,
             isLkmBundled = lkmMode == true && Natives.isLkmBundled,
+            // 两侧指纹都取自构建期的 kernel/ 子树 hash：本 APK 的是 gradle 编进去的，
+            // 内核的是编译时拼进完整版本串尾部的那一段。
+            bundledLkmRev = BuildConfig.LKM_REV,
+            kernelLkmRev = parseLkmRev(kernelFullVersion),
             isManager = isManager,
             isManagerPrBuild = BuildConfig.IS_PR_BUILD,
             requiresNewKernel = isManager && Natives.managerUAPIVersion > Natives.kernelUAPIVersion,

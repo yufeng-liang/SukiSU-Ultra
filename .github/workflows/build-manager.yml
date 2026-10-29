@@ -141,6 +141,7 @@ jobs:
 
     outputs:
       version_code: ${{ steps.version.outputs.version_code }}
+      lkm_rev: ${{ steps.version.outputs.lkm_rev }}
 
     steps:
       - name: Checkout source code
@@ -159,9 +160,15 @@ jobs:
           # KSU_VERSION 小于 APK 的 versionCode，首页「有可用更新」点多少次都消不掉。
           COMMIT_COUNT=$(git rev-list --count HEAD)
           VERSION_CODE=$((40000 + COMMIT_COUNT - 2815))
+          # LKM 指纹：kernel/ 子树的 tree hash。只在内核目录内容变化时才变，
+          # 纯管理器/文档改动保持不动。内核与管理器都注入同一个值，首页据此判断
+          # 「这次升级是否真的带来了新 .ko」，避免改个 UI 也催用户刷内核。
+          LKM_REV=$(git rev-parse --short=8 HEAD:kernel)
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "commit_count=$COMMIT_COUNT" >> "$GITHUB_OUTPUT"
+          echo "lkm_rev=$LKM_REV" >> "$GITHUB_OUTPUT"
           echo "KernelSU version code: $VERSION_CODE (HEAD commits: $COMMIT_COUNT)"
+          echo "LKM fingerprint: $LKM_REV (HEAD:kernel)"
 
   # ------------------------------------------------------------
   # 包名一致性闸门（必须在任何编译之前跑）
@@ -208,6 +215,7 @@ jobs:
       expected_size2: ${{ needs.generate-key.outputs.expected_size || '' }}
       expected_hash2: ${{ needs.generate-key.outputs.expected_hash || '' }}
       version_code: ${{ needs.determine-version.outputs.version_code }}
+      lkm_rev: ${{ needs.determine-version.outputs.lkm_rev }}
       release_build: ${{ inputs.release_build || github.ref_type == 'tag' }}
     secrets: inherit
 
@@ -530,6 +538,11 @@ jobs:
           # 把 determine-version 算出的版本号显式喂给 gradle，避免 gradle 在
           # 另一个 checkout 状态里再数一遍 git 得出不同的数。
           VERSION_ARGS="-PksuVersionCode=${{ needs.determine-version.outputs.version_code }}"
+          # LKM 指纹同样由 CI 显式喂进去：gradle 自己算 HEAD:kernel 依赖 checkout 状态，
+          # 与内核编译那边可能不是同一棵树。空值时 gradle 会退回自己算。
+          if [ -n "${{ needs.determine-version.outputs.lkm_rev }}" ]; then
+            VERSION_ARGS="$VERSION_ARGS -PlkmRev=${{ needs.determine-version.outputs.lkm_rev }}"
+          fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             ./gradlew clean assembleRelease $VERSION_ARGS -PIS_PR_BUILD=true
           else

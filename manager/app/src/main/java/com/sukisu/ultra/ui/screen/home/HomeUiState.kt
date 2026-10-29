@@ -46,6 +46,12 @@ data class HomeUiState(
     val superuserCount: Int? = null,
     val moduleCount: Int? = null,
     val kpmCount: Int? = null,
+    // LKM 内容指纹，两侧都来自构建期 kernel/ 子树的 tree hash：
+    // bundledLkmRev 是「本 APK 自带的 .ko」，kernelLkmRev 是「设备上正在跑的 .ko」
+    // （内核把它编在完整版本串尾部，形如 v4.3.0-abcd1234@ci+lkm.b44da79c）。
+    // 任一侧为空说明对端还不支持该指纹（旧内核 / tarball 构建），此时退回比版本号。
+    val bundledLkmRev: String = "",
+    val kernelLkmRev: String = "",
 ) {
     val isSELinuxPermissive: Boolean
         get() = systemInfo.selinuxStatus == "Permissive"
@@ -57,14 +63,23 @@ data class HomeUiState(
         get() = isManager &&
                 lkmMode == true &&
                 isLkmBundled &&
-                // 只有内核比管理器内附的 LKM 旧，才叫「有可用更新」。
-                // 这里必须是「小于」而不是「不等于」：APK 里的 LKM 版本号与
-                // versionCode 未必相等（构建链路两处各算一次就会出现偏差），
-                // 用 != 的话装完更新版本号依旧不等，横幅永远消不掉——用户会
-                // 陷入「点了安装、提示还在」的死循环。
-                (ksuVersion?.toLong()?.let { it < currentManagerVersionCode } ?: false) &&
+                kernelLkmOutdated &&
+                // 收紧成「LKM 真的变了才提示」：只升级管理器（改 UI、改文案、改 CI）
+                // 不会改变 kernel/ 子树的 hash，两侧指纹相同就说明这次 APK 里装的还是
+                // 同一个 .ko，刷内核除了重启没有任何收益。
+                lkmContentChanged &&
                 !requiresNewKernel &&
                 !requiresNewManager
+
+    // 只有内核比管理器内附的 LKM 旧，才叫「有可用更新」。
+    // 这里必须是「小于」而不是「不等于」：APK 里的 LKM 版本号与 versionCode 未必相等
+    // （构建链路两处各算一次就会出现偏差），用 != 的话装完更新版本号依旧不等，
+    // 横幅永远消不掉——用户会陷入「点了安装、提示还在」的死循环。
+    private val kernelLkmOutdated: Boolean
+        get() = ksuVersion?.toLong()?.let { it < currentManagerVersionCode } ?: false
+
+    private val lkmContentChanged: Boolean
+        get() = bundledLkmRev.isEmpty() || kernelLkmRev.isEmpty() || kernelLkmRev != bundledLkmRev
 
     // Jailbreak mode runs on locked bootloaders, so flashing a boot image would brick the device.
     val canInstallKernelUpdate: Boolean
@@ -100,3 +115,14 @@ data class HomeActions(
     val onReleaseUpdateClick: () -> Unit = {},
     val onOpenVersionSpoof: () -> Unit = {},
 )
+
+private val LKM_REV_SUFFIX = Regex("""\+lkm\.([0-9a-fA-F]{6,40})\s*$""")
+
+/**
+ * 从内核完整版本串里取 LKM 指纹：`v4.3.0-abcd1234@ci+lkm.b44da79c` -> `b44da79c`。
+ *
+ * 取不到就返回空串（旧内核没有该后缀、无 .git 构建、或者用户开了版本伪装把整串换掉了），
+ * 调用方据此退回「比版本号」的老逻辑，不会因为缺指纹就漏掉真正必要的更新提示。
+ */
+internal fun parseLkmRev(fullVersion: String?): String =
+    fullVersion?.trim()?.let { LKM_REV_SUFFIX.find(it)?.groupValues?.get(1) }.orEmpty()

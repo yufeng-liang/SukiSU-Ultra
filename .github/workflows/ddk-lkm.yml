@@ -47,6 +47,11 @@ on:
         required: false
         default: ''
         type: string
+      lkm_rev:
+        description: 'LKM fingerprint (kernel subtree hash) baked into the module version string'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build-kernelsu-ko:
@@ -72,6 +77,7 @@ jobs:
         EXPECTED_SIZE2: ${{ inputs.expected_size2 }}
         EXPECTED_HASH2: ${{ inputs.expected_hash2 }}
         KSU_VERSION_CODE: ${{ inputs.version_code }}
+        LKM_REV: ${{ inputs.lkm_rev }}
         RELEASE_BUILD: ${{ inputs.release_build }}
       run: |
         git config --global --add safe.directory /__w/SukiSU-Ultra/SukiSU-Ultra
@@ -97,6 +103,9 @@ jobs:
         fi
         if [ -n "$KSU_VERSION_CODE" ]; then
           EXTRA_ARGS="$EXTRA_ARGS KSU_VERSION=$KSU_VERSION_CODE"
+        fi
+        if [ -n "$LKM_REV" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_LKM_REV=$LKM_REV"
         fi
         if [ "$RELEASE_BUILD" = "true" ]; then
           EXTRA_ARGS="$EXTRA_ARGS KSU_BUILD_REF=release"
@@ -136,6 +145,7 @@ jobs:
         EXPECTED_SIZE2: ${{ inputs.expected_size2 }}
         EXPECTED_HASH2: ${{ inputs.expected_hash2 }}
         KSU_VERSION_CODE: ${{ inputs.version_code }}
+        LKM_REV: ${{ inputs.lkm_rev }}
         RELEASE_BUILD: ${{ inputs.release_build }}
       run: |
         cd kernel
@@ -190,6 +200,9 @@ jobs:
         fi
         if [ -n "$KSU_VERSION_CODE" ]; then
           EXTRA_ARGS="$EXTRA_ARGS KSU_VERSION=$KSU_VERSION_CODE"
+        fi
+        if [ -n "$LKM_REV" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_LKM_REV=$LKM_REV"
         fi
         if [ "$RELEASE_BUILD" = "true" ]; then
           EXTRA_ARGS="$EXTRA_ARGS KSU_BUILD_REF=release"

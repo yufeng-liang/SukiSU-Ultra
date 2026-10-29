@@ -32,6 +32,11 @@ on:
         required: false
         default: ''
         type: string
+      lkm_rev:
+        description: 'LKM fingerprint (kernel subtree hash) baked into the module version string'
+        required: false
+        default: ''
+        type: string
       release_build:
         description: 'Mark version metadata as a release build'
         required: false
@@ -60,4 +65,5 @@ jobs:
       expected_size2: ${{ inputs.expected_size2 || '' }}
       expected_hash2: ${{ inputs.expected_hash2 || '' }}
       version_code: ${{ inputs.version_code || '' }}
+      lkm_rev: ${{ inputs.lkm_rev || '' }}
       release_build: ${{ inputs.release_build }}
