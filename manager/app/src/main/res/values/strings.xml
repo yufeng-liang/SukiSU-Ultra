@@ -1218,7 +1218,7 @@
     <string name="module_upload_section_source">Source</string>
     <string name="module_upload_section_identity">Uploader</string>
     <string name="module_upload_source">Coolapk link for this module</string>
-    <string name="module_upload_source_hint">Must be a coolapk.com link</string>
+    <string name="module_upload_source_hint">Paste the Coolapk post link for this module. No post yet? Publish one to archive the source, and get the module some exposure.</string>
     <string name="module_upload_source_empty">Required</string>
     <string name="module_upload_required">Required</string>
     <string name="module_upload_source_invalid">Must be a coolapk.com link</string>

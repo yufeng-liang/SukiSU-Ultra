@@ -1202,7 +1202,7 @@
     <string name="module_upload_section_source">出处</string>
     <string name="module_upload_section_identity">上传者</string>
     <string name="module_upload_source">这个模块的酷安链接</string>
-    <string name="module_upload_source_hint">必须是 coolapk.com 的链接</string>
+    <string name="module_upload_source_hint">贴这个模块的酷安帖子链接。没有的话可以顺手发一个帖子存档，也顺便宣传一下。</string>
     <string name="module_upload_source_empty">必填</string>
     <!-- 分组标题右侧的必填徽标。出处与上传者共用，所以不带字段名。 -->
     <string name="module_upload_required">必填</string>

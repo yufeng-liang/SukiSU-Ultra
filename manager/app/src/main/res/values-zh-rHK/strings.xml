@@ -405,7 +405,7 @@
     <string name="module_upload_section_source">出處</string>
     <string name="module_upload_section_identity">上傳者</string>
     <string name="module_upload_source">這個模組的酷安連結</string>
-    <string name="module_upload_source_hint">必須是 coolapk.com 的連結</string>
+    <string name="module_upload_source_hint">貼這個模組的酷安帖子連結。沒有的話可以順手發一個帖子存檔，也順便宣傳一下。</string>
     <string name="module_upload_source_empty">必填</string>
     <string name="module_upload_required">必填</string>
     <string name="module_upload_source_invalid">必須是 coolapk.com 的連結</string>
