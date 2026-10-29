@@ -4,6 +4,7 @@ import com.sukisu.ultra.data.registry.ExpectedFile
 import com.sukisu.ultra.data.registry.RegistryDownloadStore
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeNoException
 import org.junit.Before
 import org.junit.Rule
@@ -40,6 +41,9 @@ class ModuleZipDeletionTest {
             writeText("zip")
         }
 
+    private fun isWindows(): Boolean =
+        System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
+
     @Test
     fun registryDownloadIsDeletedWithItsDirectory() {
         val root = File(filesDir, RegistryDownloadStore.DIR_NAME).apply { mkdirs() }
@@ -53,6 +57,20 @@ class ModuleZipDeletionTest {
 
     @Test
     fun cacheCopyWithAwkwardNameIsDeleted() {
+        val zip = zipIn(cacheDir, "my module's zip , _data=x.zip")
+
+        assertTrue(delete("file", zip.path))
+        assertFalse(zip.exists())
+    }
+
+    /**
+     * A newline in the file name is legal on Linux but rejected by Windows, so this case only
+     * runs where the platform accepts it.
+     */
+    @Test
+    fun cacheCopyWithNewlineInNameIsDeleted() {
+        assumeFalse("newline in a file name is not allowed on Windows", isWindows())
+
         val zip = zipIn(cacheDir, "my module's zip , _data=x\n.zip")
 
         assertTrue(delete("file", zip.path))
@@ -91,6 +109,7 @@ class ModuleZipDeletionTest {
 
         assertFalse(delete("file", link.path))
         assertTrue(outside.exists())
+        assertTrue(link.exists())
     }
 
     @Test

@@ -7,6 +7,7 @@ import android.util.Log
 import com.sukisu.ultra.data.registry.RegistryDownloadStore
 import com.sukisu.ultra.ksuApp
 import java.io.File
+import java.nio.file.Files
 
 /** Deletion only happens when the user opted in and ksud reported a successful install. */
 internal fun shouldDeleteSourceAfterInstall(enabled: Boolean, installSucceeded: Boolean): Boolean =
@@ -51,7 +52,13 @@ internal fun deleteModuleZip(
 
 /** Only app-private ZIPs are deleted directly; canonical paths keep symlinks from escaping. */
 internal fun deletePrivateZip(path: String?, filesDir: File, cacheDir: File): Boolean {
-    val file = path?.let(::File)?.let { runCatching { it.canonicalFile }.getOrNull() } ?: return false
+    val raw = path?.let(::File) ?: return false
+    // A symlink is never deleted: canonical paths resolve links on Linux/Android but not on
+    // Windows, so relying on canonicalisation alone would delete the link target on one platform
+    // and the link itself on another. Refusing symlinks outright keeps both platforms identical
+    // and keeps a link from reaching a file outside the app's private directories.
+    if (runCatching { Files.isSymbolicLink(raw.toPath()) }.getOrDefault(true)) return false
+    val file = runCatching { raw.canonicalFile }.getOrNull() ?: return false
     val registryRoot = runCatching { File(filesDir, RegistryDownloadStore.DIR_NAME).canonicalFile }.getOrNull()
     val cacheRoot = runCatching { cacheDir.canonicalFile }.getOrNull()
     return when {
