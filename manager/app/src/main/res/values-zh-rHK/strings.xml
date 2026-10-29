@@ -483,4 +483,49 @@
     <string name="extension_status_session_only">僅在本次開機期間有效</string>
     <string name="extension_empty_title">暫無擴充資料</string>
     <string name="extension_empty_subtitle">下拉重新整理，或檢查目前核心是否包含擴充中心。</string>
+    <!-- 无障碍与格式占位：返回键名称、版本号行。四语言同值，翻译者可按语序调整括号。 -->
+    <string name="action_back">返回</string>
+    <string name="module_upload_version_code">%1$s (%2$d)</string>
+    <string name="module_upload_version_line">%1$s (%2$d) · %3$s</string>
+    <!-- 无障碍：模块卡的展开/收起状态描述。 -->
+    <string name="module_upload_row_expanded">已展開</string>
+    <string name="module_upload_row_collapsed">已收起</string>
+
+    <!-- 投稿链路：此前 tw/hk 只有 module_upload_* 一套，这 33 条整片缺失，
+         繁中用户在这一页会整体回退成英文。 -->
+    <string name="module_contribution_action">分享</string>
+    <string name="module_contribution_author">作者</string>
+    <string name="module_contribution_consent">我已知曉：上傳的檔案會被公開儲存，任何人都可以下載。請勿上傳包含個人隱私、金鑰等敏感資訊的內容。</string>
+    <string name="module_contribution_consent_required">請先勾選確認</string>
+    <string name="module_contribution_description">描述</string>
+    <string name="module_contribution_dialog_title">投稿模組</string>
+    <string name="module_contribution_failed">提交失敗</string>
+    <string name="module_contribution_id">模組 ID</string>
+    <string name="module_contribution_name">模組名稱</string>
+    <string name="module_contribution_proof_copy">複製</string>
+    <string name="module_contribution_proof_hint">開啟酷安「我的 → 編輯資料 → 簽名」，填入這串後儲存，再回來提交。這是為了證明帳號歸你，且它只綁你此刻要上傳的這個包：換模組 ID、換包或重新發起投稿都會換一串——簽名裡對不上就照當前這串再填一次。</string>
+    <string name="module_contribution_proof_title">酷安簽名</string>
+    <string name="module_contribution_section_identity">出處與身分</string>
+    <string name="module_contribution_section_info">模組資訊</string>
+    <string name="module_contribution_settings_summary">安裝本機模組時，提示分享尚未收錄的模組</string>
+    <string name="module_contribution_settings_title">模組投稿</string>
+    <string name="module_contribution_snackbar">向大家分享這個模組嗎？</string>
+    <string name="module_contribution_source">出處連結或來源說明</string>
+    <string name="module_contribution_submit">分享此模組</string>
+    <string name="module_contribution_submitting">正在提交…</string>
+    <string name="module_contribution_success">已提交，自動審核通過後進索引</string>
+    <string name="module_contribution_uid">酷安 UID</string>
+    <string name="module_contribution_uid_checking">正在核實…</string>
+    <string name="module_contribution_uid_hint">個人主頁連結末尾那串數字（coolapk.com/u/…）</string>
+    <string name="module_contribution_uid_invalid">需要 4~12 位數字</string>
+    <string name="module_contribution_uid_not_found">酷安查無此人，請核對 UID</string>
+    <string name="module_contribution_uid_required">核實酷安 UID 後才能分享</string>
+    <string name="module_contribution_uid_self_reported">服務端未開啟核實</string>
+    <string name="module_contribution_uid_unavailable">暫時無法核實（酷安不可達）</string>
+    <string name="module_contribution_uid_verified">將以 %1$s 署名</string>
+    <string name="module_contribution_unknown">無法確認是否已收錄</string>
+    <string name="module_contribution_uploader">你的署名，會公開展示</string>
+    <string name="module_contribution_version">版本</string>
+    <!-- 无障碍：PR 链接的点击动作名（TalkBack 念出来）。 -->
+    <string name="module_upload_open_pr">開啟 PR</string>
 </resources>

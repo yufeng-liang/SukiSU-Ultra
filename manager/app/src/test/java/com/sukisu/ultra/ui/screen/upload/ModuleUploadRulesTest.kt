@@ -325,6 +325,9 @@ class ModuleUploadRulesTest {
         assertTrue(ModuleUploadRules.signatureStillValid(confirmed, sameSet))
         // 集合变了（或换了 nonce 之后用户还没重抄）：勾选必须失效。
         assertFalse(ModuleUploadRules.signatureStillValid(confirmed, changedSet))
+        // 换 nonce 也是一串新口令：以前指纹只绑集合，这一格会误判成「还作数」。
+        val otherNonce = ModuleUploadRules.proofSnapshot(listOf(zip("a")), "zzz999").setKey
+        assertFalse(ModuleUploadRules.signatureStillValid(confirmed, otherNonce))
         assertFalse(ModuleUploadRules.signatureStillValid(null, sameSet))
         assertFalse(ModuleUploadRules.signatureStillValid("", sameSet))
     }

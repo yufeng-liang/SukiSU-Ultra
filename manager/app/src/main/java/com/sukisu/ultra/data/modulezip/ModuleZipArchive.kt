@@ -114,16 +114,24 @@ class ModuleZipArchive(
         onFailure: (Throwable) -> Unit = {},
     ): Entry? {
         val entry = runCatching {
-            if (!source.isFile || source.length() <= 0L) return null
-            val meta = ModuleProp.parseModuleProp(source) ?: return null
+            // 每一格「没留存」都要落进 onFailure：以前这四格写的是 `return null`——
+            // 在 runCatching 的 lambda 里那是**非局部返回**，直接跳出了整个 store()，
+            // 外面的 getOrElse 根本不执行，于是 onFailure 永远收不到回调，
+            // 调用方只能靠「文件不见了」猜原因。
+            check(source.isFile && source.length() > 0L) {
+                "源文件不存在或是空文件：${source.name}"
+            }
+            val meta = ModuleProp.parseModuleProp(source)
+                ?: throw IllegalStateException("读不出模块信息（module.prop 缺 id / name）：${source.name}")
             val target = fileFor(meta.id)
             root.mkdirs()
-            if (!place(source, target, consumeSource)) return null
+            // 改名与复制都没成（跨分区、目标目录不可写、空间不足）
+            check(place(source, target, consumeSource)) { "写入 ${target.name} 失败" }
             target.setLastModified(now)
             prune(keep = target)
             // prune() 可能把刚存进去的那一份也淘汰掉（单包就超过总上限时）：
             // 文件都没了还返回一个 Entry，等于让调用方以为留存成功、点开却失败。
-            if (!target.isFile) return null
+            check(target.isFile) { "留存后立刻被淘汰：${target.name}" }
             Entry(
                 id = meta.id,
                 file = target,

@@ -274,10 +274,10 @@ object ModuleUploadRules {
     private val SHA256_RE = Regex("^[0-9a-f]{64}$")
 
     /**
-     * 一次口令快照：口令文本 + 它绑定的集合指纹。
+     * 一次口令快照：口令文本 + 它绑定的输入指纹。
      *
-     * 指纹用 [ContributionBatch.canonicalProofSet]（与服务端同一条规范化规则），
-     * 「我已写进签名」存的是指纹而不是布尔值——集合一变，存下来的指纹自然对不上，
+     * 指纹用 [ContributionBatch.canonicalProofSet]（与服务端同一条规范化规则）**加上 nonce**，
+     * 「我已写进签名」存的是指纹而不是布尔值——输入一变，存下来的指纹自然对不上，
      * 勾选自动失效，不需要在每个改 id / 换包 / 换 nonce 的地方记得手动清一次。
      */
     data class ProofSnapshot(val text: String, val setKey: String)
@@ -288,7 +288,12 @@ object ModuleUploadRules {
         val proofs = items.sortedBy { it.id }.map { ProofItem(it.id, it.sha256) }
         return ProofSnapshot(
             text = ContributionBatch.proofTextV2(proofs, nonce),
-            setKey = ContributionBatch.canonicalProofSet(proofs),
+            // nonce 必须进指纹：口令文本由「集合 + nonce」共同决定，换了 nonce 就是另一串口令，
+            // 用户写进签名的那一行已经不是它了。只绑集合的话，这一条得靠每个改 nonce 的地方
+            // 手动清一次（现在证明作废、重投都各自清了一次），忘一处就是「勾着已确认、
+            // 提交一串谁都没写过的口令」。两条分量都是受控字符串（canonical 形如 `id:sha,...`，
+            // nonce 是 6 位字母数字），用 `|` 分隔拼不出歧义。
+            setKey = ContributionBatch.canonicalProofSet(proofs) + "|" + nonce.trim(),
         )
     }
 

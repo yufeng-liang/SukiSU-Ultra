@@ -22,12 +22,15 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -49,6 +52,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -143,7 +147,7 @@ fun ModuleUploadFormMiuix(
                                     if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
                                 },
                                 imageVector = MiuixIcons.Back,
-                                contentDescription = null,
+                                contentDescription = stringResource(R.string.action_back),
                             )
                         }
                     },
@@ -298,7 +302,12 @@ fun ModuleUploadFormMiuix(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = !state.submitting) { onConsentChange(!state.consent) }
+                            .toggleable(
+                                value = state.consent,
+                                enabled = !state.submitting,
+                                role = Role.Checkbox,
+                                onValueChange = onConsentChange,
+                            )
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -451,15 +460,17 @@ private fun SubmitBarMiuix(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // 底部导航栏：Scaffold 的 contentWindowInsets 只留了水平方向（内容要能
-                // 顶到状态栏/导航栏下面去），所以这条钉底的栏得自己把导航栏高度补上，
-                // 否则三键导航下按钮直接被压住、手势导航下下半截落在手势条里。
+                // 底部导航栏 + 输入法：Scaffold 的 contentWindowInsets 只留了水平方向（内容
+                // 要能顶到状态栏/导航栏下面去），所以这条钉底的栏得自己补系统留白。
+                // union 而不是 add —— 键盘弹起时 IME 的高度已经把导航栏那截算进去了，
+                // 两者相加会多留一条空白。不补 IME 的话，编辑出处那一栏时键盘正好压在
+                // 提交按钮上，用户得先收起键盘才能点提交。
                 .padding(
                     start = 12.dp,
                     end = 12.dp,
                     top = 10.dp,
-                    bottom = 10.dp + WindowInsets.navigationBars.asPaddingValues()
-                        .calculateBottomPadding(),
+                    bottom = 10.dp + WindowInsets.navigationBars.union(WindowInsets.ime)
+                        .asPaddingValues().calculateBottomPadding(),
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -601,7 +612,11 @@ private fun OutcomeMiuix(state: ModuleUploadFormState) {
                         outcome.prUrl?.let { url ->
                             // 能点就直接开浏览器：URL 本来就在手里，没有为此新增回调参数。
                             Text(
-                                modifier = Modifier.clickable {
+                                // onClickLabel：TalkBack 会念「打开 PR，双击激活」，
+                                // 而不是干巴巴一个可点区域。（本项目 Compose 版本没有 Role.Link。）
+                                modifier = Modifier.clickable(
+                                    onClickLabel = stringResource(R.string.module_upload_open_pr),
+                                ) {
                                     runCatching { uriHandler.openUri(url) }
                                 },
                                 text = stringResource(R.string.module_upload_result_pr, url),
@@ -652,8 +667,12 @@ private fun UploadZipCardMiuix(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "${item.version} (${item.versionCode}) · " +
+                        text = stringResource(
+                            R.string.module_upload_version_line,
+                            item.version,
+                            item.versionCode,
                             ModuleUploadRules.formatBytes(item.sizeBytes),
+                        ),
                         fontSize = 11.sp,
                         color = colorScheme.onSurfaceVariantSummary,
                         maxLines = 1,
@@ -865,7 +884,12 @@ private fun ProofSectionMiuix(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = enabled) { onSignatureConfirmedChange(!state.signatureValid) },
+                        .toggleable(
+                            value = state.signatureValid,
+                            enabled = enabled,
+                            role = Role.Checkbox,
+                            onValueChange = onSignatureConfirmedChange,
+                        ),
                     // 文字只有一行，勾选框居中与文字同一条水平线上；
                     // 原先的 Top 会让方框压在文字的上半截。
                     verticalAlignment = Alignment.CenterVertically,

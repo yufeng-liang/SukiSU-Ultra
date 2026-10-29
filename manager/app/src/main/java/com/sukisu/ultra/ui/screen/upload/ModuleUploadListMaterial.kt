@@ -58,6 +58,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,7 +106,11 @@ fun ModuleUploadListMaterial(
     // 与模块页/仓库页同一套表达：标题随列表上滑收起，不再是钉住不动的小标题。
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val snackbarHostState = remember { SnackbarHostState() }
-    val visible = state.visibleRows
+    // 只在「行集 / 筛选 / 搜索」真的变了才重算。`visibleRows` 是属性 getter，
+    // 每次访问都要 associateBy + 排序 + Collator；直接读它会让勾选、展开、挑包、
+    // 加载态这些与列表内容无关的状态变化也触发一次全量重排（查重按 8 条一批回写，
+    // 350 行时进页面头一秒能连排几十遍）。remember 把键收紧到真正的影响项。
+    val visible = remember(state.rows, state.filter, state.query) { state.visibleRows }
     // 筛选/搜索一变就把列表拉回顶部：结果变短后 LazyColumn 会把滚动位置夹到末尾，
     // 用户看到的是「筛完只剩一个尾巴」，连筛选 chip 都滚出了屏幕。
     val listState = rememberLazyListState()
@@ -191,7 +197,8 @@ fun ModuleUploadListMaterial(
                             bottom = bottomPadding + 24.dp,
                         ),
                     ) {
-                        if (visible.isEmpty()) {
+                        // 首帧还在读包就报「本机没有已安装模块」是假话：扫描没结束前不下结论。
+                        if (visible.isEmpty() && !state.loading) {
                             item {
                                 EmptyStateMaterial(
                                     filtered = state.rows.isNotEmpty(),
@@ -292,7 +299,7 @@ fun ModuleUploadListMaterial(
                             ModuleUploadRules.Filter.RECORDED to R.string.module_upload_filter_recorded,
                             ModuleUploadRules.Filter.UNKNOWN to R.string.module_upload_filter_unknown,
                         )
-                        items(labels) { (filter, label) ->
+                        items(labels, key = { it.first.name }) { (filter, label) ->
                             FilterChip(
                                 selected = state.filter == filter,
                                 onClick = { onFilter(filter) },
@@ -406,11 +413,21 @@ private fun UploadRowCardMaterial(
     // 名字左缘：图标块 36dp + 12dp 间距。归属标签、标签行与展开区都缩进到这条竖线上，
     // 一眼能看出它们说的是同一个模块，而不是三块互不相干的内容。
     val indent = 48.dp
+    // 展开/收起是这张卡唯一的动作，但 TalkBack 从 onClick 只读得出「可点」，
+    // 读不出点下去是展开还是收起，也读不出此刻是什么状态。
+    val rowStateText = stringResource(
+        if (expanded) {
+            R.string.module_upload_row_expanded
+        } else {
+            R.string.module_upload_row_collapsed
+        },
+    )
     TonalCard(
         // 展开/收起随内容高度缓动，避免状态牌下方的说明区一帧弹出（对齐上游仓库页同款）。
         modifier = modifier
             .fillMaxWidth()
-            .animateContentSize(animationSpec = tween(durationMillis = 300)),
+            .animateContentSize(animationSpec = tween(durationMillis = 300))
+            .semantics { stateDescription = rowStateText },
         onClick = onToggle,
     ) {
         Column(
@@ -431,7 +448,8 @@ private fun UploadRowCardMaterial(
                         text = row.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
+                        // 两行：大字体下模块名（动辄带日期和作者后缀）一行只剩两三个字。
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     // 版本与作者之间用「·」：逗号会让「3.1.0, 作者」读成半句话；

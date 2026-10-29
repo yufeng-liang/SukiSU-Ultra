@@ -32,7 +32,9 @@ import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.ksuApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 /**
  * 「已验证」那一格的两块装饰：酷安头像，与勾选描边动画。
@@ -50,8 +52,18 @@ private const val AVATAR_PX = 96
 /** 同一张地址不重复下载；进程内缓存就够了，头像不是关键内容。 */
 private val avatarCache = LruCache<String, ImageBitmap>(16)
 
+/**
+ * 头像下载专用的 client：整通调用 15 秒封顶。
+ *
+ * 全局 `okhttpClient` 只配了连接/读的默认值，一个慢速滴流（或干脆不响应）的图床地址
+ * 能把一个 IO 线程按住很久；头像不是关键内容，宁可放弃也不要占着线程。
+ */
+private val avatarClient: OkHttpClient by lazy {
+    ksuApp.okhttpClient.newBuilder().callTimeout(15, TimeUnit.SECONDS).build()
+}
+
 private fun loadAvatar(url: String): ImageBitmap? = runCatching {
-    val bytes = ksuApp.okhttpClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+    val bytes = avatarClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
         if (!resp.isSuccessful) return null
         val source = resp.body.source()
         // 先问长度：真去读一个几百 MB 的东西只为了让头像显示，不值得。

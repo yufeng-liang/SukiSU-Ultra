@@ -16,13 +16,16 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -66,6 +69,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -123,7 +127,10 @@ fun ModuleUploadFormMaterial(
             TopAppBar(
                 title = { Text(stringResource(R.string.module_upload_form_title)) },
                 navigationIcon = {
-                    TopBarBackButton(onClick = onBack)
+                    TopBarBackButton(
+                        onClick = onBack,
+                        contentDescription = stringResource(R.string.action_back),
+                    )
                 },
                 scrollBehavior = scrollBehavior,
                 colors = expressiveTopAppBarColors(),
@@ -300,7 +307,12 @@ fun ModuleUploadFormMaterial(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = !state.submitting) { onConsentChange(!state.consent) }
+                            .toggleable(
+                                value = state.consent,
+                                enabled = !state.submitting,
+                                role = Role.Checkbox,
+                                onValueChange = onConsentChange,
+                            )
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -457,15 +469,17 @@ private fun SubmitBarMaterial(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // 底部导航栏：Scaffold 的 contentWindowInsets 只留了水平方向（内容要能
-                // 顶到状态栏/导航栏下面去），所以这条钉底的栏得自己把导航栏高度补上，
-                // 否则三键导航下按钮直接被压住、手势导航下下半截落在手势条里。
+                // 底部导航栏 + 输入法：Scaffold 的 contentWindowInsets 只留了水平方向（内容
+                // 要能顶到状态栏/导航栏下面去），所以这条钉底的栏得自己补系统留白。
+                // union 而不是 add —— 键盘弹起时 IME 的高度已经把导航栏那截算进去了，
+                // 两者相加会多留一条空白。不补 IME 的话，编辑出处那一栏时键盘正好压在
+                // 提交按钮上，用户得先收起键盘才能点提交。
                 .padding(
                     start = 16.dp,
                     end = 16.dp,
                     top = 10.dp,
-                    bottom = 10.dp + WindowInsets.navigationBars.asPaddingValues()
-                        .calculateBottomPadding(),
+                    bottom = 10.dp + WindowInsets.navigationBars.union(WindowInsets.ime)
+                        .asPaddingValues().calculateBottomPadding(),
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -611,7 +625,11 @@ private fun OutcomeCardMaterial(
                 )
                 if (prUrl != null) {
                     Text(
-                        modifier = Modifier.clickable {
+                        // onClickLabel：TalkBack 会念「打开 PR，双击激活」，
+                        // 而不是干巴巴一个可点区域。（本项目 Compose 版本没有 Role.Link。）
+                        modifier = Modifier.clickable(
+                            onClickLabel = stringResource(R.string.module_upload_open_pr),
+                        ) {
                             runCatching { uriHandler.openUri(prUrl) }
                         },
                         text = stringResource(R.string.module_upload_result_pr, prUrl),
@@ -683,7 +701,11 @@ private fun UploadZipCardMaterial(
                 InfoLineMaterial(stringResource(R.string.module_contribution_id), item.id)
                 InfoLineMaterial(
                     stringResource(R.string.module_contribution_version),
-                    "${item.version} (${item.versionCode})",
+                    stringResource(
+                        R.string.module_upload_version_code,
+                        item.version,
+                        item.versionCode,
+                    ),
                     compact = true,
                 )
                 InfoLineMaterial(stringResource(R.string.module_contribution_name), item.name)
@@ -877,7 +899,12 @@ private fun ProofSectionMaterial(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = enabled) { onSignatureConfirmedChange(!state.signatureValid) },
+                        .toggleable(
+                            value = state.signatureValid,
+                            enabled = enabled,
+                            role = Role.Checkbox,
+                            onValueChange = onSignatureConfirmedChange,
+                        ),
                     // 文字只有一行，勾选框居中与文字同一条水平线上；
                     // 原先的 Top 会让方框压在文字的上半截。
                     verticalAlignment = Alignment.CenterVertically,

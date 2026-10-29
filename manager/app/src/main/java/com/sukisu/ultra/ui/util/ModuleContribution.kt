@@ -205,6 +205,15 @@ data class SubmitResult(
      * 这里是 App 侧的同一条规则，见 [com.sukisu.ultra.ui.component.ModuleContributionRules.proofWasAlreadyUsed]）。
      */
     val code: String? = null,
+    /**
+     * 服务端这一趟签发的长期令牌（`{token, expiresAt}`），没签就是 null。
+     *
+     * 与批量那条读的是同一个键、同一个解析（[readSessionGrant]）。单枚入口以前
+     * **完全没有读这个键**：服务端在签名路成功后会 `issueSession` 签发一张九十天的
+     * 令牌，而客户端把它丢了 —— 于是旧入口永远停在「每次投稿都要改一次酷安签名」，
+     * 明明服务端已经愿意免了它。
+     */
+    val session: SessionGrant? = null,
 )
 
 /**
@@ -625,7 +634,9 @@ object ModuleContribution {
         }
         // 本地四闸与形状检查只留一份实现：界面上的 canSubmit 只是提前拦，
         // 真正发请求前再用同一条规则核对一次（文件可能在这期间被删/被改）。
-        // 这一步要 stat N 个文件，放在 IO 上做。
+        // 拼 multipart 本身不读文件字节（`asRequestBody` 是惰性的，真正读盘发生在
+        // call.execute()）；唯一的 stat 在 buildBatchBody 里的 localRejection，
+        // 而整个发送过程本来就在下面那个 withContext(Dispatchers.IO) 内。
         val body = buildBatchBody(modules, safeNickname, safeUid, safeNonce, safeSession)
         val url = BASE_URL.trimEnd('/') + "/submit"
         val builder = Request.Builder().url(url).post(body)
@@ -862,6 +873,7 @@ object ModuleContribution {
         nickname: String,
         nonce: String,
         displayedZipSha256: String? = null,
+        sessionToken: String = "",
     ): SubmitResult {
         val resolved = meta ?: return failure("读不出模块信息（module.prop 缺失或 id/name 为空）")
         val safeSource = source.trim()
@@ -1155,7 +1167,12 @@ object ModuleContribution {
             val machineCode = json.optString("code").trim().takeIf { it.isNotEmpty() }
             return SubmitResult(false, null, reason, machineCode)
         }
-        return SubmitResult(true, json.optString("pr").takeIf { it.isNotBlank() }, "投稿已提交")
+        return SubmitResult(
+            ok = true,
+            prUrl = json.optString("pr").takeIf { it.isNotBlank() },
+            message = "投稿已提交",
+            session = readSessionGrant(json.optJSONObject("session")),
+        )
     }
 
     /** 把失败原因说成人话，而不是把一个 IOException 的类名甩给用户。 */
@@ -1164,6 +1181,10 @@ object ModuleContribution {
             "投稿超时（${SUBMIT_TIMEOUT_MS / 1000} 秒），请稍后再试"
         is SocketTimeoutException ->
             "投稿超时（${SUBMIT_TIMEOUT_MS / 1000} 秒），请稍后再试"
+        // 连接被重置、写一半断流这类都是 InterruptedIOException，而它是 IOException 的
+        // 子类：不单独分支就会落到下面那句「网络不可用」，用户明明连着网却被告知没网。
+        is java.io.InterruptedIOException ->
+            "上传过程中连接中断了，请稍后重试"
         is IOException -> "网络不可用，投稿未完成"
         else -> error.message?.takeIf { it.isNotBlank() } ?: "投稿失败"
     }

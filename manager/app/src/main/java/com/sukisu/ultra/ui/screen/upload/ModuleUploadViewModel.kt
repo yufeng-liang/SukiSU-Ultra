@@ -1212,6 +1212,11 @@ class ModuleUploadViewModel(
     fun refreshSession() {
         val stored = ModuleUploadPrefs.readSession()
         if (stored == null) {
+            // 这里也要推一格代次、也要掐掉在飞的那次核实：否则「清盘（或换了个 ViewModel
+            // 实例）→ 旧 checkSession 晚到 → writeSession 把令牌写回磁盘」这条路还开着。
+            // 上一版把代次只加在有令牌那一支，等于默认「没令牌时不会有人在飞」。
+            sessionEpoch++
+            sessionJob?.cancel()
             _formState.update { it.copy(session = null, sessionChecking = false) }
             return
         }

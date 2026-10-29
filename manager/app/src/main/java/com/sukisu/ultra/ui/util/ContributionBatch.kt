@@ -287,6 +287,15 @@ object ContributionBatch {
         "not_owner" -> serverError?.takeIf { it.isNotBlank() }
             ?: "这个模块的更新版本只有原作者能发；当前验证的酷安账号不是它的上传者。"
 
+        // 下面两条同为 403，但语义是「我们这边查不了」，服务端文案里已经明写
+        // 「与你的包无关」。落到通用 403 兜底会被冠上「服务端拒绝了这次上传」，
+        // 等于把我们的故障说成用户的错 —— 原话照搬，只在没原话时补一句真话。
+        "index_unavailable" -> serverError?.takeIf { it.isNotBlank() }
+            ?: "服务端的模块索引暂时读不到，本次没有提交；与你的包无关，请稍后重试。"
+
+        "owner_unknown" -> serverError?.takeIf { it.isNotBlank() }
+            ?: "服务端暂时查不出这个模块的归属，本次没有提交；与你的包无关，请稍后联系站点维护者。"
+
         else -> when {
             status == 429 -> "上传太频繁了，请稍后再试。"
             status >= 500 -> "服务端没能处理这次上传，可能是批量太大或临时故障；请拆小后重试。"

@@ -2,6 +2,7 @@ package com.sukisu.ultra.ui.screen.upload
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -39,6 +41,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -53,6 +56,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -127,7 +132,11 @@ fun ModuleUploadListMiuix(
     val enableBlur = LocalEnableBlur.current
     val backdrop = rememberBlurBackdrop(enableBlur)
     val barColor = if (backdrop != null) Color.Transparent else colorScheme.surface
-    val visible = state.visibleRows
+    // 只在「行集 / 筛选 / 搜索」真的变了才重算。`visibleRows` 是属性 getter，
+    // 每次访问都要 associateBy + 排序 + Collator；直接读它会让勾选、展开、挑包、
+    // 加载态这些与列表内容无关的状态变化也触发一次全量重排（查重按 8 条一批回写，
+    // 350 行时进页面头一秒能连排几十遍）。remember 把键收紧到真正的影响项。
+    val visible = remember(state.rows, state.filter, state.query) { state.visibleRows }
     // 筛选/搜索一变就把列表拉回顶部：结果变短后 LazyColumn 会把滚动位置夹到末尾。
     val listState = rememberLazyListState()
     val latestVisible = rememberUpdatedState(visible)
@@ -280,7 +289,8 @@ fun ModuleUploadListMiuix(
                         .overScrollVertical(),
                     contentPadding = PaddingValues(horizontal = 12.dp),
                 ) {
-                    if (visible.isEmpty()) {
+                    // 首帧还在读包就报「本机没有已安装模块」是假话：扫描没结束前不下结论。
+                    if (visible.isEmpty() && !state.loading) {
                         // 搜空了复用主列表的空态：同一份文案与「清掉筛选」出口，不另造字符串。
                         item(key = "search_empty") {
                             EmptyStateMiuix(
@@ -482,7 +492,9 @@ private fun FilterRow(
             .padding(top = 12.dp)
             // 四个 chip 原来塞在一个固定 Row 里，360dp 窄屏会把最后两个裁掉一半；
             // 横滑之后 chip 再多也不挤，间距与选中态照旧。
-            .horizontalScroll(rememberScrollState())
+            // 横滑位置用 rememberSaveable 记住：这一条在 LazyColumn 的 item 里，
+            // 滚出屏幕再滚回来 item 会被重建，普通 remember 会把位置丢回最左。
+            .horizontalScroll(rememberSaveable(saver = ScrollState.Saver) { ScrollState(0) })
             // 四个 chip 是同一组互斥选项，不标成一组的话 TalkBack 会逐个念成独立可选元素，
             // 听不出「这是筛选、当前选中第几个」。
             .selectableGroup(),
@@ -490,21 +502,30 @@ private fun FilterRow(
     ) {
         labels.forEach { (filter, label) ->
             val active = filter == selected
-            Text(
+            // 触摸区 48dp、视觉高度仍是 28dp：chip 自身不该长胖，但手指要够得着。
+            // 直接给 Text 加 heightIn 会把背景色一起拉高，所以拿 Box 单独撑触摸区。
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(if (active) colorScheme.primary else colorScheme.surfaceContainer)
+                    .heightIn(min = 48.dp)
                     .selectable(
                         selected = active,
-                        role = Role.Tab,
+                        // 四个 chip 是互斥的筛选条件，不是四个页面：RadioButton 才念得出「单选、已选」。
+                        role = Role.RadioButton,
                         onClick = { onFilter(filter) },
-                    )
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                text = stringResource(label),
-                fontSize = 13.sp,
-                fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
-                color = if (active) colorScheme.onPrimary else colorScheme.onSurfaceVariantSummary,
-            )
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (active) colorScheme.primary else colorScheme.surfaceContainer)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    text = stringResource(label),
+                    fontSize = 13.sp,
+                    fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+                    color = if (active) colorScheme.onPrimary else colorScheme.onSurfaceVariantSummary,
+                )
+            }
         }
     }
 }
@@ -636,13 +657,23 @@ private fun UploadRowCardMiuix(
     // 元信息用 `·` 分隔；作者为空时只留版本号，不要留一个孤零零的分隔符。
     val meta = if (row.author.isBlank()) row.version else "${row.version} · ${row.author}"
     val hasTags = !row.enabled || row.remove || row.metamodule
+    // 展开/收起是这张卡唯一的动作，但 TalkBack 从 onClick 只读得出「可点」，
+    // 读不出点下去是展开还是收起，也读不出此刻是什么状态。
+    val rowStateText = stringResource(
+        if (expanded) {
+            R.string.module_upload_row_expanded
+        } else {
+            R.string.module_upload_row_collapsed
+        },
+    )
     Card(
         modifier = Modifier
             .padding(top = topGap)
             .fillMaxWidth()
             // 展开区不是瞬移出来的：高度变化交给 animateContentSize 缓过去，
             // 与上游仓库页同一套节奏（tween 300）。
-            .animateContentSize(animationSpec = tween(durationMillis = 300)),
+            .animateContentSize(animationSpec = tween(durationMillis = 300))
+            .semantics { stateDescription = rowStateText },
         onClick = onToggle,
     ) {
         Column(
@@ -663,7 +694,8 @@ private fun UploadRowCardMiuix(
                         text = row.name,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
-                        maxLines = 1,
+                        // 两行：大字体下模块名（动辄带日期和作者后缀）一行只剩两三个字。
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(

@@ -5,12 +5,15 @@ import android.net.Uri
 import com.sukisu.ultra.data.backup.StagingArea
 import com.sukisu.ultra.data.model.Module
 import com.sukisu.ultra.ksuApp
+import com.sukisu.ultra.ui.screen.upload.ModuleUploadPrefs
 import com.sukisu.ultra.ui.util.CheckStatus
 import com.sukisu.ultra.ui.util.CoolapkUidLookup
 import com.sukisu.ultra.ui.util.ModuleContribution
 import com.sukisu.ultra.ui.util.ModuleProp
 import com.sukisu.ultra.ui.util.ModulePropInfo
+import com.sukisu.ultra.ui.util.SessionGrant
 import com.sukisu.ultra.ui.util.SubmitResult
+import com.sukisu.ultra.ui.util.UploadSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -106,8 +109,54 @@ object ModuleContributionEntry {
         nickname: String,
         nonce: String,
         displayedZipSha256: String = "",
-    ): SubmitResult =
-        ModuleContribution.submitModule(zip, meta, source, uid, nickname, nonce, displayedZipSha256)
+    ): SubmitResult {
+        // 本地那张长期令牌只在「它绑的 uid 就是这次要提交的 uid」时才带上：
+        // 令牌是服务端按某个 uid 签的，换了号还带旧令牌只会换来一次「不是本人」，
+        // 与上传页 snapshot.sessionMatchesUid 同一条判据。
+        val submittedUid = uid.trim()
+        val token = ModuleUploadPrefs.readSession()
+            ?.takeIf { it.uid == submittedUid }
+            ?.token
+            .orEmpty()
+        val result = ModuleContribution.submitModule(
+            zip = zip,
+            meta = meta,
+            source = source,
+            uid = uid,
+            nickname = nickname,
+            nonce = nonce,
+            displayedZipSha256 = displayedZipSha256,
+            sessionToken = token,
+        )
+        adoptGrant(result.session, submittedUid, nickname)
+        return result
+    }
+
+    /**
+     * 把服务端这一趟签发的令牌收进磁盘。
+     *
+     * 与上传页的 `adoptGrant`（ModuleUploadViewModel）同一条规则：没签就什么都不动；
+     * 签了就在「本地那份属于同一个 uid」的基础上续（身份沿用本地），否则新起一份。
+     * 差别只在这里没有内存态要同步 —— 旧入口每次进来都重新读盘。
+     *
+     * 昵称用这次提交用的那一个：服务端签发时记的是它反查到的活值，本地这份只用于
+     * 展示，下一次打上传页会用 `/session` 校验收敛回服务端那一份。
+     */
+    private fun adoptGrant(grant: SessionGrant?, submittedUid: String, nickname: String) {
+        if (grant == null) return
+        val uid = submittedUid.trim()
+        if (uid.isEmpty()) return
+        val base = ModuleUploadPrefs.readSession()?.takeIf { it.uid == uid }
+            ?: UploadSession(
+                token = grant.token,
+                uid = uid,
+                nickname = nickname.trim(),
+                avatar = "",
+                expiresAt = grant.expiresAt,
+            )
+        val next = base.renewed(grant)
+        if (next.wellFormed) ModuleUploadPrefs.writeSession(next)
+    }
 
     /**
      * 核实一个酷安 UID 是谁。

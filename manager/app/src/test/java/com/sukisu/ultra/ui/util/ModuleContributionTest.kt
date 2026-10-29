@@ -510,12 +510,12 @@ class ModuleContributionTest {
             java.io.File::class.java,
             ModulePropInfo::class.java,
             String::class.java, String::class.java, String::class.java, String::class.java,
-            String::class.java,
+            String::class.java, String::class.java,
             kotlin.coroutines.Continuation::class.java,
         ).apply { isAccessible = true }
         val out = method.invoke(
             ModuleContribution, zip, meta, "https://a.example", "10086001", "酷友", "ab12cd",
-            displayed, DirectContinuation,
+            displayed, "", DirectContinuation,
         )
         // 本地拒绝路径在任何挂起点之前返回，直接拿到 SubmitResult；拿到协程哨兵就说明走岔了路。
         return out as? SubmitResult

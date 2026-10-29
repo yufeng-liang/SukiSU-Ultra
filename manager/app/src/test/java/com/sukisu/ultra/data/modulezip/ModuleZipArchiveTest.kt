@@ -275,12 +275,14 @@ class ModuleZipArchiveTest {
         val archive = ModuleZipArchive(root())
         val bogus = File(createTempDirectory("module-bogus-").toFile(), "bogus.zip")
         bogus.writeText("not a zip")
-        var reported = 0
+        val reasons = mutableListOf<String>()
 
-        assertNull(archive.store(bogus, onFailure = { reported++ }))
+        assertNull(archive.store(bogus, onFailure = { reasons += it.message.orEmpty() }))
 
-        // 解析失败走的是「返回 null」而不是抛异常，所以 onFailure 只该接住真异常；
-        // 这里断言的是「不会因为传了回调就多报一次」。
-        assertEquals(0, reported)
+        // 「解析失败 / 写不进去 / 刚存就被淘汰」这些格以前写的是裸 return null——
+        // 在 runCatching 的 lambda 里那是非局部返回，连 getOrElse 都不走，于是 onFailure
+        // 永远收不到回调，调用方只能看到 null、不知道为什么没留存。现在它们都抛出来。
+        assertEquals(1, reasons.size)
+        assertTrue("失败原因要能看出是 module.prop 的问题：$reasons", reasons.single().contains("module.prop"))
     }
 }
