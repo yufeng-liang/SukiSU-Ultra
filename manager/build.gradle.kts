@@ -17,7 +17,8 @@ extra["androidTargetCompatibility"] = JavaVersion.VERSION_21
 // versionCode，三处才会一致。本地直接跑 gradle 时没有这个 property，才回退到数 git。
 extra["managerVersionCode"] = providers.gradleProperty("ksuVersionCode").orNull?.toIntOrNull()
     ?: getVersionCode()
-extra["managerVersionName"] = getVersionName()
+extra["managerVersionTag"] = getVersionTag()
+extra["managerVersionName"] = getVersionName(extra["managerVersionCode"] as Int)
 
 fun getGitCommitCount(): Int {
     val process = Runtime.getRuntime().exec(arrayOf("git", "rev-list", "--count", "HEAD"))
@@ -32,11 +33,22 @@ fun getVersionCode(): Int {
 }
 
 /**
- * 版本名只做品牌标识，版本号不重复进来：APK 输出名规则是
- * `SukiSU_<versionName>_<versionCode>`，而 versionCode（4*10000 + 提交数 - 2815）
- * 每次提交都会变，塞进 versionName 只会让文件名出现两遍同样的数字。
- * 版本号在文件名末尾和首页「mod (41150-xxx)」里各出现一次，够了。
+ * 品牌标签，不含版本号。APK 输出名与模块脚本的 KSU_VER 环境变量用它：
+ * 那两处要的是干净字符串（文件名里版本号本来就在末尾，KSU_VER 会进 shell 变量）。
  */
-fun getVersionName(): String {
+fun getVersionTag(): String {
     return "mod"
+}
+
+/**
+ * 版本名，即装完之后系统「应用信息」里显示的那一串 —— 所以带上版本号，
+ * 写成 `mod (41284)`。它只进 AndroidManifest 的 versionName，别拿它去拼
+ * 文件名字或 KSU_VER：那两处用 [getVersionTag]，否则 APK 会变成
+ * `SukiSU_mod (41284)_41284-release.apk`，同一个数字出现两遍。
+ *
+ * @param versionCode 与 versionName 一起进 manifest 的那个 versionCode，
+ *   APK 文件名与首页展示也用它，保证四处口径一致。
+ */
+fun getVersionName(versionCode: Int): String {
+    return "${getVersionTag()} ($versionCode)"
 }

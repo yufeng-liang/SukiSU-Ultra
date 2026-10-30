@@ -24,6 +24,7 @@ val androidSourceCompatibility = rootProject.extra["androidSourceCompatibility"]
 val androidTargetCompatibility = rootProject.extra["androidTargetCompatibility"] as JavaVersion
 val managerVersionCode = rootProject.extra["managerVersionCode"] as Int
 val managerVersionName = rootProject.extra["managerVersionName"] as String
+val managerVersionTag = rootProject.extra["managerVersionTag"] as String
 
 val isPrBuild = project.findProperty("IS_PR_BUILD")?.toString()?.toBoolean() ?: false
 
@@ -188,6 +189,9 @@ android {
         buildConfigField("boolean", "IS_PR_BUILD", isPrBuild.toString())
         val commit = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.get().trim()
         buildConfigField("String", "MANAGER_COMMIT", "\"$commit\"")
+        // 干净的品牌标签（"mod"）。versionName 已带版本号，凡是要拼文件名或当
+        // KSU_VER 用的地方都取这个，别取 VERSION_NAME。
+        buildConfigField("String", "MANAGER_VERSION_TAG", "\"$managerVersionTag\"")
         // LKM 指纹：kernel/ 子树的 tree hash。内核编译时会把同一个值编进版本串
         // （v4.3.0-<commit>@<branch>+lkm.<rev>），首页据此判断这次升级是否真的带来了
         // 新的 .ko —— 指纹一致就不催用户再刷一次内核。CI 通过 -PlkmRev 显式传入，
@@ -231,7 +235,7 @@ androidComponents {
 
 base {
     archivesName.set(
-        "${managerName.replace(" ", "_")}_${managerVersionName}_${managerVersionCode}"
+        "${managerName.replace(" ", "_")}_${managerVersionTag}_${managerVersionCode}"
     )
 }
 

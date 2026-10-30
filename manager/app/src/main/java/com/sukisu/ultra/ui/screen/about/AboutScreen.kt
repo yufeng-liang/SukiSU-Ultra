@@ -42,11 +42,8 @@ fun AboutScreen() {
     val state = AboutUiState(
         title = stringResource(R.string.about),
         appName = stringResource(R.string.app_name),
-        // 版本名只有品牌标识（"mod"），版本号单独补进括号。别把它塞进
-        // build.gradle.kts 的 getVersionName()：那个值同时进 APK 文件名
-        // （SukiSU_<versionName>_<versionCode>）和模块脚本的 KSU_VER 环境变量，
-        // 带括号会同时弄脏这两处。
-        versionName = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+        // 版本名本身就带版本号（"mod (41284)"，见 getVersionName），这里原样显示。
+        versionName = BuildConfig.VERSION_NAME,
         icon = BuiltinAppIcons.find(settingsState.appIconId),
         links = extractLinks(htmlString),
         checkUpdate = settingsState.checkUpdate,

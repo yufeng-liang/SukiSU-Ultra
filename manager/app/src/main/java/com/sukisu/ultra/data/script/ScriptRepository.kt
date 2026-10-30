@@ -82,8 +82,9 @@ object ScriptRepository {
     }
 
     fun hostInfo(): ScriptHostInfo = ScriptHostInfo(
-        // Same value as ksud's VERSION_NAME (git describe without the leading "v").
-        ksuVersion = BuildConfig.VERSION_NAME.removePrefix("v"),
+        // 干净的品牌标签（"mod"），与 ksud 侧口径一致；不能取 VERSION_NAME——
+        // 那个现在带版本号后缀（"mod (41284)"），会污染脚本环境变量。
+        ksuVersion = BuildConfig.MANAGER_VERSION_TAG,
         ksuVersionCode = BuildConfig.VERSION_CODE,
         kernelVersionCode = Natives.version,
         lateLoad = Natives.isLateLoadMode,
