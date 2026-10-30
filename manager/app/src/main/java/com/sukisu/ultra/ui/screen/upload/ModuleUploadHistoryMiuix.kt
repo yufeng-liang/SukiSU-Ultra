@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,7 +48,9 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.MineModule
+import com.sukisu.ultra.ui.util.ProgressItem
 import com.sukisu.ultra.ui.util.formatEpochTime
+import com.sukisu.ultra.ui.util.progressVersions
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -86,7 +90,20 @@ fun ModuleUploadHistoryMiuix(
     onPickForMine: (MineModule) -> Unit,
     /** 退出当前上传身份：退出后要重新做一次签名核验，换账号也在这里换。 */
     onSignOut: () -> Unit,
+    /** 收录进度，键是 `id@版本号`（见 [progressKey]）。 */
+    progress: Map<String, ProgressItem> = emptyMap(),
+    progressLoading: Boolean = false,
+    progressError: String? = null,
+    /** 正在看哪几个模块的进度（null = 弹层关着）。 */
+    progressDialogIds: List<String>? = null,
+    /** 打开某个模块的进度；[progressDialogIds] 由 ViewModel 落定。 */
+    onOpenProgress: (String) -> Unit = {},
+    onCloseProgress: () -> Unit = {},
+    onRefreshProgress: () -> Unit = {},
+    /** 「去商店看看」的去处（只在某版已收录时出现）。 */
+    onOpenStore: () -> Unit = {},
 ) {
+    val uriHandler = LocalUriHandler.current
     val enableBlur = LocalEnableBlur.current
     val scrollBehavior = MiuixScrollBehavior()
     val backdrop = rememberBlurBackdrop(enableBlur)
@@ -110,6 +127,11 @@ fun ModuleUploadHistoryMiuix(
     }
     // 空态与提示条互斥：一句「还没投过」前面不该再压一条错误说明。
     val empty = groups.isEmpty() && !mine.loading && notice == null
+    // 进度弹层只算「正在看的那个模块」那几行：ids 由 ViewModel 决定，这里只把
+    // /mine 的版本清单与 /progress 的结果合起来（这一版查不到时 progress 为 null）。
+    val dialogVersions = remember(progressDialogIds, mine.modules, progress) {
+        progressVersions(mine.modules, progressDialogIds.orEmpty(), progress)
+    }
 
     Scaffold(
         topBar = {
@@ -216,12 +238,26 @@ fun ModuleUploadHistoryMiuix(
                         picking = state.pickingFor != null,
                         pickingThis = state.pickingFor == group.id,
                         onPick = { onPickForMine(group.latest) },
+                        onOpenProgress = { onOpenProgress(group.id) },
                     )
                 }
 
                 item { Spacer(Modifier.height(24.dp)) }
             }
         }
+    }
+
+    // 进度弹层：只在 ViewModel 说「开着」时出现。关掉即停轮询（那边看 progressDialogIds）。
+    if (progressDialogIds != null) {
+        UploadProgressDialogMiuix(
+            versions = dialogVersions,
+            loading = progressLoading,
+            error = progressError,
+            onRetry = onRefreshProgress,
+            onDismiss = onCloseProgress,
+            onOpenPr = { url -> runCatching { uriHandler.openUri(url) } },
+            onOpenStore = onOpenStore,
+        )
     }
 }
 
@@ -275,6 +311,8 @@ private fun HistoryCardMiuix(
     picking: Boolean,
     pickingThis: Boolean,
     onPick: () -> Unit,
+    /** 打开这个模块的收录进度（弹层）。 */
+    onOpenProgress: () -> Unit,
 ) {
     val context = LocalContext.current
     // 名字左缘：图标块 36dp + 12dp 间距。展开区缩进到这条竖线上。
@@ -328,6 +366,14 @@ private fun HistoryCardMiuix(
                         content = colorScheme.onPrimaryContainer,
                     )
                 }
+                // 「收录进度」入口：右侧一枚文字按钮，点开弹层。
+                // wrapContentWidth：Miuix 的 TextButton 宽度策略与 Material 不同，
+                // 在 Row 里不约束就会把模块名挤掉。
+                TextButton(
+                    modifier = Modifier.wrapContentWidth(Alignment.End),
+                    text = stringResource(R.string.module_upload_progress_title),
+                    onClick = onOpenProgress,
+                )
             }
 
             if (expanded) {

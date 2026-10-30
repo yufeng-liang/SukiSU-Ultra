@@ -94,6 +94,7 @@ import top.yukonga.miuix.kmp.icon.extended.Filter
 import top.yukonga.miuix.kmp.icon.extended.Layers
 import top.yukonga.miuix.kmp.icon.extended.MoreCircle
 import top.yukonga.miuix.kmp.icon.extended.Notes
+import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.icon.extended.UploadCloud
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -128,6 +129,8 @@ fun ModuleUploadListMiuix(
     avatarUrl: String = "",
     /** 打开上传记录页。 */
     onOpenHistory: () -> Unit,
+    /** 打开模块商店，并直接把筛选落到酷安社区模块。 */
+    onOpenStore: () -> Unit,
 ) {
     val searchStatus = state.searchStatus
     val scrollBehavior = MiuixScrollBehavior()
@@ -215,6 +218,15 @@ fun ModuleUploadListMiuix(
                                         markSize = 12.dp,
                                     )
                                 }
+                            }
+                            // 商店入口：「别人传了什么」。与「我投过什么」并排但去向不同——
+                            // 点进去直接落到模块商店的酷安社区模块，省掉再筛一次。
+                            IconButton(onClick = onOpenStore) {
+                                Icon(
+                                    imageVector = MiuixIcons.Store,
+                                    contentDescription = stringResource(R.string.module_upload_store_open),
+                                    tint = colorScheme.onSurface,
+                                )
                             }
                             // 刷新不占顶栏：与模块页/仓库页一样改成列表下拉。
                             // 留存开关与清理入口都在这个按钮背后：两件事都只跟「占空间」有关，

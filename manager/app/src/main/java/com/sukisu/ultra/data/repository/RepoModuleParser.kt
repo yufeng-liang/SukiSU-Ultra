@@ -291,6 +291,12 @@ object RepoModuleParser {
             },
             sourceId = sourceId,
             sourceName = sourceName,
+            // 酷安社区索引额外带的出处四字段；其它 MMRL 仓库没有这些键，读完就是空。
+            source = stripTicks(item.optString("source", "")).trim(),
+            uploader = stripTicks(item.optString("uploader", "")).trim(),
+            coolapkUid = stripTicks(item.optString("coolapkUid", "")).trim(),
+            // 索引可能给毫秒也可能给秒；这里只做数值化，单位由展示侧按数量级判断。
+            submittedAt = optSecondsValue(item, "submittedAt"),
             mmrl = MmrlModuleInfo(
                 readmeUrl = stripTicks(item.optString("readme", "")).trim().ifEmpty { null },
                 supportUrl = stripTicks(item.optString("support", "")).trim().ifEmpty { null },

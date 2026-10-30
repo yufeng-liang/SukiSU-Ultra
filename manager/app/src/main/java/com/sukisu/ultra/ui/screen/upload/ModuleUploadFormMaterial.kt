@@ -85,6 +85,7 @@ import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.TopBarBackButton
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.ultra.ui.util.BatchLimits
+import com.sukisu.ultra.ui.util.ProgressItem
 import kotlinx.coroutines.launch
 
 /**
@@ -106,6 +107,8 @@ fun ModuleUploadFormMaterial(
     onPickMore: () -> Unit,
     onSignOut: () -> Unit,
     onSubmit: () -> Unit,
+    /** 收录进度里「去商店看看」的去处；由路由层给，表单自己不拼路由。 */
+    onOpenStore: () -> Unit = {},
 ) {
     // 这一屏是钉住的小标题，与列表页/记录页的「随滚动收起」刻意不同：
     // 底部已经钉了一条提交栏，可滚区域本来就窄；标题再收一次，填到一半的人会突然
@@ -257,7 +260,7 @@ fun ModuleUploadFormMaterial(
             }
 
             if (state.submitting || state.outcome != null) {
-                item { OutcomeMaterial(state) }
+                item { OutcomeMaterial(state, onOpenStore) }
             }
 
             item { Spacer(Modifier.height(24.dp)) }
@@ -402,7 +405,7 @@ private fun SubmitBarMaterial(
 
 /** 提交中 / 出结果后的那一段。契约没有字节回调：只报总数，不编百分比。 */
 @Composable
-private fun OutcomeMaterial(state: ModuleUploadFormState) {
+private fun OutcomeMaterial(state: ModuleUploadFormState, onOpenStore: () -> Unit) {
     Column(
         modifier = Modifier.padding(top = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -447,6 +450,9 @@ private fun OutcomeMaterial(state: ModuleUploadFormState) {
                 icon = Icons.Rounded.CheckCircle,
                 title = outcome.message,
                 prUrl = outcome.prUrl,
+                // 提交成功之后顺手问到的那几条进度；拿不到就是空列表，卡片照常显示。
+                progress = outcome.progress,
+                onOpenStore = onOpenStore,
             )
 
             null -> Unit
@@ -467,6 +473,8 @@ private fun OutcomeCardMaterial(
     icon: ImageVector,
     title: String,
     prUrl: String? = null,
+    progress: List<ProgressItem> = emptyList(),
+    onOpenStore: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     Surface(
@@ -510,6 +518,34 @@ private fun OutcomeCardMaterial(
                         color = MaterialTheme.colorScheme.primary,
                         textDecoration = TextDecoration.Underline,
                     )
+                }
+                // 收录进度：批量提交时每枚一块，块首是 `id · v版本号`。
+                // 放在结果卡里而不是另开一屏：用户刚点完提交，最想确认的就是「到哪了」。
+                if (progress.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier.padding(top = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        progress.forEach { item ->
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.module_upload_progress_version,
+                                        item.id,
+                                        item.versionCode,
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = content,
+                                )
+                                UploadProgressStepsMaterial(item = item)
+                                UploadProgressActionsMaterial(
+                                    item = item,
+                                    onOpenPr = { url -> runCatching { uriHandler.openUri(url) } },
+                                    onOpenStore = onOpenStore,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -71,6 +71,16 @@ data class RepoModule(
     val sourceId: String = "",
     val sourceName: String = "",
     /**
+     * 酷安社区索引里记的出处：上传者当时贴的帖子地址、昵称、UID 与提交时间。
+     *
+     * 其它来源的索引没有这四个键，一律留空——详情页据此判断要不要画「出处」那一套。
+     */
+    val source: String = "",
+    val uploader: String = "",
+    val coolapkUid: String = "",
+    /** 提交时间，epoch 毫秒或秒都由索引给；0 表示索引没带这个字段。 */
+    val submittedAt: Long = 0L,
+    /**
      * Names of the other repositories that publish this same module and lost the merge, so a
      * deduplicated list can still say where else the module is available.
      */

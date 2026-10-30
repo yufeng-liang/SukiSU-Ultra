@@ -3,12 +3,14 @@ package com.sukisu.ultra.ui.screen.modulerepo
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.outlined.ChromeReaderMode
@@ -56,6 +60,8 @@ import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.SelectableDropdownMenuItem
 import androidx.compose.material3.DropdownMenuPopup
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,6 +71,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -114,6 +121,7 @@ import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.TopBarBackButton
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
 import com.sukisu.ultra.ui.component.statustag.StatusTag
+import com.sukisu.ultra.ui.util.CoolapkLinks
 import com.sukisu.ultra.ui.util.formatFileSize
 import com.sukisu.ultra.ui.util.formatRepoTime
 import com.sukisu.ultra.ui.util.isDownloadAvailable
@@ -274,12 +282,27 @@ fun ModuleRepoScreenMaterial(
         if (!isLoading && contentReady) {
             val latestModules = rememberUpdatedState(state.modules)
             val latestRefreshing = rememberUpdatedState(state.isRefreshing)
+            // 切换来源筛选也算换了一批要看的模块，跟着回到顶部，而不是留在原来的滚动位置。
             ScrollToTopOnChange(
                 listState,
                 state.sortOrder,
+                state.selectedSourceId,
                 refreshTick.intValue,
                 isBusy = { latestRefreshing.value },
             ) { latestModules.value }
+
+            val filterOptions = rememberRepoSourceFilters(
+                modules = state.modules,
+                sources = state.sources,
+                sourceErrors = state.sourceErrors,
+            )
+            val coolapkSource = coolapkCommunitySource(state.sources)
+            // 入口卡没了（源被删掉）又没有第二个筛选项时，这个头就没有内容可放。
+            val showHeader = coolapkSource != null || filterOptions.size > 1
+            val filteredModules = rememberSourceFilteredModules(state.modules, state.selectedSourceId)
+            // 筛选把列表筛空，跟「一个源都没配」是两回事：前者换个筛选就有内容，后者要去加源。
+            val filteredEmpty = state.selectedSourceId != null && filteredModules.isEmpty()
+
             PullToRefreshBox(
                 modifier = Modifier
                     .fillMaxSize()
@@ -300,7 +323,7 @@ fun ModuleRepoScreenMaterial(
                 },
             ) {
                 RepoModuleList(
-                    modules = state.modules,
+                    modules = filteredModules,
                     listState = listState,
                     modifier = Modifier
                         .fillMaxSize()
@@ -308,10 +331,31 @@ fun ModuleRepoScreenMaterial(
                     sourceErrors = state.sourceErrors,
                     sources = state.sources,
                     dismissedErrors = state.dismissedSourceErrors,
-                    emptyHint = repoEmptyHint(repoEmptyReason(state.sources)),
-                    emptyActionLabel = repoEmptyAction(repoEmptyReason(state.sources)),
-                    onEmptyAction = { showSourcesDialog = true },
+                    emptyHint = if (filteredEmpty) {
+                        stringResource(R.string.module_repo_filter_source_empty)
+                    } else {
+                        repoEmptyHint(repoEmptyReason(state.sources))
+                    },
+                    emptyActionLabel = if (filteredEmpty) {
+                        stringResource(R.string.module_repo_filter_all)
+                    } else {
+                        repoEmptyAction(repoEmptyReason(state.sources))
+                    },
+                    onEmptyAction = {
+                        if (filteredEmpty) actions.onSelectSource(null) else showSourcesDialog = true
+                    },
                     onDismissSourceError = actions.onDismissSourceError,
+                    header = if (showHeader) {
+                        {
+                            RepoStoreHeader(
+                                coolapkSource = coolapkSource,
+                                filterOptions = filterOptions,
+                                selectedSourceId = state.selectedSourceId,
+                                onSetSourceEnabled = actions.onSetSourceEnabled,
+                                onSelectSource = actions.onSelectSource,
+                            )
+                        }
+                    } else null,
                     onModuleClick = actions.onOpenRepoDetail
                 )
             }
@@ -353,6 +397,8 @@ private fun RepoModuleList(
     emptyActionLabel: String? = null,
     onEmptyAction: () -> Unit = {},
     onDismissSourceError: (String) -> Unit = {},
+    // 商店页顶部的入口卡与来源筛选，跟着列表一起滚；搜索列表不传，搜的就是全部结果。
+    header: (@Composable () -> Unit)? = null,
     onModuleClick: (RepoModule) -> Unit,
 ) {
     LazyColumn(
@@ -365,6 +411,10 @@ private fun RepoModuleList(
             bottom = 16.dp + bottomPadding
         ),
     ) {
+        if (header != null) {
+            // 数据源入口与筛选排在所有内容之前，但仍然是列表的一部分：滚动时一起走，不占死高度。
+            item(key = "source_filter_header") { header() }
+        }
         if (sourceErrors.isNotEmpty()) {
             item(key = "source_errors_banner") {
                 // 关掉的通知只针对这一次抓取结果，下一次结果落地时会清空（见 ModuleRepoViewModel）。
@@ -500,6 +550,161 @@ private fun RepoModuleList(
 }
 
 /**
+ * 商店页顶部的「酷安社区模块」入口：未开启时是一张带两段式确认的说明卡，开启后降级成一行状态条。
+ *
+ * 这个源默认关闭，而且只会在首次读列表时种一次，用户从来源管理里删掉之后不会再回来，所以
+ * [source] 为 null 就整块不渲染——否则「开启」会是个永远按不动的死控件。
+ */
+@Composable
+private fun CoolapkCommunityEntryCard(
+    source: RepoSource?,
+    onSetSourceEnabled: (String, Boolean) -> Unit,
+) {
+    if (source == null) return
+
+    if (source.enabled) {
+        TonalCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.module_repo_coolapk_enabled),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { onSetSourceEnabled(source.id, false) }) {
+                    Text(
+                        text = stringResource(R.string.module_repo_coolapk_disable),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+        }
+        return
+    }
+
+    // 两段式确认：第一次点只是把按钮文案换成「我已了解，确认开启」，第二次点才真的开启，
+    // 不额外弹窗。用 enabled 当 key，启用状态一变（不管是在这里还是来源管理里改的）就复位。
+    var awaitingConfirm by remember(source.enabled) { mutableStateOf(false) }
+
+    TonalCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.module_repo_coolapk_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.module_repo_coolapk_summary),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                FilledTonalButton(
+                    onClick = {
+                        if (awaitingConfirm) {
+                            awaitingConfirm = false
+                            onSetSourceEnabled(source.id, true)
+                        } else {
+                            awaitingConfirm = true
+                        }
+                    },
+                    contentPadding = ButtonDefaults.TextButtonContentPadding,
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (awaitingConfirm) R.string.module_repo_coolapk_confirm
+                            else R.string.module_repo_coolapk_enable
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 来源筛选胶囊：「全部」加每个已开启的源，横向滚动一行。
+ *
+ * [options] 里的数字已经按「这次是否抓取成功」算好，这里只管选中态与点击。只有一个「全部」
+ * 的时候没有筛选的意义，整行不显示。
+ */
+@Composable
+private fun RepoSourceFilterRow(
+    options: List<RepoSourceFilterOption>,
+    selectedSourceId: String?,
+    onSelectSource: (String?) -> Unit,
+) {
+    if (options.size <= 1) return
+    val haptic = LocalHapticFeedback.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { option ->
+            FilterChip(
+                selected = option.sourceId == selectedSourceId,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                    onSelectSource(option.sourceId)
+                },
+                label = {
+                    Text(
+                        text = option.chipText(),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                },
+                shape = CircleShape,
+                // 选中的胶囊用反色块，跟这一页其它强调块保持同一套配色。
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.inverseSurface,
+                    selectedLabelColor = MaterialTheme.colorScheme.inverseOnSurface,
+                ),
+            )
+        }
+    }
+}
+
+/** 列表头：入口卡 + 筛选胶囊，作为一个 item 跟着列表滚。 */
+@Composable
+private fun RepoStoreHeader(
+    coolapkSource: RepoSource?,
+    filterOptions: List<RepoSourceFilterOption>,
+    selectedSourceId: String?,
+    onSetSourceEnabled: (String, Boolean) -> Unit,
+    onSelectSource: (String?) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CoolapkCommunityEntryCard(source = coolapkSource, onSetSourceEnabled = onSetSourceEnabled)
+        RepoSourceFilterRow(
+            options = filterOptions,
+            selectedSourceId = selectedSourceId,
+            onSelectSource = onSelectSource,
+        )
+    }
+}
+
+/**
  * Shown whenever there is nothing to list: no source is configured yet, or every configured source
  * failed. Adding a repository is the way out of both, so the prompt leads straight to the dialog
  * instead of only stating that the list is empty.
@@ -593,6 +798,11 @@ fun ModuleRepoDetailScreenMaterial(
     actions: ModuleRepoDetailActions,
 ) {
     val module = state.module
+    // 酷安社区的条目没有 README，也没有 GitHub 仓库/星标：详情页只留「版本」与「信息」，
+    // 「信息」换成出处（帖子链接）、上传者、提交时间这组酷安字段。
+    val isCoolapkModule = module.isCoolapkCommunityModule()
+    val coolapkMeta = module.coolapkMeta()
+    val coolapkOpenFailed = stringResource(R.string.module_repo_coolapk_open_failed)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val confirmTitle = stringResource(R.string.module_install)
@@ -627,7 +837,9 @@ fun ModuleRepoDetailScreenMaterial(
                     TopBarBackButton(onClick = actions.onBack)
                 },
                 actions = {
-                    if (state.webUrl.isNotEmpty()) {
+                    // 酷安条目的 webUrl 是从下载地址反推的，打开只是个 zip，不如不摆；
+                    // 出处链接在「信息」页里，按帖子给。
+                    if (!isCoolapkModule && state.webUrl.isNotEmpty()) {
                         IconButton(onClick = actions.onOpenWebUrl) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Outlined.ChromeReaderMode,
@@ -642,11 +854,30 @@ fun ModuleRepoDetailScreenMaterial(
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal),
     ) { innerPadding ->
-        val tabs = listOf(
-            stringResource(R.string.tab_readme),
-            stringResource(R.string.tab_releases),
-            stringResource(R.string.tab_info)
-        )
+        val tabReadme = stringResource(R.string.tab_readme)
+        val tabReleases = stringResource(R.string.tab_releases)
+        val tabInfo = stringResource(R.string.tab_info)
+        // 酷安条目没有 README，这一页整个去掉；出处信息没接上数据之前也不摆一张空的「信息」页。
+        val pages = when {
+            isCoolapkModule && coolapkMeta != null -> listOf(
+                RepoDetailPageKind.RELEASES,
+                RepoDetailPageKind.INFO,
+            )
+
+            isCoolapkModule -> listOf(RepoDetailPageKind.RELEASES)
+            else -> listOf(
+                RepoDetailPageKind.README,
+                RepoDetailPageKind.RELEASES,
+                RepoDetailPageKind.INFO,
+            )
+        }
+        val tabs = pages.map { kind ->
+            when (kind) {
+                RepoDetailPageKind.README -> tabReadme
+                RepoDetailPageKind.RELEASES -> tabReleases
+                RepoDetailPageKind.INFO -> tabInfo
+            }
+        }
         val pagerState = rememberPagerState(initialPage = 0, pageCount = { tabs.size })
         val layoutDirection = LocalLayoutDirection.current
         Box(modifier = Modifier.fillMaxSize()) {
@@ -662,8 +893,8 @@ fun ModuleRepoDetailScreenMaterial(
                     bottom = innerPadding.calculateBottomPadding()
                             + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding() + 16.dp
                 )
-                when (page) {
-                    0 -> ReadmePage(
+                when (pages[page]) {
+                    RepoDetailPageKind.README -> ReadmePage(
                         readmeHtml = state.readmeHtml,
                         readmeLoaded = state.readmeLoaded,
                         isMarkdown = module.isMmrl,
@@ -671,7 +902,7 @@ fun ModuleRepoDetailScreenMaterial(
                         scrollBehavior = scrollBehavior
                     )
 
-                    1 -> ReleasesPage(
+                    RepoDetailPageKind.RELEASES -> ReleasesPage(
                         detailReleases = state.detailReleases,
                         showNoArchiveHint = state.showNoArchiveHint(),
                         innerPadding = paddedInnerPadding,
@@ -685,15 +916,38 @@ fun ModuleRepoDetailScreenMaterial(
                         downloads = downloads,
                     )
 
-                    2 -> InfoPage(
-                        module = module,
-                        innerPadding = paddedInnerPadding,
-                        scrollBehavior = scrollBehavior,
-                        uriHandler = object : UriHandler {
-                            override fun openUri(uri: String) = actions.onOpenUrl(uri)
-                        },
-                        sourceUrl = state.sourceUrl
-                    )
+                    RepoDetailPageKind.INFO -> if (isCoolapkModule) {
+                        // pages 里给出 INFO 就说明 coolapkMeta 非空，这里再收窄一次类型。
+                        val meta = coolapkMeta
+                        if (meta != null) {
+                            CoolapkInfoPage(
+                                meta = meta,
+                                innerPadding = paddedInnerPadding,
+                                scrollBehavior = scrollBehavior,
+                                onOpenPost = { url ->
+                                    // 装了酷安就进帖子，没装回落网页；两条都不通才提示。
+                                    if (!CoolapkLinks.openPost(context, url)) {
+                                        Toast.makeText(context, coolapkOpenFailed, Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onOpenUser = { uid ->
+                                    if (!CoolapkLinks.openUser(context, uid)) {
+                                        Toast.makeText(context, coolapkOpenFailed, Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        InfoPage(
+                            module = module,
+                            innerPadding = paddedInnerPadding,
+                            scrollBehavior = scrollBehavior,
+                            uriHandler = object : UriHandler {
+                                override fun openUri(uri: String) = actions.onOpenUrl(uri)
+                            },
+                            sourceUrl = state.sourceUrl
+                        )
+                    }
                 }
             }
             ExpressiveTabRow(
@@ -708,6 +962,113 @@ fun ModuleRepoDetailScreenMaterial(
                 modifier = Modifier.padding(top = innerPadding.calculateTopPadding()),
             )
         }
+    }
+}
+
+/** 详情页的一页。酷安条目没有 README 页，页数与顺序都跟着来源变。 */
+private enum class RepoDetailPageKind { README, RELEASES, INFO }
+
+/**
+ * 酷安条目的「信息」页：出处（帖子链接）、上传者（昵称，有 UID 时挂主页入口）、提交时间。
+ *
+ * 没有 GitHub 仓库、星标、README——索引里没有的东西整块不画，而不是画一行空占位。
+ */
+@Composable
+private fun CoolapkInfoPage(
+    meta: CoolapkModuleMeta,
+    innerPadding: PaddingValues,
+    scrollBehavior: TopAppBarScrollBehavior,
+    onOpenPost: (String) -> Unit,
+    onOpenUser: (String) -> Unit,
+) {
+    val layoutDirection = LocalLayoutDirection.current
+    val postUrl = meta.postUrl?.takeIf { it.isNotBlank() }
+    val uploaderName = meta.uploaderName?.takeIf { it.isNotBlank() }
+    val uploaderUid = meta.coolapkUid?.takeIf { it.isNotBlank() }
+    val submittedAt = meta.submittedAt?.takeIf { it.isNotBlank() }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        contentPadding = PaddingValues(
+            top = innerPadding.calculateTopPadding(),
+            start = innerPadding.calculateStartPadding(layoutDirection),
+            end = innerPadding.calculateEndPadding(layoutDirection),
+            bottom = innerPadding.calculateBottomPadding(),
+        ),
+    ) {
+        if (postUrl != null) {
+            item {
+                SegmentedColumn(
+                    title = stringResource(R.string.module_repo_coolapk_post),
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp),
+                    content = listOf(
+                        {
+                            SegmentedListItem(
+                                headlineContent = { Text(text = postUrl) },
+                                trailingContent = {
+                                    DetailLinkButton(onClick = { onOpenPost(postUrl) })
+                                },
+                            )
+                        }
+                    ),
+                )
+            }
+        }
+        if (uploaderName != null) {
+            val uploaderAction: (@Composable () -> Unit)? = uploaderUid?.let { uid ->
+                { DetailLinkButton(onClick = { onOpenUser(uid) }) }
+            }
+            item {
+                SegmentedColumn(
+                    title = stringResource(R.string.module_repo_coolapk_uploader),
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp),
+                    content = listOf(
+                        {
+                            SegmentedListItem(
+                                headlineContent = { Text(text = uploaderName) },
+                                trailingContent = uploaderAction,
+                            )
+                        }
+                    ),
+                )
+            }
+        }
+        if (submittedAt != null) {
+            item {
+                SegmentedColumn(
+                    title = stringResource(R.string.module_repo_coolapk_submitted_at),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    content = listOf(
+                        {
+                            // 索引给的是 ISO 时间字符串；若数据侧换成时间戳，这里改走 formatEpochTime。
+                            SegmentedListItem(headlineContent = { Text(text = formatRepoTime(submittedAt)) })
+                        }
+                    ),
+                )
+            }
+        }
+        item { Spacer(Modifier.height(12.dp)) }
+    }
+}
+
+/** 信息页里的「打开链接」按钮，样式与作者、源码那几行保持一致。 */
+@Composable
+private fun DetailLinkButton(onClick: () -> Unit) {
+    FilledTonalButton(
+        modifier = Modifier.defaultMinSize(52.dp, 32.dp),
+        onClick = onClick,
+        contentPadding = ButtonDefaults.TextButtonContentPadding,
+    ) {
+        Icon(
+            modifier = Modifier.size(20.dp),
+            imageVector = Icons.Outlined.Link,
+            contentDescription = null,
+        )
     }
 }
 

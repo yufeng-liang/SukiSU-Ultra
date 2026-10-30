@@ -86,9 +86,15 @@ sealed interface Route : NavKey, Parcelable {
     @Serializable
     data class ModuleRepoDetail(@Serializable(with = RepoModuleArgSerializer::class) val module: RepoModuleArg) : Route
 
+    /**
+     * 模块商店。
+     *
+     * [selectedSourceId] 非空时进入后直接选中该来源（上传页的商店入口用它定位到酷安社区模块）；
+     * 为 null 时沿用商店里原有的筛选状态（全部）。
+     */
     @Parcelize
     @Serializable
-    data object ModuleRepo : Route
+    data class ModuleRepo(val selectedSourceId: String? = null) : Route
 
     @Parcelize
     @Serializable

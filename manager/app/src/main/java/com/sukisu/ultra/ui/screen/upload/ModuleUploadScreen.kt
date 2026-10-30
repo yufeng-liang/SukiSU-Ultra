@@ -17,12 +17,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.repository.COOLAPK_COMMUNITY_SOURCE_ID
 import com.sukisu.ultra.ui.LocalUiMode
 import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.UiMode
 import com.sukisu.ultra.ui.component.dialog.ConfirmResult
 import com.sukisu.ultra.ui.component.dialog.rememberConfirmDialog
 import com.sukisu.ultra.ui.navigation3.LocalNavigator
+import com.sukisu.ultra.ui.navigation3.Route
 import com.sukisu.ultra.ui.util.MineModule
 import com.sukisu.ultra.ui.util.formatFileSize
 import kotlinx.coroutines.launch
@@ -226,6 +228,8 @@ fun ModuleUploadScreen() {
                 mine = mineState,
                 avatarUrl = avatarUrl,
                 onOpenHistory = viewModel::openHistory,
+                // 商店入口：跳过去时把筛选钉在酷安社区模块上，而不是让用户自己再找。
+                onOpenStore = { navigator.push(Route.ModuleRepo(COOLAPK_COMMUNITY_SOURCE_ID)) },
             )
 
             UiMode.Material -> ModuleUploadListMaterial(
@@ -244,6 +248,7 @@ fun ModuleUploadScreen() {
                 mine = mineState,
                 avatarUrl = avatarUrl,
                 onOpenHistory = viewModel::openHistory,
+                onOpenStore = { navigator.push(Route.ModuleRepo(COOLAPK_COMMUNITY_SOURCE_ID)) },
             )
         }
 
@@ -255,6 +260,14 @@ fun ModuleUploadScreen() {
                 onRefresh = viewModel::refreshMine,
                 onPickForMine = pickForMine,
                 onSignOut = viewModel::signOut,
+                progress = listState.progress,
+                progressLoading = listState.progressLoading,
+                progressError = listState.progressError,
+                progressDialogIds = listState.progressDialogIds,
+                onOpenProgress = { id -> viewModel.openProgress(listOf(id)) },
+                onCloseProgress = viewModel::closeProgress,
+                onRefreshProgress = viewModel::refreshProgress,
+                onOpenStore = { navigator.push(Route.ModuleRepo(COOLAPK_COMMUNITY_SOURCE_ID)) },
             )
 
             UiMode.Material -> ModuleUploadHistoryMaterial(
@@ -264,6 +277,14 @@ fun ModuleUploadScreen() {
                 onRefresh = viewModel::refreshMine,
                 onPickForMine = pickForMine,
                 onSignOut = viewModel::signOut,
+                progress = listState.progress,
+                progressLoading = listState.progressLoading,
+                progressError = listState.progressError,
+                progressDialogIds = listState.progressDialogIds,
+                onOpenProgress = { id -> viewModel.openProgress(listOf(id)) },
+                onCloseProgress = viewModel::closeProgress,
+                onRefreshProgress = viewModel::refreshProgress,
+                onOpenStore = { navigator.push(Route.ModuleRepo(COOLAPK_COMMUNITY_SOURCE_ID)) },
             )
         }
 
@@ -281,6 +302,7 @@ fun ModuleUploadScreen() {
                 onPickMore = pickMany,
                 onSignOut = viewModel::signOut,
                 onSubmit = { viewModel.submit(turnstile) },
+                onOpenStore = { navigator.push(Route.ModuleRepo(COOLAPK_COMMUNITY_SOURCE_ID)) },
             )
 
             UiMode.Material -> ModuleUploadFormMaterial(
@@ -296,6 +318,7 @@ fun ModuleUploadScreen() {
                 onPickMore = pickMany,
                 onSignOut = viewModel::signOut,
                 onSubmit = { viewModel.submit(turnstile) },
+                onOpenStore = { navigator.push(Route.ModuleRepo(COOLAPK_COMMUNITY_SOURCE_ID)) },
             )
         }
     }

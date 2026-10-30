@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -104,6 +105,8 @@ fun ModuleUploadListMaterial(
     avatarUrl: String = "",
     /** 打开上传记录页。 */
     onOpenHistory: () -> Unit,
+    /** 打开模块商店，并直接把筛选落到酷安社区模块。 */
+    onOpenStore: () -> Unit,
 ) {
     // 与模块页/仓库页同一套表达：标题随列表上滑收起，不再是钉住不动的小标题。
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -163,6 +166,14 @@ fun ModuleUploadListMaterial(
                                 markSize = 12.dp,
                             )
                         }
+                    }
+                    // 商店入口：「别人传了什么」。与「我投过什么」并排但去向不同——
+                    // 点进去直接落到模块商店的酷安社区模块，省掉再筛一次。
+                    IconButton(onClick = onOpenStore) {
+                        Icon(
+                            imageVector = Icons.Outlined.Storefront,
+                            contentDescription = stringResource(R.string.module_upload_store_open),
+                        )
                     }
                     // 刷新不再占顶栏位置：顶栏按钮要「点一下就走」，而刷新是「等一下再看」，
                     // 放在列表上下拉更符合它（与模块页/仓库页同一个手势）。

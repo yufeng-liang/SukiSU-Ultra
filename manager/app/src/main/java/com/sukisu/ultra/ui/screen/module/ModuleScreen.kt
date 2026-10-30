@@ -193,7 +193,7 @@ fun ModulePager(
             }
             viewModel.dismissConfirmRequest()
         },
-        onOpenRepo = { navigator.push(Route.ModuleRepo) },
+        onOpenRepo = { navigator.push(Route.ModuleRepo()) },
         onToggleSortActionFirst = {
             viewModel.toggleSortActionFirst()
         },

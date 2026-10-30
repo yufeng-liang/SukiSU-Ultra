@@ -5,6 +5,7 @@ import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.component.SearchStatus
 import com.sukisu.ultra.ui.util.BatchLimits
 import com.sukisu.ultra.ui.util.CheckStatus
+import com.sukisu.ultra.ui.util.ProgressItem
 import com.sukisu.ultra.ui.util.UpdateEligibility
 import com.sukisu.ultra.ui.util.UploadSession
 import com.sukisu.ultra.ui.util.makeNonce
@@ -178,6 +179,31 @@ data class ModuleUploadListState(
      * 用户就不必为了回收它们而「清空全部」、连带删掉还想留的那些。
      */
     val orphanCount: Int = 0,
+    /**
+     * 收录进度，键是 `id@版本号`（见 [com.sukisu.ultra.ui.util.progressKey]）。
+     *
+     * 与 [rows] 分开存：进度说的是「我投过的那一版走到哪了」，行说的是「本机装了什么」，
+     * 两者按 id 碰巧相交，但一个模块可以装了没投过、也可以投过但卸载了。
+     * 键里带版本号是因为同一个 id 投过多版时，每一版的进度需要分别显示。
+     */
+    val progress: Map<String, ProgressItem> = emptyMap(),
+    /** 正在问 `/progress`。 */
+    val progressLoading: Boolean = false,
+    /**
+     * 这一趟没读到进度（网络/服务端/坏应答）。
+     *
+     * 存的是**已经本地化**的那一句「进度暂时查不到」：它只用于展示，不参与任何判据。
+     * 为 null 表示这一趟读到了（哪怕列表是空的）。
+     */
+    val progressError: String? = null,
+    /**
+     * 正打开着进度弹层的那几个模块 id；null = 弹层没开。
+     *
+     * 它同时是「要不要继续轮询」的开关：只有它非 null 时 ViewModel 才会每 30 秒再问一次，
+     * 关掉即停。做成可空列表而不是 Boolean + 另一个列表，是因为弹层内容就是这个列表，
+     * 两份状态一定会不同步。
+     */
+    val progressDialogIds: List<String>? = null,
 ) {
     /**
      * 顶栏是不是「正在刷新」——进度条要不要出现、刷新键要不要转，都只认这一个。
@@ -207,8 +233,18 @@ data class ModuleUploadListState(
 /** 提交结果，成功/失败分开；失败带服务端给的原因。 */
 @Immutable
 sealed interface UploadOutcome {
+    /**
+     * [progress] 是提交成功之后顺手问到的那几条进度（拿不到就是空列表）。
+     *
+     * 它不参与「提交是否成功」的判据：进度是补充信息，服务端连不上时不该让一次
+     * 已经成功了的提交看起来像失败。界面按「有没有这一条」决定画不画步骤条。
+     */
     @Immutable
-    data class Success(val message: String, val prUrl: String?) : UploadOutcome
+    data class Success(
+        val message: String,
+        val prUrl: String?,
+        val progress: List<ProgressItem> = emptyList(),
+    ) : UploadOutcome
 
     @Immutable
     data class Failure(val message: String, val proofUsed: Boolean = false) : UploadOutcome

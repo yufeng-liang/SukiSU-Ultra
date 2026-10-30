@@ -27,13 +27,17 @@ import com.sukisu.ultra.ui.util.IssueOutcome
 import com.sukisu.ultra.ui.util.MineModule
 import com.sukisu.ultra.ui.util.MineResult
 import com.sukisu.ultra.ui.util.ModuleContribution
+import com.sukisu.ultra.ui.util.ProgressOutcome
 import com.sukisu.ultra.ui.util.ProofItem
 import com.sukisu.ultra.ui.util.SessionCheck
 import com.sukisu.ultra.ui.util.SessionGrant
+import com.sukisu.ultra.ui.util.SubmittedModule
 import com.sukisu.ultra.ui.util.UpdateEligibility
 import com.sukisu.ultra.ui.util.UploadSession
+import com.sukisu.ultra.ui.util.fetchProgress
 import com.sukisu.ultra.ui.util.formatFileSize
 import com.sukisu.ultra.ui.util.makeNonce
+import com.sukisu.ultra.ui.util.progressKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1348,6 +1352,14 @@ class ModuleUploadViewModel(
         sessionJob = null
         sessionEpoch++
         ModuleUploadPrefs.clearSession()
+        // 进度是「这个账号的投稿」的投影：令牌一没，它就不再有依据（下一张令牌可能是
+        // 另一个 UID）。不清的话，换账号之后记录页会先闪一遍上一个人的进度。
+        progressJob?.cancel()
+        progressJob = null
+        closeProgress()
+        _listState.update {
+            it.copy(progress = emptyMap(), progressLoading = false, progressError = null)
+        }
         _formState.update {
             it.copy(
                 session = null,
@@ -1537,6 +1549,134 @@ class ModuleUploadViewModel(
         _mineState.update { if (it.message == null) it else it.copy(message = null) }
     }
 
+    // ── 收录进度（GET /progress）────────────────────────────────────────────
+
+    /**
+     * 问一次「我投过的这些现在到哪一步了」。
+     *
+     * 没有令牌就不发请求：服务端只会回 `session_missing`，白等一次超时之后得到的
+     * 还是同一句「暂时查不到」。进度是**补充信息**，令牌失效时不把用户踢回身份页 ——
+     * 正在看的是自己的投稿记录，回身份页会把这一屏的上下文也丢掉。
+     *
+     * 失败不清空已有那一份：网络抖一次就让步骤条全空，比显示几秒前的旧读数更难理解。
+     * 但 [ModuleUploadListState.progressError] 会立起来，界面据此说明「这份没刷新」。
+     */
+    fun refreshProgress() {
+        if (progressJob?.isActive == true) return
+        val token = ModuleUploadPrefs.readSession()?.token?.takeIf { it.isNotBlank() }
+        if (token == null) {
+            _listState.update {
+                it.copy(
+                    progressLoading = false,
+                    progressError = res.getString(R.string.module_upload_progress_unavailable),
+                )
+            }
+            return
+        }
+        _listState.update { it.copy(progressLoading = true, progressError = null) }
+        progressJob = viewModelScope.launch {
+            val outcome = try {
+                fetchProgress(token)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // fetchProgress 自己承诺不抛；留这一层只是不想让将来某次改动把
+                // 一个「查不到」变成一次崩溃。
+                ProgressOutcome.Failed("unexpected")
+            }
+            if (!isActive) return@launch
+            _listState.update { state ->
+                when (outcome) {
+                    is ProgressOutcome.Ok -> state.copy(
+                        progressLoading = false,
+                        progressError = null,
+                        // 按 id@版本号 建索引：同一个 id 投过多版时每一版各有自己的进度。
+                        progress = outcome.items.associateBy {
+                            progressKey(it.id, it.versionCode.toLong())
+                        },
+                    )
+
+                    is ProgressOutcome.Failed -> state.copy(
+                        progressLoading = false,
+                        progressError = res.getString(R.string.module_upload_progress_unavailable),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 打开这几个模块的进度弹层，并顺手拉一次。
+     *
+     * [ids] 是**模块 id**，弹层里按这个 id 列出它投过的每一版（版本号来自 /mine，
+     * 进度本身来自 /progress）。用 id 而不是「id@版本号」作参数，是因为入口长在模块卡片上，
+     * 用户点的是「这个模块」而不是「这一版」。
+     */
+    fun openProgress(ids: List<String>) {
+        val unique = ids.distinct()
+        if (unique.isEmpty()) return
+        _listState.update { it.copy(progressDialogIds = unique) }
+        refreshProgress()
+        startProgressPolling()
+    }
+
+    /** 关掉进度弹层：同时停掉轮询，别让它在后台空转。 */
+    fun closeProgress() {
+        progressPollJob?.cancel()
+        progressPollJob = null
+        _listState.update { if (it.progressDialogIds == null) it else it.copy(progressDialogIds = null) }
+    }
+
+    /**
+     * 弹层开着时每 30 秒再问一次。
+     *
+     * 只在 [ModuleUploadListState.progressDialogIds] 非 null 时转：这是一条**人正在看**的
+     * 信息，关掉之后继续请求既烧流量也烧服务端配额，而且没有第二条路能让用户看到结果。
+     * `refreshProgress` 自带「上一次还没回来就不重发」，所以慢网络下不会堆请求。
+     */
+    private fun startProgressPolling() {
+        if (progressPollJob?.isActive == true) return
+        progressPollJob = viewModelScope.launch {
+            while (isActive) {
+                delay(PROGRESS_POLL_INTERVAL_MS)
+                if (_listState.value.progressDialogIds == null) break
+                refreshProgress()
+            }
+        }
+    }
+
+    /**
+     * 提交成功之后顺手取这几条的进度。
+     *
+     * 不等待、不影响成功本身：拿不到就是空列表，结果卡照样显示「已提交」。
+     * 只留**这一次提交的那几枚**（id + versionCode 都要对上），不能把整个账号的进度
+     * 铺到结果卡上——用户会以为那几枚也刚刚提交。
+     */
+    private fun loadSubmittedProgress(submitted: List<SubmittedModule>) {
+        if (submitted.isEmpty()) return
+        val token = ModuleUploadPrefs.readSession()?.token?.takeIf { it.isNotBlank() } ?: return
+        viewModelScope.launch {
+            val items = when (val outcome = fetchProgress(token)) {
+                is ProgressOutcome.Ok -> outcome.items.filter { item ->
+                    submitted.any { it.id == item.id && it.versionCode == item.versionCode.toLong() }
+                }
+
+                is ProgressOutcome.Failed -> emptyList()
+            }
+            if (items.isEmpty()) return@launch
+            _formState.update { state ->
+                val success = state.outcome as? UploadOutcome.Success ?: return@update state
+                state.copy(outcome = success.copy(progress = items))
+            }
+        }
+    }
+
+    /** 进度轮询协程（见 [startProgressPolling]）。 */
+    private var progressPollJob: Job? = null
+
+    /** 一次性进度请求（见 [refreshProgress]）。 */
+    private var progressJob: Job? = null
+
     /**
      * 把服务端这一趟签发的令牌收进状态与磁盘。
      *
@@ -1588,6 +1728,9 @@ class ModuleUploadViewModel(
         // 只有表单那一屏要挡：上传在飞时退出去，屏幕上的状态就没人接了。
         // 记录页没有提交动作，任何时候都该退得回来。
         if (_step.value == UploadStep.FORM && _formState.value.submitting) return
+        // 离开记录页时把进度弹层与轮询一并收掉：弹层是记录页里的东西，
+        // 留着它会让 30 秒一轮的请求在列表页继续跑，而屏幕上没有任何进度可看。
+        closeProgress()
         _step.value = UploadStep.LIST
     }
 
@@ -1721,6 +1864,9 @@ class ModuleUploadViewModel(
                     ),
                 )
             }
+            // 进度是补充信息：拿不到不影响「已提交」这个结论，所以放在成功落定之后
+            // 另起一趟，失败了也不会改 outcome。
+            loadSubmittedProgress(result.modules)
             return
         }
 
@@ -1769,6 +1915,10 @@ class ModuleUploadViewModel(
     override fun onCleared() {
         sessionJob?.cancel()
         tickerJob?.cancel()
+        // 进度轮询与一次性请求也挂在这里：它们只在页面活着时有意义，
+        // 留着它们会在下一个页面里继续每 30 秒打一次 `GET /progress`。
+        progressPollJob?.cancel()
+        progressJob?.cancel()
         // 上传在飞时先不删：请求体正是这些文件，而取消与 socket 收尾是异步的，
         // 抢在它前面删会让上传线程读到半截文件。残留副本由下一次进页面的
         // ModuleUploadStaging.purgeStale 回收（陈旧阈值 6 小时）。
@@ -1795,6 +1945,14 @@ class ModuleUploadViewModel(
          * 不会让任何一次提交越过服务端判据。再密一点只是白白重组。
          */
         const val SESSION_TICK_MS = 30_000L
+
+        /**
+         * 进度弹层开着时的轮询间隔：30 秒。
+         *
+         * 进度变化的最小粒度是「维护者开关一次 PR」，秒级刷新没有信息增量；
+         * 30 秒一次是「用户盯着看时能感觉到在更新」与「不白烧流量」之间的折中。
+         */
+        const val PROGRESS_POLL_INTERVAL_MS = 30_000L
 
         /** Worker used-nonce 分支的机器可读码（与旧入口同一条约定）。 */
         const val PROOF_USED_CODE = "proof_used"

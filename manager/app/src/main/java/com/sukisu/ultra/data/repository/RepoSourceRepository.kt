@@ -40,6 +40,17 @@ interface RepoSourceRepository {
      * id 沿用备份里的值——它只是 prefs 里的主键，跨设备/跨安装都不需要换新。
      */
     fun replaceSources(sources: List<RepoSource>)
+
+    /**
+     * 把内置的「酷安社区模块」源放回列表（用户之前删掉了它）。
+     *
+     * 这个源只在首次读列表时种一次，删掉之后不会自己长回来（见 [RepoSourceRepositoryImpl]
+     * 里的种子标记）。恢复时保持 `enabled = false`：商店页入口卡的说明与两次确认才是开启它的
+     * 地方，这个入口只负责把源摆回列表，不替用户做「开启」的决定。
+     *
+     * 列表里已经有这一条时什么都不做——重复恢复不该写出第二份。
+     */
+    fun restoreCoolapkSource()
 }
 
 class RepoSourceRepositoryImpl(
@@ -176,6 +187,17 @@ class RepoSourceRepositoryImpl(
         mutate { list -> list.map { if (it.id == id) it.copy(name = name) else it } }
 
     override fun replaceSources(sources: List<RepoSource>) = save(sources)
+
+    override fun restoreCoolapkSource() = mutate { sources ->
+        // 用固定 id 的 [coolapkCommunitySource] 原样追加，不走 addSource：那条路会现探网络、
+        // 生成随机 id、并把 enabled 留成 true——随机 id 找不回入口卡，enabled = true 又等于
+        // 替用户点了「开启」。
+        if (sources.any { it.id == COOLAPK_COMMUNITY_SOURCE_ID }) {
+            sources
+        } else {
+            sources + coolapkCommunitySource
+        }
+    }
 
     private fun mutate(transform: (List<RepoSource>) -> List<RepoSource>) {
         save(transform(loadSources()))

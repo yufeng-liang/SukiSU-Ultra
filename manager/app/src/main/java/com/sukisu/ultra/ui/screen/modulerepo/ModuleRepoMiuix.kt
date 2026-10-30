@@ -3,6 +3,7 @@ package com.sukisu.ultra.ui.screen.modulerepo
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
@@ -12,7 +13,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,12 +37,14 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -96,6 +101,7 @@ import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.theme.backgroundAwareColor
 import com.sukisu.ultra.ui.theme.isInDarkTheme
 import com.sukisu.ultra.ui.util.BlurredBar
+import com.sukisu.ultra.ui.util.CoolapkLinks
 import com.sukisu.ultra.ui.util.formatFileSize
 import com.sukisu.ultra.ui.util.formatRepoTime
 import com.sukisu.ultra.ui.util.isDownloadAvailable
@@ -417,12 +423,25 @@ fun ModuleRepoScreenMiuix(
             val refreshTick = remember { mutableIntStateOf(0) }
             val latestModules = rememberUpdatedState(state.modules)
             val latestRefreshing = rememberUpdatedState(state.isRefreshing)
+            // 切换来源筛选也算换了一批要看的模块，跟着回到顶部，而不是留在原来的滚动位置。
             ScrollToTopOnChange(
                 lazyListState,
                 state.sortOrder,
+                state.selectedSourceId,
                 refreshTick.intValue,
                 isBusy = { latestRefreshing.value },
             ) { latestModules.value }
+            val filterOptions = rememberRepoSourceFilters(
+                modules = state.modules,
+                sources = state.sources,
+                sourceErrors = state.sourceErrors,
+            )
+            val coolapkSource = coolapkCommunitySource(state.sources)
+            // 入口卡没了（源被删掉）又没有第二个筛选项时，这个头就没有内容可放。
+            val showHeader = coolapkSource != null || filterOptions.size > 1
+            val filteredModules = rememberSourceFilteredModules(state.modules, state.selectedSourceId)
+            // 筛选把列表筛空，跟「一个源都没配」是两回事：前者换个筛选就有内容，后者要去加源。
+            val filteredEmpty = state.selectedSourceId != null && filteredModules.isEmpty()
             val refreshTexts = listOf(
                 stringResource(R.string.refresh_pulling),
                 stringResource(R.string.refresh_release),
@@ -501,6 +520,18 @@ fun ModuleRepoScreenMiuix(
                             ),
                             overscrollEffect = null,
                         ) {
+                            if (showHeader) {
+                                // 数据源入口与筛选排在所有内容之前，但仍然是列表的一部分：滚动时一起走。
+                                item(key = "source_filter_header") {
+                                    MiuixStoreHeader(
+                                        coolapkSource = coolapkSource,
+                                        filterOptions = filterOptions,
+                                        selectedSourceId = state.selectedSourceId,
+                                        onSetSourceEnabled = actions.onSetSourceEnabled,
+                                        onSelectSource = actions.onSelectSource,
+                                    )
+                                }
+                            }
                             if (state.sourceErrors.isNotEmpty()) {
                                 item(key = "source_errors_banner") {
                                     // 关掉的通知只针对这一次抓取结果，下一次结果落地时会清空。
@@ -539,16 +570,27 @@ fun ModuleRepoScreenMiuix(
                                     }
                                 }
                             }
-                            if (state.modules.isEmpty()) {
+                            if (filteredModules.isEmpty()) {
                                 item(key = "repo_empty_prompt") {
                                     RepoEmptyPrompt(
-                                        hint = repoEmptyHint(repoEmptyReason(state.sources)),
-                                        actionLabel = repoEmptyAction(repoEmptyReason(state.sources)),
-                                        onAction = { showSourcesDialog.value = true },
+                                        hint = if (filteredEmpty) {
+                                            stringResource(R.string.module_repo_filter_source_empty)
+                                        } else {
+                                            repoEmptyHint(repoEmptyReason(state.sources))
+                                        },
+                                        actionLabel = if (filteredEmpty) {
+                                            stringResource(R.string.module_repo_filter_all)
+                                        } else {
+                                            repoEmptyAction(repoEmptyReason(state.sources))
+                                        },
+                                        onAction = {
+                                            if (filteredEmpty) actions.onSelectSource(null)
+                                            else showSourcesDialog.value = true
+                                        },
                                     )
                                 }
                             }
-                            items(items = state.modules, key = { "${it.sourceId}|${it.moduleId}" }, contentType = { "module" }) { module ->
+                            items(items = filteredModules, key = { "${it.sourceId}|${it.moduleId}" }, contentType = { "module" }) { module ->
                                 val moduleAuthor = stringResource(id = R.string.module_author)
                                 val latestReleaseTime = remember(module.latestReleaseTime) {
                                     formatRepoTime(module.latestReleaseTime)
@@ -710,6 +752,164 @@ fun ModuleRepoScreenMiuix(
             }
         },
     )
+}
+
+/**
+ * 商店页顶部的「酷安社区模块」入口：未开启时是一张带两段式确认的说明卡，开启后降级成一行状态条。
+ *
+ * 这个源默认关闭，而且只会在首次读列表时种一次，用户从来源管理里删掉之后不会再回来，所以
+ * [source] 为 null 就整块不渲染——否则「开启」会是个永远按不动的死控件。
+ */
+@Composable
+private fun MiuixCoolapkCommunityCard(
+    source: RepoSource?,
+    onSetSourceEnabled: (String, Boolean) -> Unit,
+) {
+    if (source == null) return
+
+    if (source.enabled) {
+        AppCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            insideMargin = PaddingValues(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.module_repo_coolapk_enabled),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight(550),
+                    color = colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(
+                    modifier = Modifier.wrapContentWidth(Alignment.End),
+                    text = stringResource(R.string.module_repo_coolapk_disable),
+                    onClick = { onSetSourceEnabled(source.id, false) },
+                )
+            }
+        }
+        return
+    }
+
+    // 两段式确认：第一次点只是把按钮文案换成「我已了解，确认开启」，第二次点才真的开启，
+    // 不额外弹窗。用 enabled 当 key，启用状态一变（不管是在这里还是来源管理里改的）就复位。
+    var awaitingConfirm by remember(source.enabled) { mutableStateOf(false) }
+
+    AppCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        insideMargin = PaddingValues(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.module_repo_coolapk_title),
+            fontSize = 16.sp,
+            fontWeight = FontWeight(550),
+            color = colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.module_repo_coolapk_summary),
+            fontSize = 14.sp,
+            color = colorScheme.onSurfaceVariantSummary,
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(
+                modifier = Modifier.wrapContentWidth(Alignment.End),
+                text = stringResource(
+                    if (awaitingConfirm) R.string.module_repo_coolapk_confirm
+                    else R.string.module_repo_coolapk_enable
+                ),
+                onClick = {
+                    if (awaitingConfirm) {
+                        awaitingConfirm = false
+                        onSetSourceEnabled(source.id, true)
+                    } else {
+                        awaitingConfirm = true
+                    }
+                },
+            )
+        }
+    }
+}
+
+/**
+ * 来源筛选胶囊：「全部」加每个已开启的源，横向滚动一行。
+ *
+ * Miuix 没有现成的 FilterChip，这里用圆角胶囊自己搭，配色跟主题走。只有一个「全部」的时候
+ * 没有筛选的意义，整行不显示。
+ */
+@Composable
+private fun MiuixSourceFilterRow(
+    options: List<RepoSourceFilterOption>,
+    selectedSourceId: String?,
+    onSelectSource: (String?) -> Unit,
+) {
+    if (options.size <= 1) return
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { option ->
+            val selected = option.sourceId == selectedSourceId
+            val containerColor = if (selected) colorScheme.primary else colorScheme.surfaceContainerHigh
+            val contentColor = if (selected) colorScheme.onPrimary else colorScheme.onSurfaceContainerHigh
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(containerColor)
+                    .clickable { onSelectSource(option.sourceId) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = option.chipText(),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight(550),
+                    color = contentColor,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/** 列表头：入口卡 + 筛选胶囊，作为一个 item 跟着列表滚。 */
+@Composable
+private fun MiuixStoreHeader(
+    coolapkSource: RepoSource?,
+    filterOptions: List<RepoSourceFilterOption>,
+    selectedSourceId: String?,
+    onSetSourceEnabled: (String, Boolean) -> Unit,
+    onSelectSource: (String?) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        MiuixCoolapkCommunityCard(
+            source = coolapkSource,
+            onSetSourceEnabled = onSetSourceEnabled,
+        )
+        MiuixSourceFilterRow(
+            options = filterOptions,
+            selectedSourceId = selectedSourceId,
+            onSelectSource = onSelectSource,
+        )
+    }
 }
 
 /**
@@ -1259,6 +1459,157 @@ fun InfoPage(
     }
 }
 
+/** 详情页的一页（Miuix 版）。酷安条目没有 README 页，页数与顺序都跟着来源变。 */
+private enum class RepoDetailPageKindMiuix { README, RELEASES, INFO }
+
+/**
+ * 酷安条目的「信息」页：出处（帖子链接）、上传者（昵称，有 UID 时挂主页入口）、提交时间。
+ *
+ * 没有 GitHub 仓库、星标、README——索引里没有的东西整块不画，而不是画一行空占位。
+ */
+@Composable
+private fun CoolapkInfoPageMiuix(
+    meta: CoolapkModuleMeta,
+    innerPadding: PaddingValues,
+    scrollBehavior: ScrollBehavior,
+    backdrop: LayerBackdrop?,
+    actionIconTint: Color,
+    secondaryContainer: Color,
+    onOpenPost: (String) -> Unit,
+    onOpenUser: (String) -> Unit,
+) {
+    val layoutDirection = LocalLayoutDirection.current
+    val postUrl = meta.postUrl?.takeIf { it.isNotBlank() }
+    val uploaderName = meta.uploaderName?.takeIf { it.isNotBlank() }
+    val uploaderUid = meta.coolapkUid?.takeIf { it.isNotBlank() }
+    val submittedAt = meta.submittedAt?.takeIf { it.isNotBlank() }
+    Box(modifier = if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxHeight()
+                .scrollEndHaptic()
+                .overScrollVertical()
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+            contentPadding = PaddingValues(
+                top = innerPadding.calculateTopPadding(),
+                start = innerPadding.calculateStartPadding(layoutDirection),
+                end = innerPadding.calculateEndPadding(layoutDirection),
+                bottom = innerPadding.calculateBottomPadding(),
+            ),
+            overscrollEffect = null,
+        ) {
+            if (postUrl != null) {
+                item {
+                    SmallTitle(
+                        text = stringResource(R.string.module_repo_coolapk_post),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    AppCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        insideMargin = PaddingValues(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = postUrl,
+                                fontSize = 14.sp,
+                                color = colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            IconButton(
+                                backgroundColor = secondaryContainer,
+                                minHeight = 35.dp,
+                                minWidth = 35.dp,
+                                onClick = { onOpenPost(postUrl) },
+                            ) {
+                                Icon(
+                                    modifier = Modifier.size(20.dp),
+                                    imageVector = MiuixIcons.Link,
+                                    tint = actionIconTint,
+                                    contentDescription = null
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (uploaderName != null) {
+                item {
+                    SmallTitle(
+                        text = stringResource(R.string.module_repo_coolapk_uploader),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    AppCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        insideMargin = PaddingValues(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = uploaderName,
+                                fontSize = 14.sp,
+                                color = colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (uploaderUid != null) {
+                                IconButton(
+                                    backgroundColor = secondaryContainer,
+                                    minHeight = 35.dp,
+                                    minWidth = 35.dp,
+                                    onClick = { onOpenUser(uploaderUid) },
+                                ) {
+                                    Icon(
+                                        modifier = Modifier.size(20.dp),
+                                        imageVector = MiuixIcons.Link,
+                                        tint = actionIconTint,
+                                        contentDescription = null
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (submittedAt != null) {
+                item {
+                    SmallTitle(
+                        text = stringResource(R.string.module_repo_coolapk_submitted_at),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    AppCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        insideMargin = PaddingValues(16.dp)
+                    ) {
+                        // 索引给的是 ISO 时间字符串；若数据侧换成时间戳，这里改走 formatEpochTime。
+                        Text(
+                            text = formatRepoTime(submittedAt),
+                            fontSize = 14.sp,
+                            color = colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(12.dp)) }
+        }
+    }
+}
+
 @SuppressLint("StringFormatInvalid", "DefaultLocale")
 @Composable
 fun ModuleRepoDetailScreenMiuix(
@@ -1270,6 +1621,11 @@ fun ModuleRepoDetailScreenMiuix(
     val actionIconTint = colorScheme.onSurface.copy(alpha = if (isInDarkTheme()) 0.7f else 0.9f)
     val secondaryContainer = colorScheme.secondaryContainer.copy(alpha = 0.8f)
     val module = state.module
+    // 酷安社区的条目没有 README，也没有 GitHub 仓库/星标：详情页只留「版本」与「信息」，
+    // 「信息」换成出处（帖子链接）、上传者、提交时间这组酷安字段。
+    val isCoolapkModule = module.isCoolapkCommunityModule()
+    val coolapkMeta = module.coolapkMeta()
+    val coolapkOpenFailed = stringResource(R.string.module_repo_coolapk_open_failed)
     val scope = rememberCoroutineScope()
     val confirmTitle = stringResource(R.string.module_install)
     var pendingDownload by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -1300,9 +1656,30 @@ fun ModuleRepoDetailScreenMiuix(
     val hasCustomBackground = LocalBackgroundImagePath.current.isNotEmpty()
     val detailBarColor = if (blurActive || hasCustomBackground) Color.Transparent else colorScheme.surface
 
-    val tabs = listOf(
-        stringResource(R.string.tab_readme), stringResource(R.string.tab_releases), stringResource(R.string.tab_info)
-    )
+    val tabReadme = stringResource(R.string.tab_readme)
+    val tabReleases = stringResource(R.string.tab_releases)
+    val tabInfo = stringResource(R.string.tab_info)
+    // 酷安条目没有 README，这一页整个去掉；出处信息没接上数据之前也不摆一张空的「信息」页。
+    val pages = when {
+        isCoolapkModule && coolapkMeta != null -> listOf(
+            RepoDetailPageKindMiuix.RELEASES,
+            RepoDetailPageKindMiuix.INFO,
+        )
+
+        isCoolapkModule -> listOf(RepoDetailPageKindMiuix.RELEASES)
+        else -> listOf(
+            RepoDetailPageKindMiuix.README,
+            RepoDetailPageKindMiuix.RELEASES,
+            RepoDetailPageKindMiuix.INFO,
+        )
+    }
+    val tabs = pages.map { kind ->
+        when (kind) {
+            RepoDetailPageKindMiuix.README -> tabReadme
+            RepoDetailPageKindMiuix.RELEASES -> tabReleases
+            RepoDetailPageKindMiuix.INFO -> tabInfo
+        }
+    }
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { tabs.size })
     val tabRowHeight = 40.dp
     val dynamicTopPadding = remember(scrollBehavior) {
@@ -1325,7 +1702,9 @@ fun ModuleRepoDetailScreenMiuix(
                         )
                     }
                 }, actions = {
-                    if (state.webUrl.isNotEmpty()) {
+                    // 酷安条目的 webUrl 是从下载地址反推的，打开只是个 zip，不如不摆；
+                    // 出处链接在「信息」页里，按帖子给。
+                    if (!isCoolapkModule && state.webUrl.isNotEmpty()) {
                         IconButton(
                             onClick = actions.onOpenWebUrl
                         ) {
@@ -1377,8 +1756,8 @@ fun ModuleRepoDetailScreenMiuix(
                 bottom = innerPadding.calculateBottomPadding() + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
             )
 
-            when (page) {
-                0 -> ReadmePage(
+            when (pages[page]) {
+                RepoDetailPageKindMiuix.README -> ReadmePage(
                     readmeHtml = state.readmeHtml,
                     readmeLoaded = state.readmeLoaded,
                     isMarkdown = module.isMmrl,
@@ -1387,7 +1766,7 @@ fun ModuleRepoDetailScreenMiuix(
                     backdrop = backdrop
                 )
 
-                1 -> ReleasesPage(
+                RepoDetailPageKindMiuix.RELEASES -> ReleasesPage(
                     detailReleases = state.detailReleases,
                     showNoArchiveHint = state.showNoArchiveHint(),
                     innerPadding = innerPadding,
@@ -1403,7 +1782,31 @@ fun ModuleRepoDetailScreenMiuix(
                     setPendingDownload = { pendingDownload = it },
                     downloads = downloads)
 
-                2 -> {
+                RepoDetailPageKindMiuix.INFO -> if (isCoolapkModule) {
+                    // pages 里给出 INFO 就说明 coolapkMeta 非空，这里再收窄一次类型。
+                    val meta = coolapkMeta
+                    if (meta != null) {
+                        CoolapkInfoPageMiuix(
+                            meta = meta,
+                            innerPadding = innerPadding,
+                            scrollBehavior = scrollBehavior,
+                            backdrop = backdrop,
+                            actionIconTint = actionIconTint,
+                            secondaryContainer = secondaryContainer,
+                            onOpenPost = { url ->
+                                // 装了酷安就进帖子，没装回落网页；两条都不通才提示。
+                                if (!CoolapkLinks.openPost(context, url)) {
+                                    Toast.makeText(context, coolapkOpenFailed, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onOpenUser = { uid ->
+                                if (!CoolapkLinks.openUser(context, uid)) {
+                                    Toast.makeText(context, coolapkOpenFailed, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        )
+                    }
+                } else {
                     val uriHandler = remember(actions) {
                         object : UriHandler {
                             override fun openUri(uri: String) = actions.onOpenUrl(uri)

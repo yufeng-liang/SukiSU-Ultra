@@ -323,6 +323,19 @@ class ModuleRepoViewModel(
     }
 
     /**
+     * 把用户删掉的「酷安社区模块」源放回列表。
+     *
+     * 恢复出来的是默认关闭的那一条（见 [RepoSourceRepository.restoreCoolapkSource]）：开启它
+     * 仍然要走商店页入口卡的说明与两次确认，这里只是让那个入口重新有东西可开。
+     */
+    fun restoreCoolapkSource() {
+        sourceRepo.restoreCoolapkSource()
+        reloadSources()
+        refresh()
+        autoBackupRepoConfig()
+    }
+
+    /**
      * 商店页顶部的来源筛选。
      *
      * 只改界面状态：筛选不是配置，不落盘、不触发重新抓取——模块列表本来就是全部源的并集，

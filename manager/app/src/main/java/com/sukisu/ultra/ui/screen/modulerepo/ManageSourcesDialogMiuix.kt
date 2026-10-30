@@ -36,6 +36,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
@@ -137,6 +138,45 @@ fun ManageSourcesDialogMiuix(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(end = 8.dp),
+                        )
+                    }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 6.dp),
+                        thickness = 0.5.dp,
+                        color = colorScheme.outline.copy(alpha = 0.5f),
+                    )
+                }
+
+                // 酷安社区模块源被删掉了：它的种子只在首次读列表时种一次，删掉不会自己长回来，
+                // 所以在这里留一个显式的恢复入口。恢复出来仍是关闭状态——开不开由商店页的
+                // 入口卡（说明 + 两次确认）决定，这里只负责把源摆回列表。
+                if (coolapkCommunitySource(state.sources) == null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { actions.onRestoreCoolapkSource() },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.module_repo_coolapk_restore),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight(550),
+                                color = colorScheme.onSurface,
+                            )
+                            Text(
+                                text = stringResource(R.string.module_repo_coolapk_restore_summary),
+                                fontSize = 13.sp,
+                                color = colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                        Icon(
+                            imageVector = MiuixIcons.Add,
+                            contentDescription = stringResource(R.string.module_repo_coolapk_restore),
+                            tint = colorScheme.primary,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(20.dp),
                         )
                     }
                     HorizontalDivider(

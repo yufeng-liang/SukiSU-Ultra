@@ -116,6 +116,8 @@ fun ModuleUploadFormMiuix(
     onPickMore: () -> Unit,
     onSignOut: () -> Unit,
     onSubmit: () -> Unit,
+    /** 收录进度里「去商店看看」的去处；由路由层给，表单自己不拼路由。 */
+    onOpenStore: () -> Unit = {},
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     val enableBlur = LocalEnableBlur.current
@@ -266,7 +268,7 @@ fun ModuleUploadFormMiuix(
             }
 
             if (state.submitting || state.outcome != null) {
-                item { OutcomeMiuix(state) }
+                item { OutcomeMiuix(state, onOpenStore) }
             }
 
             item { Spacer(Modifier.height(24.dp)) }
@@ -400,7 +402,7 @@ private fun SubmitBarMiuix(
 
 /** 提交中 / 出结果后的那一段。契约没有字节回调：只报总数，不编百分比。 */
 @Composable
-private fun OutcomeMiuix(state: ModuleUploadFormState) {
+private fun OutcomeMiuix(state: ModuleUploadFormState, onOpenStore: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     Column(
         modifier = Modifier.padding(top = 12.dp),
@@ -507,6 +509,34 @@ private fun OutcomeMiuix(state: ModuleUploadFormState) {
                                 color = colorScheme.primary,
                                 textDecoration = TextDecoration.Underline,
                             )
+                        }
+                        // 收录进度：批量提交时每枚一块，块首是 `id · v版本号`。
+                        if (outcome.progress.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.padding(top = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                outcome.progress.forEach { item ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.module_upload_progress_version,
+                                                item.id,
+                                                item.versionCode,
+                                            ),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight(550),
+                                            color = colorScheme.onPrimaryContainer,
+                                        )
+                                        UploadProgressStepsMiuix(item = item)
+                                        UploadProgressActionsMiuix(
+                                            item = item,
+                                            onOpenPr = { url -> runCatching { uriHandler.openUri(url) } },
+                                            onOpenStore = onOpenStore,
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

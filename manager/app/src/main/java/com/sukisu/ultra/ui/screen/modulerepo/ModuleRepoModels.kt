@@ -41,6 +41,11 @@ data class RepoModuleArg(
     val releases: List<ReleaseArg>,
     val sourceId: String = "",
     val sourceName: String = "",
+    /** 酷安社区索引记的出处：帖子地址、上传者昵称、UID、提交时间（0 = 索引没给）。 */
+    val source: String = "",
+    val uploader: String = "",
+    val coolapkUid: String = "",
+    val submittedAt: Long = 0L,
     /** Other repositories publishing the same module, merged away by deduplication. */
     val alternateSourceNames: List<String> = emptyList(),
     val readmeUrl: String? = null,

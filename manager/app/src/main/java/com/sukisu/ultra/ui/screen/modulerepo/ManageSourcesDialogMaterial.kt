@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -127,6 +128,37 @@ fun ManageSourcesDialogMaterial(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(end = 8.dp),
+                        )
+                    }
+                    HorizontalDivider(thickness = 0.5.dp)
+                }
+
+                // 酷安社区模块源被删掉了：它的种子只在首次读列表时种一次，删掉不会自己长回来，
+                // 所以在这里留一个显式的恢复入口。恢复出来仍是关闭状态——开不开由商店页的
+                // 入口卡（说明 + 两次确认）决定，这里只负责把源摆回列表。
+                if (coolapkCommunitySource(state.sources) == null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { actions.onRestoreCoolapkSource() },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.module_repo_coolapk_restore),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                text = stringResource(R.string.module_repo_coolapk_restore_summary),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Outlined.Add,
+                            contentDescription = stringResource(R.string.module_repo_coolapk_restore),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 8.dp),
                         )
                     }
                     HorizontalDivider(thickness = 0.5.dp)

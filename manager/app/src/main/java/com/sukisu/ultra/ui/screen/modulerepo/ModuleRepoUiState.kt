@@ -81,6 +81,8 @@ data class ModuleRepoActions(
     val onAddSource: (url: String, name: String?) -> Unit,
     val onRemoveSource: (String) -> Unit,
     val onSetSourceEnabled: (String, Boolean) -> Unit,
+    /** 把用户删掉的「酷安社区模块」源放回列表（恢复后仍是关闭状态）。 */
+    val onRestoreCoolapkSource: () -> Unit,
     val onRenameSource: (String, String) -> Unit,
     /** 关掉一条失败通知；参数是通知里显示的那条失败消息。 */
     val onDismissSourceError: (String) -> Unit,

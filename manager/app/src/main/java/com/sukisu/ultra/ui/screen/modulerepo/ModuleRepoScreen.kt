@@ -28,7 +28,7 @@ import com.sukisu.ultra.ui.viewmodel.ModuleRepoViewModel
 import com.sukisu.ultra.ui.viewmodel.ModuleViewModel
 
 @Composable
-fun ModuleRepoScreen() {
+fun ModuleRepoScreen(selectedSourceId: String? = null) {
     val navigator = LocalNavigator.current
     val viewModel = viewModel<ModuleRepoViewModel>()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -41,6 +41,16 @@ fun ModuleRepoScreen() {
         }
         if (installedUiState.moduleList.isEmpty()) {
             installedVm.fetchModuleList()
+        }
+    }
+
+    // 从上传页的商店入口进来时带着要选中的来源。只在「源存在且已开启」时落筛选：
+    // 源被停用或删掉时强行选中只会得到一张空列表，胶囊里也没有可回退的项；
+    // 那种情况交给页首的入口卡去提示开启。键里放 sources，是为了等首次读盘完成后再判定。
+    LaunchedEffect(selectedSourceId, uiState.sources) {
+        val requested = selectedSourceId ?: return@LaunchedEffect
+        if (uiState.sources.any { it.id == requested && it.enabled }) {
+            viewModel.selectSource(requested)
         }
     }
 
@@ -63,6 +73,10 @@ fun ModuleRepoScreen() {
                 releases = repoModuleReleases(module),
                 sourceId = module.sourceId,
                 sourceName = module.sourceName,
+                source = module.source,
+                uploader = module.uploader,
+                coolapkUid = module.coolapkUid,
+                submittedAt = module.submittedAt,
                 alternateSourceNames = module.alternateSourceNames,
                 readmeUrl = module.mmrl?.readmeUrl,
                 webUrl = module.mmrl?.supportUrl,
@@ -74,6 +88,7 @@ fun ModuleRepoScreen() {
         onAddSource = viewModel::addSource,
         onRemoveSource = viewModel::removeSource,
         onSetSourceEnabled = viewModel::setSourceEnabled,
+        onRestoreCoolapkSource = viewModel::restoreCoolapkSource,
         onRenameSource = viewModel::renameSource,
         onDismissSourceError = viewModel::dismissSourceError,
         onDisclaimerAccepted = viewModel::acceptDisclaimer,
