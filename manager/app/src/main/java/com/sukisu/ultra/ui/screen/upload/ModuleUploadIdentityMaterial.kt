@@ -25,9 +25,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,7 +58,6 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
-import com.sukisu.ultra.ui.util.formatFileSize
 import kotlinx.coroutines.launch
 
 /**
@@ -75,14 +73,14 @@ fun ModuleUploadIdentityMaterial(
     onExit: () -> Unit,
     onUidChange: (String) -> Unit,
     onRetryUid: () -> Unit,
-    onPickZip: () -> Unit,
     onConsentChange: (Boolean) -> Unit,
+    onRenewCommit: () -> Unit,
     onVerify: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    val proof = state.verifyProof
+    val commit = state.identityCommit
 
     ExpressiveScaffold(
         topBar = {
@@ -91,8 +89,8 @@ fun ModuleUploadIdentityMaterial(
                 navigationIcon = {
                     IconButton(onClick = onExit) {
                         Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.cancel),
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.action_back),
                         )
                     }
                 },
@@ -186,52 +184,10 @@ fun ModuleUploadIdentityMaterial(
             }
 
             item {
-                TonalCard(modifier = Modifier.padding(top = 20.dp).fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SectionLabelMaterial(
-                            icon = Icons.Outlined.Folder,
-                            text = stringResource(R.string.module_upload_identity_anchor_title),
-                            required = true,
-                        )
-                        Text(
-                            text = stringResource(R.string.module_upload_identity_anchor_hint),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        val item = state.verifyItem
-                        if (item == null) {
-                            Text(
-                                text = stringResource(R.string.module_upload_identity_anchor_empty),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            Text(
-                                text = "${item.name} · ${item.version} (${item.versionCode})",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = "${item.id} · ${formatFileSize(item.sizeBytes)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        TextButton(onClick = onPickZip, enabled = !state.verifying) {
-                            Text(stringResource(R.string.module_upload_identity_anchor_pick))
-                        }
-                    }
-                }
-            }
-
-            item {
+                // 「你的验证串」：抄进酷安签名的那一行。它由本机随机生成、只算它的哈希，
+                // 所以签名里公开的只是承诺，别人反推不出验证串，也就领不走你的令牌。
+                // 与「要传的包」无关 —— 旧版挑一枚包当锚点那一步正是为了做到这一点，
+                // 哈希承诺本身就把这件事解决了。
                 TonalCard(modifier = Modifier.padding(top = 20.dp).fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(14.dp),
@@ -239,13 +195,12 @@ fun ModuleUploadIdentityMaterial(
                     ) {
                         SectionLabelMaterial(
                             icon = Icons.Filled.VerifiedUser,
-                            text = stringResource(R.string.module_upload_proof_title),
+                            text = stringResource(R.string.module_upload_identity_commit_title),
+                            required = true,
                         )
-                        if (proof == null) {
-                            // 还没挑锚点包：一行口令都不该显示，否则用户抄走的是一串
-                            // 「换了包就作废」的东西。
+                        if (commit == null) {
                             Text(
-                                text = stringResource(R.string.module_upload_proof_pending),
+                                text = stringResource(R.string.module_upload_identity_commit_pending),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -263,7 +218,7 @@ fun ModuleUploadIdentityMaterial(
                                 ) {
                                     Text(
                                         modifier = Modifier.weight(1f),
-                                        text = proof.text,
+                                        text = commit,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontFamily = FontFamily.Monospace,
                                         maxLines = 1,
@@ -272,29 +227,22 @@ fun ModuleUploadIdentityMaterial(
                                     TextButton(onClick = {
                                         scope.launch {
                                             clipboard.setClipEntry(
-                                                ClipEntry(ClipData.newPlainText("proof", proof.text)),
+                                                ClipEntry(ClipData.newPlainText("identity", commit)),
                                             )
                                         }
                                     }) {
-                                        Text(stringResource(R.string.module_upload_proof_copy))
+                                        Text(stringResource(R.string.module_upload_identity_commit_copy))
                                     }
                                 }
                             }
                             Text(
-                                text = stringResource(R.string.module_upload_proof_hint),
+                                text = stringResource(R.string.module_upload_identity_commit_hint),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Text(
-                                text = stringResource(R.string.module_upload_proof_why),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                text = stringResource(R.string.module_upload_proof_restore),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            TextButton(onClick = onRenewCommit, enabled = !state.verifying) {
+                                Text(stringResource(R.string.module_upload_identity_commit_renew))
+                            }
                         }
                     }
                 }
@@ -343,7 +291,7 @@ private fun IdentityBarMaterial(
 ) {
     val missing = listOf(
         state.uid.trim().length in 4..12,
-        state.verifyItem != null,
+        state.identityCommit != null,
         state.consent,
     ).count { !it }
     val verifying = state.verifying

@@ -112,14 +112,6 @@ fun ModuleUploadScreen() {
         if (uris.isNotEmpty()) viewModel.stageMany(context, uris)
     }
 
-    // 身份页的锚点包：同样走 SAF，但回来的东西只用来算口令（id + sha256），
-    // 不进表单的 items —— 那是「这次要上传的包」，与「证明我是我的那枚包」不是一回事。
-    val verifyLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) viewModel.stageForVerify(context, uri)
-    }
-
     val pickForRow: (UploadRow) -> Unit = { row ->
         pendingRowId = row.id
         singleLauncher.launch(arrayOf(ZIP_MIME))
@@ -202,8 +194,8 @@ fun ModuleUploadScreen() {
                 onExit = { navigator.pop() },
                 onUidChange = viewModel::updateUid,
                 onRetryUid = viewModel::retryUidLookup,
-                onPickZip = { verifyLauncher.launch(arrayOf(ZIP_MIME)) },
                 onConsentChange = viewModel::setConsent,
+                onRenewCommit = viewModel::renewIdentityCommit,
                 onVerify = viewModel::verifyIdentity,
             )
 
@@ -212,8 +204,8 @@ fun ModuleUploadScreen() {
                 onExit = { navigator.pop() },
                 onUidChange = viewModel::updateUid,
                 onRetryUid = viewModel::retryUidLookup,
-                onPickZip = { verifyLauncher.launch(arrayOf(ZIP_MIME)) },
                 onConsentChange = viewModel::setConsent,
+                onRenewCommit = viewModel::renewIdentityCommit,
                 onVerify = viewModel::verifyIdentity,
             )
         }

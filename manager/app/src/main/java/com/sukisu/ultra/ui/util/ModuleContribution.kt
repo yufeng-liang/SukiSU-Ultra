@@ -405,6 +405,14 @@ object ModuleContribution {
     private val SHA256_HEX_RE = Regex("^[0-9a-f]{64}$")
 
     /**
+     * 身份验证串的形状：32 位小写十六进制，与服务端 `proof.ts` 的 `IDENTITY_SECRET_RE` 同一条。
+     *
+     * 这一串是**哈希承诺的原像**，只在本机存在、只发给服务端换令牌；酷安签名里放的是它
+     * 的 sha256 前 24 位（见 `ModuleUploadPrefs.identityCommitment`），所以公开的是后者。
+     */
+    internal val IDENTITY_SECRET_RE = Regex("^[0-9a-f]{32}$")
+
+    /**
      * 合法模块 id 的形状：字母开头，之后只允许字母、数字、点、下划线、连字符。
      *
      * 与 contrib/audit/risk-rules.mjs 的 `ID_PATTERN`（`/^[a-zA-Z][a-zA-Z0-9._-]*$/`）是同一条约定：
@@ -1030,48 +1038,37 @@ object ModuleContribution {
     /**
      * 用一次酷安签名核验，换一张九十天的长期令牌（「先把身份验证好，之后上传不再改签名」）。
      *
-     * 为什么必须带上 [items]：酷安签名是**公开**的，谁都能看到别人 bio 里那串口令。如果换
-     * 令牌只要「bio 里有某个只跟 UID 有关的串」，那任何看到签名的人都能替**别人**领一张，
-     * 领到之后就能以那个人的名义投稿。所以这里与投稿走同一套口令：密码学上绑死一套具体的
-     * 包（id + 整包 sha256），看见口令的人反推不出包，也就无法重放。
+     * 签名里放的是**哈希承诺**而不是口令：客户端本地随机一串 [secret]（只存这台设备、
+     * 永不上传），把它算成 `sha256("sukisu-identity-v2:" + secret)` 的前 24 位交给用户抄进
+     * 酷安签名。核验时这里只发 [secret]，服务端自己重算承诺串、再比对 bio —— 所以：
      *
-     * 成功之后服务端烧掉 nonce、写下九十天的 `session:<sha256(token)>`；应答里连同
-     * `identity` 一起回抄一份身份，界面拿它显示昵称头像，不必再为了一行字多查一次 `/user`。
+     * - 看见签名的人只拿到承诺串，反推 secret 要做 sha256 的原像攻击，抄不走；
+     * - 不再需要挑一枚包当锚点（旧口令必须绑死一套具体的包，是因为它直接公开在签名里）；
+     * - 同一串可以反复换令牌（= 续期），服务端不必为此记 nonce。
+     *
+     * 成功之后服务端写下九十天的 `session:<sha256(token)>`；应答里连同 `identity` 一起
+     * 回抄一份身份，界面拿它显示昵称头像，不必再为了一行字多查一次 `/user`。
      *
      * 失败不抛异常（调用点在界面里，抛出去就是一次崩溃），一律走 [IssueOutcome]。
      */
     suspend fun issueIdentitySession(
         coolapkUid: String,
-        nonce: String,
-        items: List<ProofItem>,
+        secret: String,
         pledge: String = PLEDGE_VERSION,
     ): IssueOutcome {
         val uid = coolapkUid.trim()
-        val safeNonce = nonce.trim()
+        val safeSecret = secret.trim()
         // 形状不对的请求不发出去：服务端同样会 400，先在本地说清楚是哪一项不对。
         if (!isValidUid(uid)) {
             return IssueOutcome(message = "酷安 UID 要填 4~12 位数字", code = "identity_required")
         }
-        if (safeNonce.isEmpty()) {
-            return IssueOutcome(message = "口令还没生成好，请稍后重试", code = "identity_required")
-        }
-        if (items.isEmpty()) {
-            return IssueOutcome(message = "验证身份要先挑一个模块包做锚点", code = "identity_required")
-        }
-        val declared = JSONArray()
-        for (item in items) {
-            val id = item.id.trim()
-            val sha = item.zipSha.trim().lowercase(Locale.ROOT)
-            if (id.isEmpty() || !SHA256_HEX_RE.matches(sha)) {
-                return IssueOutcome(message = "模块包的指纹不对，请重新挑一次", code = "identity_required")
-            }
-            declared.put(JSONObject().put("id", id).put("zipSha", sha))
+        if (!IDENTITY_SECRET_RE.matches(safeSecret)) {
+            return IssueOutcome(message = "验证串还没生成好，请稍后重试", code = "identity_required")
         }
         val payload = JSONObject()
             .put("coolapkUid", uid)
-            .put("nonce", safeNonce)
+            .put("secret", safeSecret)
             .put("pledge", pledge)
-            .put("items", declared)
             .toString()
             .toRequestBody(JSON_MEDIA_TYPE)
         val url = BASE_URL.trimEnd('/') + "/session/issue"

@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.Adb
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Publish
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DeveloperMode
@@ -125,7 +125,7 @@ fun SettingPagerMaterial(
                                     Text(stringResource(R.string.module_upload_entry_summary))
                                 },
                                 leadingContent = {
-                                    IconTile(Icons.Filled.CloudUpload, uploadTitle)
+                                    IconTile(Icons.Filled.Publish, uploadTitle)
                                 },
                                 trailingContent = {
                                     Icon(

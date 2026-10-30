@@ -28,7 +28,7 @@ import androidx.compose.material.icons.rounded.Adb
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.Publish
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.DeveloperMode
@@ -141,7 +141,7 @@ fun SettingPagerMiuix(
                                 summary = stringResource(R.string.module_upload_entry_summary),
                                 startAction = {
                                     Icon(
-                                        Icons.Rounded.CloudUpload,
+                                        Icons.Rounded.Publish,
                                         modifier = Modifier.padding(end = 6.dp),
                                         contentDescription = uploadTitle,
                                         tint = colorScheme.onBackground

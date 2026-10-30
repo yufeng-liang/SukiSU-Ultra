@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
-import com.sukisu.ultra.ui.util.formatFileSize
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
@@ -65,8 +64,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Close2
-import top.yukonga.miuix.kmp.icon.extended.File
+import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
@@ -87,8 +85,8 @@ fun ModuleUploadIdentityMiuix(
     onExit: () -> Unit,
     onUidChange: (String) -> Unit,
     onRetryUid: () -> Unit,
-    onPickZip: () -> Unit,
     onConsentChange: (Boolean) -> Unit,
+    onRenewCommit: () -> Unit,
     onVerify: () -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
@@ -97,7 +95,7 @@ fun ModuleUploadIdentityMiuix(
     val barColor = if (backdrop != null) Color.Transparent else colorScheme.surface
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    val proof = state.verifyProof
+    val commit = state.identityCommit
 
     Scaffold(
         topBar = {
@@ -109,8 +107,8 @@ fun ModuleUploadIdentityMiuix(
                     navigationIcon = {
                         IconButton(onClick = onExit) {
                             Icon(
-                                imageVector = MiuixIcons.Close2,
-                                contentDescription = stringResource(R.string.cancel),
+                                imageVector = MiuixIcons.Back,
+                                contentDescription = stringResource(R.string.action_back),
                             )
                         }
                     },
@@ -215,54 +213,10 @@ fun ModuleUploadIdentityMiuix(
             }
 
             item {
-                Card(modifier = Modifier.padding(top = 20.dp).fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SectionLabelMiuix(
-                            icon = MiuixIcons.File,
-                            text = stringResource(R.string.module_upload_identity_anchor_title),
-                            required = true,
-                        )
-                        Text(
-                            text = stringResource(R.string.module_upload_identity_anchor_hint),
-                            fontSize = 12.sp,
-                            color = colorScheme.onSurfaceVariantSummary,
-                        )
-                        val item = state.verifyItem
-                        if (item == null) {
-                            Text(
-                                text = stringResource(R.string.module_upload_identity_anchor_empty),
-                                fontSize = 13.sp,
-                                color = colorScheme.onSurfaceVariantSummary,
-                            )
-                        } else {
-                            Text(
-                                text = "${item.name} · ${item.version} (${item.versionCode})",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = "${item.id} · ${formatFileSize(item.sizeBytes)}",
-                                fontSize = 12.sp,
-                                color = colorScheme.onSurfaceVariantSummary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        TextButton(
-                            text = stringResource(R.string.module_upload_identity_anchor_pick),
-                            onClick = onPickZip,
-                            enabled = !state.verifying,
-                        )
-                    }
-                }
-            }
-
-            item {
+                // 「你的验证串」：抄进酷安签名的那一行。它由本机随机生成、只算它的哈希，
+                // 所以签名里公开的只是承诺，别人反推不出验证串，也就领不走你的令牌。
+                // 与「要传的包」无关 —— 旧版挑一枚包当锚点那一步正是为了做到这一点，
+                // 哈希承诺本身就把这件事解决了。
                 Card(modifier = Modifier.padding(top = 20.dp).fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(14.dp),
@@ -270,13 +224,12 @@ fun ModuleUploadIdentityMiuix(
                     ) {
                         SectionLabelMiuix(
                             icon = Icons.Filled.VerifiedUser,
-                            text = stringResource(R.string.module_upload_proof_title),
+                            text = stringResource(R.string.module_upload_identity_commit_title),
+                            required = true,
                         )
-                        if (proof == null) {
-                            // 还没挑锚点包：一行口令都不该显示，否则用户抄走的是一串
-                            // 「换了包就作废」的东西。
+                        if (commit == null) {
                             Text(
-                                text = stringResource(R.string.module_upload_proof_pending),
+                                text = stringResource(R.string.module_upload_identity_commit_pending),
                                 fontSize = 13.sp,
                                 color = colorScheme.onSurfaceVariantSummary,
                             )
@@ -294,7 +247,7 @@ fun ModuleUploadIdentityMiuix(
                                 ) {
                                     Text(
                                         modifier = Modifier.weight(1f),
-                                        text = proof.text,
+                                        text = commit,
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.Medium,
                                         fontFamily = FontFamily.Monospace,
@@ -302,11 +255,11 @@ fun ModuleUploadIdentityMiuix(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     TextButton(
-                                        text = stringResource(R.string.module_upload_proof_copy),
+                                        text = stringResource(R.string.module_upload_identity_commit_copy),
                                         onClick = {
                                             scope.launch {
                                                 clipboard.setClipEntry(
-                                                    ClipEntry(ClipData.newPlainText("proof", proof.text)),
+                                                    ClipEntry(ClipData.newPlainText("identity", commit)),
                                                 )
                                             }
                                         },
@@ -314,19 +267,14 @@ fun ModuleUploadIdentityMiuix(
                                 }
                             }
                             Text(
-                                text = stringResource(R.string.module_upload_proof_hint),
+                                text = stringResource(R.string.module_upload_identity_commit_hint),
                                 fontSize = 12.sp,
                                 color = colorScheme.onSurfaceVariantSummary,
                             )
-                            Text(
-                                text = stringResource(R.string.module_upload_proof_why),
-                                fontSize = 12.sp,
-                                color = colorScheme.onSurfaceVariantSummary,
-                            )
-                            Text(
-                                text = stringResource(R.string.module_upload_proof_restore),
-                                fontSize = 12.sp,
-                                color = colorScheme.onSurfaceVariantSummary,
+                            TextButton(
+                                text = stringResource(R.string.module_upload_identity_commit_renew),
+                                onClick = onRenewCommit,
+                                enabled = !state.verifying,
                             )
                         }
                     }
@@ -385,7 +333,7 @@ private fun IdentityBarMiuix(
 ) {
     val missing = listOf(
         state.uid.trim().length in 4..12,
-        state.verifyItem != null,
+        state.identityCommit != null,
         state.consent,
     ).count { !it }
     val verifying = state.verifying

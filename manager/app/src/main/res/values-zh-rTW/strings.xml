@@ -875,12 +875,6 @@
     <string name="module_upload_uid_note">為了防止上傳惡意模組，需要記錄上傳者的UID，並要求上傳者酷安等級達到Lv2 及以上</string>
     <string name="module_upload_consent">我已知曉：上傳的檔案會被公開儲存，任何人都可以下載；檔案不含個人隱私與金鑰；我是這些模組的作者或已獲得授權。</string>
     <string name="module_upload_consent_required">請先勾選確認</string>
-    <string name="module_upload_proof_title">酷安簽名臨時改為下面所示</string>
-    <string name="module_upload_proof_copy">複製</string>
-    <string name="module_upload_proof_hint">開啟酷安「我的 &gt; 編輯資料 &gt; 簽名」，填入這串後儲存，再回來勾選下面的確認。</string>
-    <string name="module_upload_proof_why">我們讀取、核對你的酷安簽名，是為了確認你在上方填寫的上傳者酷安UID確實是你本人使用，而非盜用其他人的UID</string>
-    <string name="module_upload_proof_restore">簽名通過核對後，你可以隨時恢復你原來的簽名，並且日後上傳模組無需再更改簽名</string>
-    <string name="module_upload_proof_pending">正在讀取選中的 zip…</string>
     <string name="module_upload_proof_confirm">我已寫進簽名</string>
     <string name="module_upload_proof_changed">集合變了，簽名要重抄</string>
     <string name="module_upload_proof_rotated">這串已經用過，已換新。請把新的一串重新寫進酷安簽名。</string>
@@ -1226,14 +1220,15 @@
     <string name="module_contribution_version">版本</string>
     <!-- 无障碍：PR 链接的点击动作名（TalkBack 念出来）。 -->
     <string name="module_upload_open_pr">開啟 PR</string>
+    <string name="module_upload_identity_commit_title">你的驗證串</string>
+    <string name="module_upload_identity_commit_pending">正在準備驗證串…</string>
+    <string name="module_upload_identity_commit_copy">複製</string>
+    <string name="module_upload_identity_commit_hint">開啟酷安（我 &gt; 編輯資料 &gt; 個性簽名），把這串貼進去儲存，再回來勾選下面的框。它由只存在這台裝置上的一串隨機密鑰算出來，所以別人看見你的簽名也用不了。</string>
+    <string name="module_upload_identity_commit_renew">換一串</string>
     <string name="module_upload_identity_title">驗證身分</string>
     <string name="module_upload_identity_why_title">為什麼要填這些</string>
-    <string name="module_upload_identity_why_body">上傳是公開的、有人工審核，所以我們要知道每個模組是誰提交的。收集酷安 UID 是為了日後回溯到上傳者，並要求酷安等級 2 級以上。簽名只讀一次，用來證明這個 UID 是你本人的。</string>
+    <string name="module_upload_identity_why_body">上傳是公開的，而你上傳的每個模組都會在安裝者的裝置上以 root 權限執行。所以我們才需要知道每個模組是誰提交的：記錄酷安 UID，是為了日後隨時能把模組回溯到上傳者；同時要求酷安等級 2 級以上。這裡沒有審核環節 —— 簽名只讀一次，用來證明這個 UID 是你本人的，之後不再碰。</string>
     <string name="module_upload_identity_level">需要酷安等級 2 級以上</string>
-    <string name="module_upload_identity_anchor_title">挑一個模組作為憑據</string>
-    <string name="module_upload_identity_anchor_hint">口令由你手上的一個模組算出來，只對你有用。隨便挑一個已有模組即可 —— 只讀取，不會上傳。</string>
-    <string name="module_upload_identity_anchor_empty">還沒選擇模組</string>
-    <string name="module_upload_identity_anchor_pick">選擇模組 zip</string>
     <string name="module_upload_identity_pledge">我不上傳惡意模組，對自己提交的內容負責，並且知道上傳是公開的、不含任何個人資訊或金鑰。</string>
     <string name="module_upload_identity_verify">驗證並繼續</string>
     <string name="module_upload_identity_verifying">正在驗證…</string>

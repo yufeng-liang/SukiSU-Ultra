@@ -1244,12 +1244,6 @@
     <string name="module_upload_uid_note">To keep malicious modules out we record the uploader\'s UID, and require a Coolapk account of level 2 or higher</string>
     <string name="module_upload_consent">I understand the files will be stored publicly and anyone can download them, and that they contain no personal information or keys. I am the author of these modules or have permission to upload them.</string>
     <string name="module_upload_consent_required">Please check the confirmation box first</string>
-    <string name="module_upload_proof_title">Temporarily change your Coolapk signature to the string below</string>
-    <string name="module_upload_proof_copy">Copy</string>
-    <string name="module_upload_proof_hint">Open Coolapk (Me &gt; Edit profile &gt; Signature), paste this string there and save, then come back and tick the box below.</string>
-    <string name="module_upload_proof_why">We read and check your Coolapk signature to confirm that the uploader UID you entered above really belongs to you and is not someone else\'s UID</string>
-    <string name="module_upload_proof_restore">Once the check passes you can restore your original signature at any time, and future uploads will not require changing it again</string>
-    <string name="module_upload_proof_pending">Reading the selected zips…</string>
     <string name="module_upload_proof_confirm">I have saved it in my Coolapk signature</string>
     <string name="module_upload_proof_changed">The batch changed, so the signature string must be copied again</string>
     <string name="module_upload_proof_rotated">The string was already used, so a new one was generated. Copy it into your Coolapk signature again.</string>
@@ -1460,14 +1454,15 @@
     <string name="module_upload_row_collapsed">Collapsed</string>
     <!-- 无障碍：PR 链接的点击动作名（TalkBack 念出来）。 -->
     <string name="module_upload_open_pr">Open pull request</string>
+    <string name="module_upload_identity_commit_title">Your verification string</string>
+    <string name="module_upload_identity_commit_pending">Preparing your verification string…</string>
+    <string name="module_upload_identity_commit_copy">Copy</string>
+    <string name="module_upload_identity_commit_hint">Open Coolapk (Me &gt; Edit profile &gt; Signature), paste this string there and save, then come back and tick the box below. It is derived from a random secret kept only on this device, so anyone who sees your signature still cannot use it.</string>
+    <string name="module_upload_identity_commit_renew">Use a different string</string>
     <string name="module_upload_identity_title">Verify your identity</string>
     <string name="module_upload_identity_why_title">Why we ask for these</string>
-    <string name="module_upload_identity_why_body">Uploads are public and reviewed by a human, so we need to know who submitted each module. We record your Coolapk UID so a module can be traced back to its uploader later, and we require a Coolapk account of level 2 or higher. Your signature is read only once, to prove the UID is yours.</string>
+    <string name="module_upload_identity_why_body">Uploads are public, and every module you upload runs with root privileges on the devices of everyone who installs it. That is why we need to know who submitted each one: your Coolapk UID is recorded so a module can always be traced back to its uploader, and we require a Coolapk account of level 2 or higher. There is no review step — your signature is read once, to prove the UID is yours, and then never again.</string>
     <string name="module_upload_identity_level">A Coolapk account of level 2 or higher is required</string>
-    <string name="module_upload_identity_anchor_title">Pick one module as the anchor</string>
-    <string name="module_upload_identity_anchor_hint">The string below is derived from one of your modules, so it only works for you. Pick any module you already have — it is only read, never uploaded.</string>
-    <string name="module_upload_identity_anchor_empty">No module selected yet</string>
-    <string name="module_upload_identity_anchor_pick">Pick a module zip</string>
     <string name="module_upload_identity_pledge">I will not upload malicious modules, I take responsibility for what I submit, and I understand that uploads are public and contain no personal information or keys.</string>
     <string name="module_upload_identity_verify">Verify and continue</string>
     <string name="module_upload_identity_verifying">Verifying…</string>

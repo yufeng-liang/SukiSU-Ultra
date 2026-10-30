@@ -2,8 +2,10 @@ package com.sukisu.ultra.ui.screen.upload
 
 import android.content.Context
 import androidx.core.content.edit
+import com.sukisu.ultra.data.backup.sha256Hex
 import com.sukisu.ultra.ksuApp
 import com.sukisu.ultra.ui.util.UploadSession
+import java.security.SecureRandom
 
 /**
  * 上传表单记住的「上次用的酷安 UID」。
@@ -32,7 +34,7 @@ import com.sukisu.ultra.ui.util.UploadSession
 object ModuleUploadPrefs {
 
     /**
-     * 独立 prefs 文件名。**只放会话令牌那五个键**，不放 UID。
+     * 独立 prefs 文件名。**只放会话令牌那五个键与身份验证串**，不放 UID。
      *
      * 改名（从 `settings` 到这个名字）意味着老用户盘上那一张令牌读不到了 ——
      * 一次性的代价：他们下次投稿要再改一次签名，之后又是九十天。这是刻意的取舍：
@@ -54,6 +56,21 @@ object ModuleUploadPrefs {
     const val KEY_SESSION_NICK = "module_upload_session_nickname"
     const val KEY_SESSION_AVATAR = "module_upload_session_avatar"
     const val KEY_SESSION_EXPIRES_AT = "module_upload_session_expires_at"
+
+    // ---- 身份验证串（哈希承诺，九十天内复用）----
+    //
+    // 与令牌放在同一份 prefs 文件里：它同样是「这台设备已验证过」这件事的依据，
+    // 被云备份拷走等于换台机器也能直接换令牌（见文件头那段取舍）。
+    const val KEY_IDENTITY_SECRET = "module_upload_identity_secret"
+
+    /** 身份验证串的字节数：16 字节 → 32 位小写十六进制，与契约的 `^[0-9a-f]{32}$` 一致。 */
+    private const val SECRET_BYTES = 16
+
+    /** 契约 §4：承诺串是 `sha256("sukisu-identity-v2:" + secret)` 的前 24 位。 */
+    private const val IDENTITY_COMMIT_PREFIX = "sukisu-identity-v2:"
+    const val IDENTITY_COMMIT_LEN = 24
+
+    private val SECRET_RANDOM = SecureRandom()
 
     /** 与 [com.sukisu.ultra.ui.util.ModuleContribution.isValidUid] 的 `\d{4,12}` 同一条形状。 */
     private const val UID_MAX_LEN = 12
@@ -120,6 +137,46 @@ object ModuleUploadPrefs {
     }
 
     /**
+     * 读本地的身份验证串；没存过、存坏了都返回空串（空串在界面上就是「还没生成」）。
+     *
+     * 形状判定与服务端同一条（`^[0-9a-f]{32}$`）：盘上那串被手改坏了，与其发出去换一个
+     * `identity_invalid`，不如当它不存在、由界面重新生成一串。
+     */
+    fun identitySecret(): String = runCatching {
+        val secret = sessionPrefs()?.getString(KEY_IDENTITY_SECRET, null).orEmpty()
+        secret.takeIf { SECRET_HEX_RE.matches(it) }.orEmpty()
+    }.getOrDefault("")
+
+    /**
+     * 生成一串新的身份验证串并落盘。
+     *
+     * 只在两处调用：本地还没有（或存坏了）、以及用户主动点「换一串」。**不在令牌到期时换**——
+     * 换一串就要用户再改一次酷安签名，那正是哈希承诺要省掉的动作。
+     */
+    fun renewIdentitySecret(): String {
+        val bytes = ByteArray(SECRET_BYTES)
+        SECRET_RANDOM.nextBytes(bytes)
+        val secret = bytes.joinToString("") { "%02x".format(it) }
+        runCatching { sessionPrefs()?.edit { putString(KEY_IDENTITY_SECRET, secret) } }
+        return secret
+    }
+
+    /** 拿本地那串；没有就先生成一串。 */
+    fun ensureIdentitySecret(): String = identitySecret().ifEmpty { renewIdentitySecret() }
+
+    /**
+     * 承诺串：用户抄进酷安签名的那一行。
+     *
+     * 与服务端 [com.sukisu.ultra.ui.util.ModuleContribution] 契约同一算法——
+     * `sha256("sukisu-identity-v2:" + secret)` 的前 24 位。签名里只有这一串，
+     * 反推不出 secret，所以别人看见签名也领不走令牌。
+     */
+    fun identityCommitment(secret: String): String =
+        (IDENTITY_COMMIT_PREFIX + secret).toByteArray(Charsets.UTF_8)
+            .sha256Hex()
+            .take(IDENTITY_COMMIT_LEN)
+
+    /**
      * 「上次用的 UID」仍然在 `settings` 里：它不是凭据，不需要跟着令牌搬家。
      *
      * 两套 prefs 分开取，是为了让「哪个键在哪一份文件里」只在这一处体现 ——
@@ -133,4 +190,7 @@ object ModuleUploadPrefs {
     private fun sessionPrefs() = runCatching {
         ksuApp.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }.getOrNull()
+
+    /** 身份验证串的形状：与服务端 `IDENTITY_SECRET_RE` 同一条尺子。 */
+    private val SECRET_HEX_RE = Regex("^[0-9a-f]{32}$")
 }

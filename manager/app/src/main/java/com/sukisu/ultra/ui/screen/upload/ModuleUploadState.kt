@@ -271,12 +271,10 @@ data class ModuleUploadFormState(
      */
     val verifyError: String? = null,
     /**
-     * 身份页拿去当锚点的那一枚包（只用到 id 与整包 sha256，不会进 [items]）。
-     *
-     * 口令必须绑一套具体的包才不可重放（酷安签名是公开的，只绑 UID 等于谁看见谁能冒充）。
-     * 优先用留存包，用户手上没有留存包时由界面走一次 SAF 挑一枚。
+     * 本机的身份验证串（32 位小写十六进制）。**永不上传，也不显示**——界面显示的是它的
+     * 承诺串 [identityCommit]，那串才是抄进酷安签名的东西。
      */
-    val verifyItem: UploadZip? = null,
+    val identitySecret: String = "",
 ) {
     /**
      * 手里这张令牌此刻能不能顶掉「改签名」那一步。
@@ -296,22 +294,22 @@ data class ModuleUploadFormState(
      * 身份页能不能点「验证身份」。
      *
      * 与 [canSubmit] 分开：那一套是「上传」的门，这里是「换令牌」的门，只要集齐三件事
-     * ——UID 形状像样、统一承诺勾了、手上有那枚做锚点的包。等级、签名里有没有口令这些
+     * ——UID 形状像样、统一承诺勾了、本机有一串验证串。等级、签名里有没有承诺串这些
      * 只有服务端说了算，不在本地预判。
      */
     val canVerify: Boolean
-        get() = verifyItem != null && consent && !verifying && !sessionChecking &&
+        get() = identitySecret.isNotEmpty() && consent && !verifying && !sessionChecking &&
             uid.trim().length in 4..12
 
     /**
-     * 身份页那串口令：只绑 [verifyItem] 这一枚包。
+     * 抄进酷安签名的那一行：验证串的哈希承诺（24 位）。
      *
-     * 与表单页的 [proof] 是同一套算法（[ModuleUploadRules.proofSnapshot]），但锚点不同 ——
-     * 身份页走到这里时 [items] 通常还是空的（先验证身份、再挑要传的包），所以不能复用 [proof]。
-     * 为 null 表示还没挑锚点包。
+     * 与表单页的 [proof] 不是一回事：那个绑「这一次要传的包」，这个只绑本机的验证串，
+     * 与包无关 —— 所以身份页不再需要挑锚点包。为 null 表示本机还没生成验证串。
      */
-    val verifyProof: ModuleUploadRules.ProofSnapshot?
-        get() = verifyItem?.let { ModuleUploadRules.proofSnapshot(listOf(it), nonce) }
+    val identityCommit: String?
+        get() = identitySecret.takeIf { it.isNotEmpty() }
+            ?.let { ModuleUploadPrefs.identityCommitment(it) }
 
     /** 当前集合 + nonce 算出来的口令；sha 没齐时 text 为空。 */
     val proof: ModuleUploadRules.ProofSnapshot?

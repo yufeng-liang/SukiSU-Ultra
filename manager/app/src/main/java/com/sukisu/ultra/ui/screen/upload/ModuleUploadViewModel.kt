@@ -162,6 +162,9 @@ class ModuleUploadViewModel(
     fun onEnter() {
         if (entered) return
         entered = true
+        // 验证串先备好：没有就现生成一串。它是这台设备的身份凭据，与令牌一起活——
+        // 退出验证（[signOut]）**不**换它，否则用户每次都要回去改一遍酷安签名。
+        _formState.update { it.copy(identitySecret = ModuleUploadPrefs.ensureIdentitySecret()) }
         // 令牌先读出来：用户一进表单就该看到「已验证」，不该等网络。
         refreshSession()
         startSessionTicker()
@@ -1377,66 +1380,53 @@ class ModuleUploadViewModel(
 
     // ── 身份（用一次签名核验换九十天令牌）──────────────────────────────────
 
-    /**
-     * 身份页挑一枚包当口令锚点。
-     *
-     * 与 [stageForRow] 只差落点：那一枚是要上传的货，这一枚只用来让口令**绑死一套具体的包**
-     * —— 酷安签名是公开的，口令若只绑 UID，任何看见签名的人都能替别人领令牌。挑完不会进
-     * 上传列表，也不会出现在图标墙上。
-     */
-    fun stageForVerify(context: Context, uri: Uri) {
-        if (_formState.value.verifying) return
-        val maxBytes = _listState.value.limits?.takeIf { it.usable }?.maxBytes
-        if (maxBytes == null) {
-            _formState.update { it.copy(verifyError = res.getString(R.string.module_upload_limit_unknown)) }
-            return
-        }
-        _formState.update { it.copy(verifyItem = null, verifyError = null) }
-        viewModelScope.launch {
-            val message = when (val result = ModuleUploadStaging.stage(context, uri, maxBytes)) {
-                is ModuleUploadStaging.Result.Ok -> {
-                    _formState.update { it.copy(verifyItem = result.zip) }
-                    return@launch
-                }
-                ModuleUploadStaging.Result.UnreadableModule ->
-                    res.getString(R.string.module_upload_unreadable_prop)
-                ModuleUploadStaging.Result.NoInstaller ->
-                    res.getString(R.string.module_upload_no_installer_title)
-                is ModuleUploadStaging.Result.TooBig -> stageTooBigMessage(result)
-                ModuleUploadStaging.Result.Failed ->
-                    res.getString(R.string.module_upload_stage_failed)
-            }
-            _formState.update { it.copy(verifyError = message) }
-        }
-    }
-
     /** 身份页上那条错误提示读过了就收起来，别一直压着。 */
     fun consumeVerifyError() {
         _formState.update { if (it.verifyError == null) it else it.copy(verifyError = null) }
     }
 
     /**
-     * 「验证身份」：拿签名里那串口令换一张九十天的令牌。
+     * 「换一串」：换掉本机的身份验证串。
+     *
+     * 用户点它等于承认「签名里那串我不打算再用了」。换完必须重新把新承诺抄进签名 ——
+     * 所以顺手把核验错误清掉、把承诺勾选也清掉（勾的是旧串那一次）。
+     *
+     * **不吊销手里的令牌**：令牌是服务端按旧串发的，仍然有效到到期为止；换串只影响
+     * 「下次要换令牌时用哪一串」，不是「退出验证」。
+     */
+    fun renewIdentityCommit() {
+        val state = _formState.value
+        if (state.verifying) return
+        _formState.update {
+            it.copy(
+                identitySecret = ModuleUploadPrefs.renewIdentitySecret(),
+                verifyError = null,
+                // 旧的「我抄好了」是对旧串说的，新串还没抄：这个勾必须重新打。
+                consent = false,
+            )
+        }
+    }
+
+    /**
+     * 「验证身份」：拿签名里那串承诺对应的验证串换一张九十天的令牌。
      *
      * 成败都落在 [ModuleUploadFormState.verifyError] 上，**不弹一次性 Toast 就算完**：像
-     * 「口令没在签名里找到」这种话必须留在原地，用户要对着它去改签名。
+     * 「签名里没找到这串承诺」这种话必须留在原地，用户要对着它去改签名。
      *
      * 成功之后这一屏就再也不会出现（除非主动退出验证）：令牌写进磁盘，进页面直接是列表。
      */
     fun verifyIdentity() {
         val state = _formState.value
         if (state.verifying || !state.canVerify) return
-        val item = state.verifyItem ?: return
         val uid = state.uid.trim()
-        val nonce = state.nonce
+        val secret = state.identitySecret
         _formState.update { it.copy(verifying = true, verifyError = null) }
         identityJob?.cancel()
         identityJob = viewModelScope.launch {
             val outcome = try {
                 ModuleContribution.issueIdentitySession(
                     coolapkUid = uid,
-                    nonce = nonce,
-                    items = listOf(ProofItem(item.id, item.sha256)),
+                    secret = secret,
                 )
             } catch (e: CancellationException) {
                 throw e
