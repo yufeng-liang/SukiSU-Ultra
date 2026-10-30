@@ -724,11 +724,18 @@ internal fun UidStatusRowMiuix(
                 avatarUrl = uidState.avatar.ifBlank { state.session?.avatar.orEmpty() },
                 tint = colorScheme.primary,
                 placeholder = colorScheme.surfaceContainer,
+                showMark = false,
+            )
+            // 勾单独画在「已验证」左边（与 Material 同款解释：32dp 头像角上再压勾会糊）。
+            VerifiedMark(
+                tint = colorScheme.primary,
+                modifier = Modifier.padding(start = 10.dp),
+                size = 16.dp,
             )
             Text(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 10.dp),
+                    .padding(start = 6.dp),
                 text = stringResource(R.string.module_upload_uid_verified, uidState.nickname),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,

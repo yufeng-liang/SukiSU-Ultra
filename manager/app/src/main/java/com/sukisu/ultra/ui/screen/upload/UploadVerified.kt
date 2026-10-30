@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.ksuApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -62,8 +63,37 @@ private val avatarClient: OkHttpClient by lazy {
     ksuApp.okhttpClient.newBuilder().callTimeout(15, TimeUnit.SECONDS).build()
 }
 
+/**
+ * 酷安图床的防盗链头。
+ *
+ * 酷安 CDN（`image.coolapk.com` 这类）只放行**浏览器** UA，裸 OkHttp 的默认 UA
+ * （`okhttp/x.y.z`）会被挡成 403 —— 这正是「头像一直画不出来」的原因。口径照
+ * coolapk-auto-post 的做法：浏览器 UA + `Referer: https://www.coolapk.com/`；
+ * 微博图床（`sinaimg.cn`）认的是自己的 Referer。
+ *
+ * 只带这两个头：不模仿 App 指纹、不塞 Cookie。头像只是装饰，取不到就画占位圆，
+ * 不值得为它复制一套客户端伪装。
+ */
+private const val AVATAR_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+private const val COOLAPK_REFERER = "https://www.coolapk.com/"
+private const val WEIBO_REFERER = "https://weibo.com/"
+
+/** 按图床选 Referer：微博图床只认自己的；其余（含酷安 CDN）统一给酷安首页。 */
+private fun avatarReferer(url: String): String {
+    val host = url.toHttpUrlOrNull()?.host?.lowercase().orEmpty()
+    val weibo = host == "sinaimg.cn" || host.endsWith(".sinaimg.cn")
+    return if (weibo) WEIBO_REFERER else COOLAPK_REFERER
+}
+
 private fun loadAvatar(url: String): ImageBitmap? = runCatching {
-    val bytes = avatarClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+    val request = Request.Builder()
+        .url(url)
+        .header("User-Agent", AVATAR_USER_AGENT)
+        .header("Referer", avatarReferer(url))
+        .build()
+    val bytes = avatarClient.newCall(request).execute().use { resp ->
         if (!resp.isSuccessful) return null
         val source = resp.body.source()
         // 先问长度：真去读一个几百 MB 的东西只为了让头像显示，不值得。
@@ -180,6 +210,9 @@ fun VerifiedMark(
  * 头像 + 勾的合体：有头像就画头像、右下角压一个勾；没有就画一个带勾的空圆。
  *
  * [avatarUrl] 为空时也能用 —— 「已验证但酷安没给头像」是正常情况。
+ *
+ * [showMark] = false 时只画头像本身：身份页要把勾挪到「已验证」文字左边，
+ * 由调用方自己摆 [VerifiedMark]，压在头像角上会和那处重复。
  */
 @Composable
 fun VerifiedAvatar(
@@ -189,6 +222,7 @@ fun VerifiedAvatar(
     modifier: Modifier = Modifier,
     avatarSize: Dp = 32.dp,
     markSize: Dp = 14.dp,
+    showMark: Boolean = true,
 ) {
     val bitmap = rememberUploadAvatar(avatarUrl)
     Box(modifier = modifier.size(avatarSize)) {
@@ -208,10 +242,12 @@ fun VerifiedAvatar(
                     .background(placeholder),
             )
         }
-        VerifiedMark(
-            tint = tint,
-            modifier = Modifier.align(Alignment.BottomEnd),
-            size = markSize,
-        )
+        if (showMark) {
+            VerifiedMark(
+                tint = tint,
+                modifier = Modifier.align(Alignment.BottomEnd),
+                size = markSize,
+            )
+        }
     }
 }

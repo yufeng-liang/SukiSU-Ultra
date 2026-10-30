@@ -2,6 +2,9 @@ package com.sukisu.ultra.ui.screen.upload
 
 import android.content.ClipData
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,13 +31,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.res.stringResource
@@ -49,7 +59,9 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Checkbox
@@ -88,6 +100,8 @@ fun ModuleUploadIdentityMiuix(
     onConsentChange: (Boolean) -> Unit,
     onRenewCommit: () -> Unit,
     onVerify: () -> Unit,
+    /** 用户自称已经升级到能验证的酷安等级时，清掉「等级不足」的拦截再试一次。 */
+    onClearLevelBlock: () -> Unit,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     val enableBlur = LocalEnableBlur.current
@@ -119,6 +133,7 @@ fun ModuleUploadIdentityMiuix(
             IdentityBarMiuix(
                 state = state,
                 onVerify = onVerify,
+                onClearLevelBlock = onClearLevelBlock,
             )
         },
         popupHost = { },
@@ -153,7 +168,9 @@ fun ModuleUploadIdentityMiuix(
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.VerifiedUser,
+                                // 问号而不是「已验证的人」：这一格回答的是「为什么要填这些」，
+                                // 用人形图标会读成「这里要填身份」，而它下面那张卡才是填的地方。
+                                imageVector = Icons.Outlined.HelpOutline,
                                 contentDescription = null,
                                 tint = colorScheme.onSecondaryContainer,
                                 modifier = Modifier.size(18.dp),
@@ -235,7 +252,29 @@ fun ModuleUploadIdentityMiuix(
                             )
                         } else {
                             Surface(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    // 换一串的入口是隐藏的长按，不再画成按钮：这一行本身是
+                                    // 「拿去贴签名」的承诺串，旁边挂个「换一串」会让人以为
+                                    // 它是个可随时重掷的临时值。但承诺串是公开贴出去的，
+                                    // 真泄露时必须留一条自救路径，所以把入口藏进长按里。
+                                    // 真等满 3 秒才换。系统长按阈值只有约 0.5 秒，误触一次就把验证串
+                                    // 换掉，用户得回酷安重新改签名 —— 这个代价不该由一次手滑决定。
+                                    .pointerInput(commit) {
+                                        awaitEachGesture {
+                                            awaitFirstDown(requireUnconsumed = false)
+                                            val heldLongEnough = withTimeoutOrNull(3_000L) {
+                                                // 正常抬起（或手势被别处取消）就算「没按满」。
+                                                waitForUpOrCancellation()
+                                                false
+                                            } == null
+                                            if (heldLongEnough) {
+                                                onRenewCommit()
+                                                // 手指多半还按着：吃掉剩下的事件，免得再触发一次。
+                                                waitForUpOrCancellation()
+                                            }
+                                        }
+                                    },
                                 color = colorScheme.surfaceContainer,
                                 shape = RoundedCornerShape(12.dp),
                             ) {
@@ -270,11 +309,6 @@ fun ModuleUploadIdentityMiuix(
                                 text = stringResource(R.string.module_upload_identity_commit_hint),
                                 fontSize = 12.sp,
                                 color = colorScheme.onSurfaceVariantSummary,
-                            )
-                            TextButton(
-                                text = stringResource(R.string.module_upload_identity_commit_renew),
-                                onClick = onRenewCommit,
-                                enabled = !state.verifying,
                             )
                         }
                     }
@@ -348,6 +382,7 @@ fun ModuleUploadIdentityMiuix(
 private fun IdentityBarMiuix(
     state: ModuleUploadFormState,
     onVerify: () -> Unit,
+    onClearLevelBlock: () -> Unit,
 ) {
     val missing = listOf(
         state.uid.trim().length in 4..12,
@@ -356,6 +391,41 @@ private fun IdentityBarMiuix(
     ).count { !it }
     val verifying = state.verifying
     val error = state.verifyError
+
+    // 冷却剩余秒数随时间走：只在真的处于冷却时起一个每秒一次的 ticker，
+    // now 越过截止时间就停（不常驻轮询）。key 用截止时间，换号或被清掉时自动重启。
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(state.verifyCooldownUntil) {
+        val deadline = state.verifyCooldownUntil
+        if (deadline <= System.currentTimeMillis()) return@LaunchedEffect
+        while (true) {
+            now = System.currentTimeMillis()
+            if (now >= deadline) break
+            delay(1_000L)
+        }
+    }
+
+    // 等级不足只拦「当时被拒的那个号」：用户填了新号之后不该继续被上一号的拦截压着。
+    val levelBlocked = state.levelBlockedUid.isNotEmpty() &&
+        state.levelBlockedUid == state.uid.trim()
+    val cooldownMillis = (state.verifyCooldownUntil - now).coerceAtLeast(0L)
+    val coolingDown = !levelBlocked && cooldownMillis > 0L
+    // 向上取整：剩 0.4 秒显示「请 1 秒后再试」，不出现「请 0 秒」。
+    val cooldownSeconds = ((cooldownMillis + 999L) / 1_000L).toInt()
+    // 优先级：等级不足（要用户去升级，是更根本的阻塞）> 冷却 > 既有三态。
+    val hint = when {
+        levelBlocked -> stringResource(R.string.module_upload_identity_level_blocked)
+        coolingDown -> stringResource(R.string.module_upload_identity_cooldown, cooldownSeconds)
+        verifying -> stringResource(R.string.module_upload_identity_verifying)
+        missing > 0 -> stringResource(R.string.module_upload_identity_missing, missing)
+        else -> stringResource(R.string.module_upload_identity_ready)
+    }
+    val hintColor = when {
+        levelBlocked || coolingDown -> colorScheme.error
+        verifying -> colorScheme.onSurfaceVariantSummary
+        missing > 0 -> colorScheme.error
+        else -> colorScheme.primary
+    }
     Surface(color = colorScheme.surface) {
         Column {
             if (error != null) {
@@ -385,22 +455,16 @@ private fun IdentityBarMiuix(
             ) {
                 Text(
                     modifier = Modifier.weight(1f),
-                    text = when {
-                        verifying -> stringResource(R.string.module_upload_identity_verifying)
-                        missing > 0 -> stringResource(R.string.module_upload_identity_missing, missing)
-                        else -> stringResource(R.string.module_upload_identity_ready)
-                    },
+                    text = hint,
                     fontSize = 12.sp,
                     maxLines = 2,
-                    color = when {
-                        verifying -> colorScheme.onSurfaceVariantSummary
-                        missing > 0 -> colorScheme.error
-                        else -> colorScheme.primary
-                    },
+                    color = hintColor,
                 )
                 Button(
                     onClick = onVerify,
-                    enabled = state.canVerify,
+                    // 等级不足与冷却期间都点不动：前者要用户先去升等级，后者是服务端
+                    // 明确要求「过一会儿再来」，让按钮可点只会再吃一次同样的失败。
+                    enabled = state.canVerify && !levelBlocked && !coolingDown,
                     modifier = Modifier.height(48.dp),
                     cornerRadius = 12.dp,
                 ) {
@@ -420,6 +484,17 @@ private fun IdentityBarMiuix(
                         fontWeight = FontWeight.Medium,
                     )
                 }
+            }
+            // 「我已升级，重新验证」只有在真被等级拦过时才出现：它是用户的自证入口，
+            // 平时摆着会让人以为验证失败是因为等级。
+            if (levelBlocked) {
+                TextButton(
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(end = 12.dp, bottom = 6.dp),
+                    text = stringResource(R.string.module_upload_identity_level_recheck),
+                    onClick = onClearLevelBlock,
+                )
             }
         }
     }

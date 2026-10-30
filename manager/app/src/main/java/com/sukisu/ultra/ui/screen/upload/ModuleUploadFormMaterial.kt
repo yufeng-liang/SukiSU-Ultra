@@ -733,11 +733,20 @@ internal fun UidStatusRowMaterial(
                 avatarUrl = uidState.avatar.ifBlank { state.session?.avatar.orEmpty() },
                 tint = MaterialTheme.colorScheme.primary,
                 placeholder = MaterialTheme.colorScheme.surfaceContainerHighest,
+                showMark = false,
+            )
+            // 勾从「压在头像右下角」挪到「就在『已验证』左边」：头像只有 32dp，
+            // 角上再压一枚勾会糊成一团；单独画一枚 16dp 的标记，视线顺序变成
+            // 「头像 → ✓ → 已验证：昵称」，扫一眼就认得出来。
+            VerifiedMark(
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 10.dp),
+                size = 16.dp,
             )
             Text(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 10.dp),
+                    .padding(start = 6.dp),
                 text = stringResource(R.string.module_upload_uid_verified, uidState.nickname),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,

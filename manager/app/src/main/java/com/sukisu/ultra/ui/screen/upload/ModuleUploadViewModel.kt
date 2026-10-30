@@ -1121,6 +1121,16 @@ class ModuleUploadViewModel(
         // 结果是整包传完才收到 403。令牌那条路已经用 sessionMatchesUid 绑定了身份，
         // 签名这条路必须在这里补上同一个绑定。
         val uidChanged = cleaned != previous
+        // 换了号就是换了输入指纹：失败冷却按 UID 记，不清的话新号会陪着旧号的冷却一起等。
+        if (uidChanged) {
+            _formState.update {
+                if (it.verifyCooldownUntil == 0L && it.verifyFailures == 0) {
+                    it
+                } else {
+                    it.copy(verifyCooldownUntil = 0L, verifyFailures = 0)
+                }
+            }
+        }
         lookupJob?.cancel()
         if (!ModuleContribution.isValidUid(cleaned)) {
             _formState.update {
@@ -1413,10 +1423,49 @@ class ModuleUploadViewModel(
             it.copy(
                 identitySecret = ModuleUploadPrefs.renewIdentitySecret(),
                 verifyError = null,
+                // 换了一串就是换了一组输入指纹，失败账本跟着归零：否则「刚失败过」的
+                // 冷却是按旧串记的，用户换了串还要陪着等。
+                verifyFailures = 0,
+                verifyCooldownUntil = 0L,
                 // 旧的「我抄好了」是对旧串说的，新串还没抄：这个勾必须重新打。
                 consent = false,
             )
         }
+    }
+
+    /**
+     * 「我已升级，重新验证」：解除按 UID 记的「等级不足」禁用。
+     *
+     * 解除后**不预支任何判断** —— 只是把按钮重新点亮，点了还是走一次真实核验。
+     * 之所以要有这个入口：等级是用户能自己改的事（发帖、评论涨等级），
+     * 没有它的话这个人就永远停在这一屏，除了卸载重装没有别的路。
+     */
+    fun clearLevelBlock() {
+        _formState.update {
+            if (it.levelBlockedUid.isEmpty()) {
+                it
+            } else {
+                it.copy(
+                    levelBlockedUid = "",
+                    verifyError = null,
+                    verifyFailures = 0,
+                    verifyCooldownUntil = 0L,
+                )
+            }
+        }
+    }
+
+    /**
+     * 失败后的冷却时长：30 秒起，连续失败翻倍，5 分钟封顶。
+     *
+     * 起手 30 秒够「忘了贴签名」的人回去贴一次；翻倍是挡「一直点」的那种，
+     * 而不是为难偶尔手滑的人。成功即清零（见 [verifyIdentity]）。
+     */
+    private fun cooldownMillis(failures: Int): Long = when {
+        failures <= 1 -> 30_000L
+        failures == 2 -> 60_000L
+        failures == 3 -> 120_000L
+        else -> 300_000L
     }
 
     /**
@@ -1432,6 +1481,10 @@ class ModuleUploadViewModel(
         if (state.verifying || !state.canVerify) return
         val uid = state.uid.trim()
         val secret = state.identitySecret
+        // 冷却期内、或这个号已经被判过等级不足，就别再打这一枪：结果必然一样，只是白烧额度。
+        // 界面上的按钮已经禁用了，这里再挡一次是因为「禁用」只是观感，真正的判据在这。
+        if (state.verifyCooldownUntil > System.currentTimeMillis()) return
+        if (state.levelBlockedUid == uid) return
         _formState.update { it.copy(verifying = true, verifyError = null) }
         identityJob?.cancel()
         identityJob = viewModelScope.launch {
@@ -1447,7 +1500,30 @@ class ModuleUploadViewModel(
             }
             _formState.update { it.copy(verifying = false) }
             if (!outcome.ok) {
-                _formState.update { it.copy(verifyError = outcome.message) }
+                _formState.update { fail ->
+                    when {
+                        // 等级不足是**用户事实**：记住这个号，按钮换成「我已升级，重新验证」，
+                        // 不这样做他就会一遍遍点同一颗按钮、我们一遍遍回同一个 403。
+                        outcome.code == LEVEL_TOO_LOW_CODE ->
+                            fail.copy(
+                                verifying = false,
+                                verifyError = outcome.message,
+                                levelBlockedUid = uid,
+                            )
+                        // 形状不对 / 没生成好这类根本没发请求，冷却它没有意义。
+                        outcome.code == IDENTITY_REQUIRED_CODE ->
+                            fail.copy(verifying = false, verifyError = outcome.message)
+                        else -> {
+                            val failures = fail.verifyFailures + 1
+                            fail.copy(
+                                verifying = false,
+                                verifyError = outcome.message,
+                                verifyFailures = failures,
+                                verifyCooldownUntil = System.currentTimeMillis() + cooldownMillis(failures),
+                            )
+                        }
+                    }
+                }
                 return@launch
             }
             val grant = outcome.session ?: return@launch
@@ -1468,6 +1544,10 @@ class ModuleUploadViewModel(
                     // 声明，不该在每次上传时再问一遍。退出验证会把它连同令牌一起清掉。
                     consent = true,
                     verifyError = null,
+                    // 验证成功就把失败账本清干净：下一次（九十天后换令牌）从零开始。
+                    verifyFailures = 0,
+                    verifyCooldownUntil = 0L,
+                    levelBlockedUid = "",
                     // 令牌到手，那串口令与勾选都没有依据了：下次要改签名时从干净状态开始。
                     confirmedSetKey = null,
                 )
@@ -1931,6 +2011,12 @@ class ModuleUploadViewModel(
     private val res get() = ksuApp.resources
 
     private companion object {
+        /** 服务端判「酷安等级不够」时回的码。它和「查不到这个账号」原本共用一个码，现在是两个。 */
+        const val LEVEL_TOO_LOW_CODE = "level_too_low"
+
+        /** 本地形状校验就没过（UID 位数不对、验证串没生成好），根本没发请求。 */
+        const val IDENTITY_REQUIRED_CODE = "identity_required"
+
         /** 出处链接的最大长度：够放任何酷安链接，又不至于让人把整篇文章粘进来。 */
         const val SOURCE_MAX_CHARS = 512
 

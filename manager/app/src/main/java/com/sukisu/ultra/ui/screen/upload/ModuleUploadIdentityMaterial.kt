@@ -1,6 +1,9 @@
 package com.sukisu.ultra.ui.screen.upload
 
 import android.content.ClipData
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,9 +46,15 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.res.stringResource
@@ -58,7 +68,9 @@ import com.sukisu.ultra.R
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 身份页（Material）：与 [ModuleUploadIdentityMiuix] 同一份状态、同一套判据，只换控件。
@@ -75,6 +87,7 @@ fun ModuleUploadIdentityMaterial(
     onRetryUid: () -> Unit,
     onConsentChange: (Boolean) -> Unit,
     onRenewCommit: () -> Unit,
+    onClearLevelBlock: () -> Unit,
     onVerify: () -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -102,6 +115,7 @@ fun ModuleUploadIdentityMaterial(
             IdentityBarMaterial(
                 state = state,
                 onVerify = onVerify,
+                onClearLevelBlock = onClearLevelBlock,
             )
         },
         contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout)
@@ -128,7 +142,9 @@ fun ModuleUploadIdentityMaterial(
                     ) {
                         Icon(
                             modifier = Modifier.size(20.dp),
-                            imageVector = Icons.Filled.VerifiedUser,
+                            // 问号而不是「已验证的人」：这一格回答的是「为什么要填这些」，
+                            // 用人形图标会读成「这里要填身份」，而它上面那张卡才是填的地方。
+                            imageVector = Icons.Outlined.HelpOutline,
                             contentDescription = null,
                             tint = accent,
                         )
@@ -212,7 +228,28 @@ fun ModuleUploadIdentityMaterial(
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                                        // 长按这串字 = 换一串。界面上不留按钮（那一行本来就挤，
+                                        // 而且换串是极少数时刻才需要的事），但也不能没有：这串是
+                                        // 公开抄在酷安签名里的，万一被谁抄走抢先换了令牌，用户得有
+                                        // 一条自救路径 —— 换一串，旧的承诺立刻作废。
+                                        // 真等满 3 秒才换。系统长按阈值只有约 0.5 秒，误触一次就把验证串
+                                        // 换掉，用户得回酷安重新改签名 —— 这个代价不该由一次手滑决定。
+                                        .pointerInput(commit) {
+                                            awaitEachGesture {
+                                                awaitFirstDown(requireUnconsumed = false)
+                                                val heldLongEnough = withTimeoutOrNull(3_000L) {
+                                                    // 正常抬起（或手势被别处取消）就算「没按满」。
+                                                    waitForUpOrCancellation()
+                                                    false
+                                                } == null
+                                                if (heldLongEnough) {
+                                                    onRenewCommit()
+                                                    // 手指多半还按着：吃掉剩下的事件，免得再触发一次。
+                                                    waitForUpOrCancellation()
+                                                }
+                                            }
+                                        },
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
@@ -240,9 +277,6 @@ fun ModuleUploadIdentityMaterial(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            TextButton(onClick = onRenewCommit, enabled = !state.verifying) {
-                                Text(stringResource(R.string.module_upload_identity_commit_renew))
-                            }
                         }
                     }
                 }
@@ -305,6 +339,7 @@ fun ModuleUploadIdentityMaterial(
 private fun IdentityBarMaterial(
     state: ModuleUploadFormState,
     onVerify: () -> Unit,
+    onClearLevelBlock: () -> Unit,
 ) {
     val missing = listOf(
         state.uid.trim().length in 4..12,
@@ -313,6 +348,20 @@ private fun IdentityBarMaterial(
     ).count { !it }
     val verifying = state.verifying
     val error = state.verifyError
+    // 「等级不够」和「刚失败过」都不是用户的错，但都是「这一枪现在打不出去」的原因。
+    // 按钮灰着而不说为什么，用户只会一直点；所以把它们做成 hint 的最高优先级，
+    // 并且冷却要给秒数 —— 秒数在走，才看得懂「等一会儿」不是搪塞。
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(state.verifyCooldownUntil) {
+        while (state.verifyCooldownUntil > System.currentTimeMillis()) {
+            now = System.currentTimeMillis()
+            delay(1_000L)
+        }
+        now = System.currentTimeMillis()
+    }
+    val cooldownLeft = ((state.verifyCooldownUntil - now).coerceAtLeast(0L) + 999L) / 1_000L
+    val levelBlocked = state.levelBlockedUid.isNotEmpty() && state.levelBlockedUid == state.uid.trim()
+    val blocked = levelBlocked || cooldownLeft > 0L
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
         Column {
             if (error != null) {
@@ -324,6 +373,17 @@ private fun IdentityBarMaterial(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            // 等级不足是用户能自己解决的事（发帖、评论会涨等级），所以必须给一条手动解除的路，
+            // 否则这个人就永远停在这一屏 —— 除了卸载重装没有别的出口。解除后不预支判断，
+            // 点了还是走一次真实核验。
+            if (levelBlocked) {
+                TextButton(
+                    modifier = Modifier.padding(start = 8.dp),
+                    onClick = onClearLevelBlock,
+                ) {
+                    Text(stringResource(R.string.module_upload_identity_level_recheck))
+                }
             }
             Row(
                 modifier = Modifier
@@ -342,6 +402,10 @@ private fun IdentityBarMaterial(
                 Text(
                     modifier = Modifier.weight(1f),
                     text = when {
+                        levelBlocked ->
+                            stringResource(R.string.module_upload_identity_level_blocked)
+                        cooldownLeft > 0L ->
+                            stringResource(R.string.module_upload_identity_cooldown, cooldownLeft)
                         verifying -> stringResource(R.string.module_upload_identity_verifying)
                         missing > 0 -> stringResource(R.string.module_upload_identity_missing, missing)
                         else -> stringResource(R.string.module_upload_identity_ready)
@@ -349,6 +413,7 @@ private fun IdentityBarMaterial(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                     color = when {
+                        blocked -> MaterialTheme.colorScheme.error
                         verifying -> MaterialTheme.colorScheme.onSurfaceVariant
                         missing > 0 -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.primary
@@ -356,7 +421,7 @@ private fun IdentityBarMaterial(
                 )
                 Button(
                     onClick = onVerify,
-                    enabled = state.canVerify,
+                    enabled = state.canVerify && !blocked,
                     modifier = Modifier.height(48.dp),
                 ) {
                     if (verifying) {

@@ -199,6 +199,7 @@ fun ModuleUploadScreen() {
                 onConsentChange = viewModel::setConsent,
                 onRenewCommit = viewModel::renewIdentityCommit,
                 onVerify = viewModel::verifyIdentity,
+                onClearLevelBlock = viewModel::clearLevelBlock,
             )
 
             UiMode.Material -> ModuleUploadIdentityMaterial(
@@ -209,6 +210,7 @@ fun ModuleUploadScreen() {
                 onConsentChange = viewModel::setConsent,
                 onRenewCommit = viewModel::renewIdentityCommit,
                 onVerify = viewModel::verifyIdentity,
+                onClearLevelBlock = viewModel::clearLevelBlock,
             )
         }
 
