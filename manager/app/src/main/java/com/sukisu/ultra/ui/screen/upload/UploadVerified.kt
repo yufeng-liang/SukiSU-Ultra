@@ -80,6 +80,27 @@ private const val AVATAR_USER_AGENT =
 private const val COOLAPK_REFERER = "https://www.coolapk.com/"
 private const val WEIBO_REFERER = "https://weibo.com/"
 
+/**
+ * 把头像地址抬到 https。
+ *
+ * 酷安给的是 `http://avatar.coolapk.com/...`，而本应用的 `network_security_config.xml`
+ * 只放行 localhost 的明文流量 —— 明文请求会被系统直接拦掉（`CLEARTEXT communication …
+ * not permitted by network security policy`），界面于是永远是一张空头像。同一路径的
+ * https 能用，所以在这里换协议。
+ *
+ * 只对确认支持 TLS 的图床换：别家 http 地址换过去可能连不上，那时保住原地址、让下载失败
+ * 走占位圆，比凭猜测把地址改坏更诚实。
+ */
+private val TLS_AVATAR_HOSTS = listOf("coolapk.com", "sinaimg.cn", "weibo.com", "weibo.cn")
+
+internal fun secureAvatarUrl(raw: String): String {
+    val url = raw.toHttpUrlOrNull() ?: return raw
+    if (url.isHttps) return raw
+    val host = url.host.lowercase()
+    if (TLS_AVATAR_HOSTS.none { host == it || host.endsWith(".$it") }) return raw
+    return url.newBuilder().scheme("https").build().toString()
+}
+
 /** 按图床选 Referer：微博图床只认自己的；其余（含酷安 CDN）统一给酷安首页。 */
 private fun avatarReferer(url: String): String {
     val host = url.toHttpUrlOrNull()?.host?.lowercase().orEmpty()
@@ -117,9 +138,9 @@ private fun loadAvatar(url: String): ImageBitmap? = runCatching {
  */
 @Composable
 fun rememberUploadAvatar(url: String?): ImageBitmap? {
-    val safe = url?.trim()?.takeIf {
-        it.startsWith("http://", true) || it.startsWith("https://", true)
-    }
+    val safe = url?.trim()
+        ?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
+        ?.let { secureAvatarUrl(it) }
     if (safe.isNullOrEmpty()) return null
     val cached = avatarCache.get(safe)
     if (cached != null) return cached
