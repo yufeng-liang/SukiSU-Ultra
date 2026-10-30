@@ -1,7 +1,9 @@
 package com.sukisu.ultra.ui.screen.upload
 
 import android.content.ClipData
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,18 +19,20 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ClipEntry
@@ -49,8 +53,8 @@ import com.sukisu.ultra.ui.util.rememberBlurBackdrop
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Checkbox
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -115,8 +119,7 @@ fun ModuleUploadIdentityMiuix(
         },
         bottomBar = {
             IdentityBarMiuix(
-                canVerify = state.canVerify,
-                verifying = state.verifying,
+                state = state,
                 onVerify = onVerify,
             )
         },
@@ -136,21 +139,41 @@ fun ModuleUploadIdentityMiuix(
         ) {
             item {
                 // 一进来就把「为什么要这些信息」讲清楚：这一屏是所有用户都要过的第一道门，
-                // 讲不清就会像在收表。
+                // 讲不清就会像在收表。视觉借表单顶部汇总卡的语言（圆角图标块 + 加粗标题），
+                // 让它读起来是「这一屏的说明」，而不是又一张待填表。
                 Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-                    Column(
+                    Row(
                         modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        IdentityLabelMiuix(
-                            icon = Icons.Outlined.Info,
-                            text = stringResource(R.string.module_upload_identity_why_title),
-                        )
-                        Text(
-                            text = stringResource(R.string.module_upload_identity_why_body),
-                            fontSize = 13.sp,
-                            color = colorScheme.onSurfaceVariantSummary,
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colorScheme.secondaryContainer),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VerifiedUser,
+                                contentDescription = null,
+                                tint = colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = stringResource(R.string.module_upload_identity_why_title),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colorScheme.onSurface,
+                            )
+                            Text(
+                                text = stringResource(R.string.module_upload_identity_why_body),
+                                fontSize = 13.sp,
+                                color = colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
                     }
                 }
             }
@@ -161,7 +184,7 @@ fun ModuleUploadIdentityMiuix(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IdentityLabelMiuix(
+                        SectionLabelMiuix(
                             icon = Icons.Filled.VerifiedUser,
                             text = stringResource(R.string.module_upload_section_identity),
                             required = true,
@@ -197,7 +220,7 @@ fun ModuleUploadIdentityMiuix(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IdentityLabelMiuix(
+                        SectionLabelMiuix(
                             icon = MiuixIcons.File,
                             text = stringResource(R.string.module_upload_identity_anchor_title),
                             required = true,
@@ -245,7 +268,7 @@ fun ModuleUploadIdentityMiuix(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IdentityLabelMiuix(
+                        SectionLabelMiuix(
                             icon = Icons.Filled.VerifiedUser,
                             text = stringResource(R.string.module_upload_proof_title),
                         )
@@ -258,9 +281,10 @@ fun ModuleUploadIdentityMiuix(
                                 color = colorScheme.onSurfaceVariantSummary,
                             )
                         } else {
-                            Card(
+                            Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.defaultColors(color = colorScheme.surfaceContainer),
+                                color = colorScheme.surfaceContainer,
+                                shape = RoundedCornerShape(12.dp),
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth()
@@ -342,89 +366,95 @@ fun ModuleUploadIdentityMiuix(
                 }
             }
 
-            val error = state.verifyError
-            if (error != null) {
-                item {
-                    Text(
-                        modifier = Modifier.padding(top = 12.dp, start = 4.dp),
-                        text = error,
-                        fontSize = 13.sp,
-                        color = colorScheme.error,
-                    )
-                }
-            }
-
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
 
 /**
- * 底部的那一颗按钮。
+ * 底部常驻栏：与表单页的 SubmitBarMiuix 同一副骨架——左侧一行状态 hint，右侧「验证身份」。
  *
- * 不满足条件时**仍然画着**（只是不可点）而不是藏起来：藏起来的话，用户看不出还差什么，
- * 只会觉得这一屏没有出口。差哪一项由正文里的必填标记与提示承担。
+ * hint 三态：验证中是中性句；还差步骤时用错误色数出差几步；条件都齐了换主色催一下。
+ * 按钮不满足条件时**仍然画着**（只是不可点）而不是藏起来：藏起来的话，用户看不出还差什么，
+ * 只会觉得这一屏没有出口。差哪一项由正文里的必填标记与这条 hint 共同承担。
  */
 @Composable
 private fun IdentityBarMiuix(
-    canVerify: Boolean,
-    verifying: Boolean,
+    state: ModuleUploadFormState,
     onVerify: () -> Unit,
 ) {
-    Surface {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                // 键盘弹起时这条栏要跟着抬起来，否则「验证身份」会被输入法压住；
-                // 与 navigationBars 取并集，避免两者叠加出两份留白。
-                .padding(
-                    start = 12.dp,
-                    end = 12.dp,
-                    top = 10.dp,
-                    bottom = 10.dp + WindowInsets.navigationBars.union(WindowInsets.ime)
-                        .asPaddingValues().calculateBottomPadding(),
-                ),
-        ) {
-            Button(
-                onClick = onVerify,
-                enabled = canVerify,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+    val missing = listOf(
+        state.uid.trim().length in 4..12,
+        state.verifyItem != null,
+        state.consent,
+    ).count { !it }
+    val verifying = state.verifying
+    val error = state.verifyError
+    Surface(color = colorScheme.surface) {
+        Column {
+            if (error != null) {
                 Text(
-                    text = stringResource(
-                        if (verifying) R.string.module_upload_identity_verifying
-                        else R.string.module_upload_identity_verify,
-                    ),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp),
+                    text = error,
+                    fontSize = 12.sp,
+                    color = colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 键盘弹起时这条栏要跟着抬起来，否则「验证身份」会被输入法压住；
+                    // 与 navigationBars 取并集，避免两者叠加出两份留白。
+                    .padding(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = 10.dp,
+                        bottom = 10.dp + WindowInsets.navigationBars.union(WindowInsets.ime)
+                            .asPaddingValues().calculateBottomPadding(),
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = when {
+                        verifying -> stringResource(R.string.module_upload_identity_verifying)
+                        missing > 0 -> stringResource(R.string.module_upload_identity_missing, missing)
+                        else -> stringResource(R.string.module_upload_identity_ready)
+                    },
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    color = when {
+                        verifying -> colorScheme.onSurfaceVariantSummary
+                        missing > 0 -> colorScheme.error
+                        else -> colorScheme.primary
+                    },
+                )
+                Button(
+                    onClick = onVerify,
+                    enabled = state.canVerify,
+                    modifier = Modifier.height(48.dp),
+                    cornerRadius = 12.dp,
+                ) {
+                    if (verifying) {
+                        CircularProgressIndicator(
+                            progress = null,
+                            size = 18.dp,
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                    Text(
+                        text = stringResource(
+                            if (verifying) R.string.module_upload_identity_verifying
+                            else R.string.module_upload_identity_verify,
+                        ),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
         }
-    }
-}
-
-/** 身份页的小标题：与表单里那几个 SectionLabel 同一副样子，但独立在文件内以免影响表单。 */
-@Composable
-private fun IdentityLabelMiuix(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    required: Boolean = false,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = colorScheme.onSurfaceVariantSummary,
-            modifier = Modifier.height(16.dp),
-        )
-        Text(
-            text = if (required) "$text *" else text,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = colorScheme.onSurfaceVariantSummary,
-        )
     }
 }

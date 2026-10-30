@@ -771,7 +771,7 @@ internal fun UidStatusRowMaterial(
 }
 
 @Composable
-private fun SectionLabelMaterial(
+internal fun SectionLabelMaterial(
     icon: ImageVector,
     text: String,
     /**

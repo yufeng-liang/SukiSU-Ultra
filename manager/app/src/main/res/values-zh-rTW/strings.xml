@@ -1235,4 +1235,6 @@
     <string name="module_upload_identity_verifying">正在驗證…</string>
     <string name="module_upload_identity_expired">身份驗證已過期，重新驗證後可以繼續上傳。</string>
     <string name="module_upload_identity_verified">驗證通過，以後不用再驗證了</string>
+<string name="module_upload_identity_missing">還差 %1$d 步</string>
+<string name="module_upload_identity_ready">條件都齊了，驗證後即可上傳。</string>
 </resources>

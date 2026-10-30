@@ -1469,4 +1469,6 @@
     <string name="module_upload_identity_verifying">Verifying…</string>
     <string name="module_upload_identity_expired">Your verification has expired. Verify again to keep uploading.</string>
     <string name="module_upload_identity_verified">Verified. You will not need to do this again.</string>
+<string name="module_upload_identity_missing">%1$d step(s) left</string>
+<string name="module_upload_identity_ready">All set — verify to continue.</string>
 </resources>

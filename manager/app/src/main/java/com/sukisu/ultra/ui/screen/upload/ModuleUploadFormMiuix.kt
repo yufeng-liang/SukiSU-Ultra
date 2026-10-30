@@ -766,7 +766,7 @@ internal fun UidStatusRowMiuix(
 }
 
 @Composable
-private fun SectionLabelMiuix(
+internal fun SectionLabelMiuix(
     icon: ImageVector,
     text: String,
     /**

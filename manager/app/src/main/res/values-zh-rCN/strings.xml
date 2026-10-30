@@ -1457,4 +1457,6 @@
     <string name="module_upload_identity_verifying">正在验证…</string>
     <string name="module_upload_identity_expired">身份验证已过期，重新验证后可以继续上传。</string>
     <string name="module_upload_identity_verified">验证通过，以后不用再验证了</string>
+<string name="module_upload_identity_missing">还差 %1$d 步</string>
+<string name="module_upload_identity_ready">条件都齐了，验证后即可上传。</string>
 </resources>

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,9 +28,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,7 +46,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.res.stringResource
@@ -102,8 +102,7 @@ fun ModuleUploadIdentityMaterial(
         },
         bottomBar = {
             IdentityBarMaterial(
-                canVerify = state.canVerify,
-                verifying = state.verifying,
+                state = state,
                 onVerify = onVerify,
             )
         },
@@ -116,20 +115,37 @@ fun ModuleUploadIdentityMaterial(
         ) {
             item {
                 // 这是所有用户都要过的第一道门，进来就先说清楚为什么要这些信息。
+                // 视觉借表单顶部汇总卡的语言（强调色图标 + 加粗标题），让它读起来
+                // 是「这一屏的说明」，而不是又一张待填表。
                 TonalCard(modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    val accent = if (state.canVerify) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    Row(
+                        modifier = Modifier.padding(16.dp, 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        IdentityLabelMaterial(
-                            icon = Icons.Outlined.Info,
-                            text = stringResource(R.string.module_upload_identity_why_title),
+                        Icon(
+                            modifier = Modifier.size(20.dp),
+                            imageVector = Icons.Filled.VerifiedUser,
+                            contentDescription = null,
+                            tint = accent,
                         )
-                        Text(
-                            text = stringResource(R.string.module_upload_identity_why_body),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = stringResource(R.string.module_upload_identity_why_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = stringResource(R.string.module_upload_identity_why_body),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -140,7 +156,7 @@ fun ModuleUploadIdentityMaterial(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IdentityLabelMaterial(
+                        SectionLabelMaterial(
                             icon = Icons.Filled.VerifiedUser,
                             text = stringResource(R.string.module_upload_section_identity),
                             required = true,
@@ -175,7 +191,7 @@ fun ModuleUploadIdentityMaterial(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IdentityLabelMaterial(
+                        SectionLabelMaterial(
                             icon = Icons.Outlined.Folder,
                             text = stringResource(R.string.module_upload_identity_anchor_title),
                             required = true,
@@ -221,7 +237,7 @@ fun ModuleUploadIdentityMaterial(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IdentityLabelMaterial(
+                        SectionLabelMaterial(
                             icon = Icons.Filled.VerifiedUser,
                             text = stringResource(R.string.module_upload_proof_title),
                         )
@@ -309,82 +325,91 @@ fun ModuleUploadIdentityMaterial(
                 }
             }
 
-            val error = state.verifyError
-            if (error != null) {
-                item {
-                    Text(
-                        modifier = Modifier.padding(top = 12.dp, start = 4.dp),
-                        text = error,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
 
-/** 底部的那一颗按钮：不满足条件时仍然画着（只是不可点），否则用户看不出还差什么。 */
+/**
+ * 底部常驻栏：与表单页的 SubmitBarMaterial 同一副骨架——左侧一行状态 hint，右侧「验证身份」。
+ *
+ * hint 三态：验证中是中性句；还差步骤时用错误色数出差几步；条件都齐了换主色催一下。
+ * 按钮不满足条件时仍然画着（只是不可点），否则用户看不出还差什么。
+ */
 @Composable
 private fun IdentityBarMaterial(
-    canVerify: Boolean,
-    verifying: Boolean,
+    state: ModuleUploadFormState,
     onVerify: () -> Unit,
 ) {
-    Surface {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                // 键盘弹起时这条栏跟着抬起来，否则「验证身份」会被输入法压住。
-                .padding(
-                    start = 12.dp,
-                    end = 12.dp,
-                    top = 10.dp,
-                    bottom = 10.dp + WindowInsets.navigationBars.union(WindowInsets.ime)
-                        .asPaddingValues().calculateBottomPadding(),
-                ),
-        ) {
-            Button(
-                onClick = onVerify,
-                enabled = canVerify,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+    val missing = listOf(
+        state.uid.trim().length in 4..12,
+        state.verifyItem != null,
+        state.consent,
+    ).count { !it }
+    val verifying = state.verifying
+    val error = state.verifyError
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 3.dp) {
+        Column {
+            if (error != null) {
                 Text(
-                    text = stringResource(
-                        if (verifying) R.string.module_upload_identity_verifying
-                        else R.string.module_upload_identity_verify,
-                    ),
-                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp),
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 键盘弹起时这条栏跟着抬起来，否则「验证身份」会被输入法压住。
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 10.dp,
+                        bottom = 10.dp + WindowInsets.navigationBars.union(WindowInsets.ime)
+                            .asPaddingValues().calculateBottomPadding(),
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = when {
+                        verifying -> stringResource(R.string.module_upload_identity_verifying)
+                        missing > 0 -> stringResource(R.string.module_upload_identity_missing, missing)
+                        else -> stringResource(R.string.module_upload_identity_ready)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    color = when {
+                        verifying -> MaterialTheme.colorScheme.onSurfaceVariant
+                        missing > 0 -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.primary
+                    },
+                )
+                Button(
+                    onClick = onVerify,
+                    enabled = state.canVerify,
+                    modifier = Modifier.height(48.dp),
+                ) {
+                    if (verifying) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    Text(
+                        text = stringResource(
+                            if (verifying) R.string.module_upload_identity_verifying
+                            else R.string.module_upload_identity_verify,
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+            }
         }
-    }
-}
-
-/** 身份页的小标题：与表单里那几处 SectionLabel 同一副样子。 */
-@Composable
-private fun IdentityLabelMaterial(
-    icon: ImageVector,
-    text: String,
-    required: Boolean = false,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.height(16.dp),
-        )
-        Text(
-            text = if (required) "$text *" else text,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
