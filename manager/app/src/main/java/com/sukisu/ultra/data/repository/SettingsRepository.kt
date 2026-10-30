@@ -10,6 +10,8 @@ interface SettingsRepository {
     var cardBackgroundAlphaPercent: Int
     var customBackgroundBlurPercent: Int
     var customBackgroundScrimPercent: Int
+    var backgroundAppearanceExpanded: Boolean
+    var customHomeTitle: String
     var uiMode: String
     var appLanguage: String
     var checkUpdate: Boolean
@@ -28,6 +30,7 @@ interface SettingsRepository {
      * 只是不再留新的（清理由上传页顶栏那个入口负责）。
      */
     var keepModuleZip: Boolean
+    var appIconDynamicColor: Boolean
     var themeMode: Int
     var miuixMonet: Boolean
     var keyColor: Int

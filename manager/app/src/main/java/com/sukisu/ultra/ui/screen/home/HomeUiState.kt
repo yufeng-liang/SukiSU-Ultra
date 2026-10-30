@@ -52,6 +52,7 @@ data class HomeUiState(
     // 任一侧为空说明对端还不支持该指纹（旧内核 / tarball 构建），此时退回比版本号。
     val bundledLkmRev: String = "",
     val kernelLkmRev: String = "",
+    val customHomeTitle: String = "",
 ) {
     val isSELinuxPermissive: Boolean
         get() = systemInfo.selinuxStatus == "Permissive"
