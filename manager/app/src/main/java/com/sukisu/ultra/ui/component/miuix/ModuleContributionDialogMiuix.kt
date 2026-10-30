@@ -126,31 +126,37 @@ fun ModuleContributionDialogMiuix(
                 // 整包哈希还在后台算的时候这一行不出现（判据在 ModuleContributionRules.showProofRow）。
                 form.meta?.let { meta -> ProofRow(form = form, id = meta.id, zipSha = form.zipSha256) }
 
-                // 确认说明：不勾就提交不了，且它永远在提交按钮上方
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Checkbox(
-                        state = if (form.consentChecked) ToggleableState.On else ToggleableState.Off,
-                        onClick = { if (!form.isSubmitting) onConsentChange(!form.consentChecked) },
-                        enabled = !form.isSubmitting,
-                    )
-                    Text(
-                        modifier = Modifier.padding(start = 8.dp),
-                        text = stringResource(R.string.module_contribution_consent),
-                        fontSize = 13.sp,
-                        color = colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-                if (form.consentMissing) {
-                    Text(
-                        text = stringResource(R.string.module_contribution_consent_required),
-                        fontSize = 13.sp,
-                        color = colorScheme.error,
-                    )
+                // 确认说明：不勾就提交不了，且它永远在提交按钮上方。
+                // 两条是「这次上传」的事实告知（身份页那三条是账号级承诺，不在这里重复）；
+                // 勾选行只认这两条，所以它带后果而不是一句「我已阅读」。
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                    ConsentLineMiuix(stringResource(R.string.module_contribution_consent_1))
+                    ConsentLineMiuix(stringResource(R.string.module_contribution_consent_2))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Checkbox(
+                            state = if (form.consentChecked) ToggleableState.On else ToggleableState.Off,
+                            onClick = { if (!form.isSubmitting) onConsentChange(!form.consentChecked) },
+                            enabled = !form.isSubmitting,
+                        )
+                        Text(
+                            modifier = Modifier.padding(start = 8.dp),
+                            text = stringResource(R.string.module_contribution_consent),
+                            fontSize = 13.sp,
+                            color = colorScheme.onSurface,
+                        )
+                    }
+                    if (form.consentMissing) {
+                        Text(
+                            text = stringResource(R.string.module_contribution_consent_required),
+                            fontSize = 13.sp,
+                            color = colorScheme.error,
+                        )
+                    }
                 }
 
                 when (val state = form.submitState) {
@@ -405,6 +411,34 @@ private fun MetaLine(label: String, value: String, emphasized: Boolean = false) 
             fontSize = if (emphasized) 15.sp else 13.sp,
             fontWeight = if (emphasized) FontWeight.Medium else FontWeight.Normal,
             color = if (emphasized) colorScheme.onSurface else colorScheme.onSurfaceVariantSummary,
+        )
+    }
+}
+
+/**
+ * 提交前的告知条目：圆点 + 一行正文，不参与勾选。
+ *
+ * 勾选只有一个（[R.string.module_contribution_consent]），条目可以是多条 ——
+ * 每多一个勾选框，用户就多一次「几十毫秒扫过去」的机械点击，而承诺的分量不会因此变重。
+ */
+@Composable
+private fun ConsentLineMiuix(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = "·",
+            fontSize = 13.sp,
+            color = colorScheme.primary,
+        )
+        Text(
+            modifier = Modifier.padding(start = 8.dp),
+            text = text,
+            fontSize = 13.sp,
+            color = colorScheme.onSurfaceVariantSummary,
         )
     }
 }

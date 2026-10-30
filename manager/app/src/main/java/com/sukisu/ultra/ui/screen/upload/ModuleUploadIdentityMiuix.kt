@@ -283,33 +283,51 @@ fun ModuleUploadIdentityMiuix(
 
             item {
                 Card(modifier = Modifier.padding(top = 20.dp).fillMaxWidth()) {
-                    // 整行可点：勾选框在左侧、文字占三行时，只点那个小方块太窄。
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .toggleable(
-                                value = state.consent,
-                                enabled = !state.verifying,
-                                role = Role.Checkbox,
-                                onValueChange = onConsentChange,
-                            )
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            state = if (state.consent) {
-                                androidx.compose.ui.state.ToggleableState.On
-                            } else {
-                                androidx.compose.ui.state.ToggleableState.Off
-                            },
-                            onClick = null,
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = stringResource(R.string.module_upload_identity_pledge_title),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colorScheme.onSurface,
                         )
                         Text(
-                            modifier = Modifier.padding(start = 10.dp),
-                            text = stringResource(R.string.module_upload_identity_pledge),
+                            modifier = Modifier.padding(top = 6.dp),
+                            text = stringResource(R.string.module_upload_identity_pledge_lead),
                             fontSize = 13.sp,
                             color = colorScheme.onSurfaceVariantSummary,
                         )
+                        PledgeLineMiuix(stringResource(R.string.module_upload_identity_pledge_1))
+                        PledgeLineMiuix(stringResource(R.string.module_upload_identity_pledge_2))
+                        PledgeLineMiuix(stringResource(R.string.module_upload_identity_pledge_3))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        // 整行可点：勾选框在左侧、文字占两行时，只点那个小方块太窄。
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .toggleable(
+                                    value = state.consent,
+                                    enabled = !state.verifying,
+                                    role = Role.Checkbox,
+                                    onValueChange = onConsentChange,
+                                )
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                state = if (state.consent) {
+                                    androidx.compose.ui.state.ToggleableState.On
+                                } else {
+                                    androidx.compose.ui.state.ToggleableState.Off
+                                },
+                                onClick = null,
+                            )
+                            Text(
+                                modifier = Modifier.padding(start = 10.dp),
+                                text = stringResource(R.string.module_upload_identity_pledge),
+                                fontSize = 14.sp,
+                                color = colorScheme.onSurface,
+                            )
+                        }
                     }
                 }
             }
@@ -404,5 +422,33 @@ private fun IdentityBarMiuix(
                 }
             }
         }
+    }
+}
+
+/**
+ * 承诺卡里的一条：圆点 + 一行正文。
+ *
+ * 用行内圆点而不是 01/02/03 编号：这套文案要出四语言，编号没有语义；
+ * 「三条并列」这件事由圆点和行距就能说清，不必借标签。
+ */
+@Composable
+private fun PledgeLineMiuix(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = "·",
+            fontSize = 13.sp,
+            color = colorScheme.primary,
+        )
+        Text(
+            modifier = Modifier.padding(start = 8.dp),
+            text = text,
+            fontSize = 13.sp,
+            color = colorScheme.onSurface,
+        )
     }
 }

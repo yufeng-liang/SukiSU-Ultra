@@ -326,7 +326,8 @@ class ModuleContributionRulesTest {
     @Test
     fun `承诺版本与 Worker 同值`() {
         // 归档里的 pledge.version 就是这句话：版本号漂了，pending JSON 里那句"他接受过承诺"就开始说谎。
-        assertEquals("pledge-v1", PLEDGE_VERSION)
+        // v2 = 身份页三条 + 单勾选（账号级），App 与 Worker 的 PLEDGE_VERSIONS 必须同时认得它。
+        assertEquals("pledge-v2", PLEDGE_VERSION)
     }
 
     @Test

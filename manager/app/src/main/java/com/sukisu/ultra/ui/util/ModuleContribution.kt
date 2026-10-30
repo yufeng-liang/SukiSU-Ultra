@@ -66,8 +66,15 @@ fun makeNonce(): String =
  * 从 private 改成 internal 只为了 [com.sukisu.ultra.ui.component.ModuleContributionRulesTest]
  * 能钉住这个字面量（它与 proofText 的形状此前没有任何测试）；internal 不出模块，
  * 不构成对外的公开 API。
+ *
+ * v2 的改动：身份页的承诺从一句混装的话拆成账号级三条 + 一行勾选，覆盖范围也从
+ * 「这一次上传」明确成「此后以该账号提交的每一份」。归档里写着的版本号就是用户当时
+ * 点过的那版文本，所以文本一改，版本号必须跟着改 —— 否则那句「他接受过 pledge-v1」
+ * 对新人来说就是假话，而且没有任何一处会报错。
+ *
+ * `pledge-v1` 仍在 Worker 的白名单里：旧版本 App 与历史 pending 都写着它。
  */
-internal const val PLEDGE_VERSION = "pledge-v1"
+internal const val PLEDGE_VERSION = "pledge-v2"
 
 /**
  * 模块索引是否已收录这一版。

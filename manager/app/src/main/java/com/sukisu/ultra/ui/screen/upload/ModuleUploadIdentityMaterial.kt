@@ -250,25 +250,42 @@ fun ModuleUploadIdentityMaterial(
 
             item {
                 TonalCard(modifier = Modifier.padding(top = 20.dp).fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .toggleable(
-                                value = state.consent,
-                                enabled = !state.verifying,
-                                role = Role.Checkbox,
-                                onValueChange = onConsentChange,
-                            )
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(checked = state.consent, onCheckedChange = null)
+                    Column(modifier = Modifier.padding(16.dp, 12.dp)) {
                         Text(
-                            modifier = Modifier.padding(start = 10.dp),
-                            text = stringResource(R.string.module_upload_identity_pledge),
+                            text = stringResource(R.string.module_upload_identity_pledge_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            modifier = Modifier.padding(top = 6.dp),
+                            text = stringResource(R.string.module_upload_identity_pledge_lead),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        PledgeLine(stringResource(R.string.module_upload_identity_pledge_1))
+                        PledgeLine(stringResource(R.string.module_upload_identity_pledge_2))
+                        PledgeLine(stringResource(R.string.module_upload_identity_pledge_3))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .toggleable(
+                                    value = state.consent,
+                                    enabled = !state.verifying,
+                                    role = Role.Checkbox,
+                                    onValueChange = onConsentChange,
+                                )
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = state.consent, onCheckedChange = null)
+                            Text(
+                                modifier = Modifier.padding(start = 10.dp),
+                                text = stringResource(R.string.module_upload_identity_pledge),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
                     }
                 }
             }
@@ -359,5 +376,33 @@ private fun IdentityBarMaterial(
                 }
             }
         }
+    }
+}
+
+/**
+ * 承诺卡里的一条：圆点 + 一行正文。
+ *
+ * 用行内圆点而不是 01/02/03 编号：这套文案要出四语言，编号没有语义；
+ * 「三条并列」这件事由圆点和行距就能说清，不必借标签。
+ */
+@Composable
+private fun PledgeLine(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = "·",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            modifier = Modifier.padding(start = 8.dp),
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }

@@ -1006,7 +1006,9 @@
     <string name="module_contribution_proof_title">酷安签名</string>
     <string name="module_contribution_proof_copy">复制</string>
     <string name="module_contribution_proof_hint">打开酷安「我的 → 编辑资料 → 签名」，填入这串后保存，再回来提交。这是为了证明账号归你，且它只绑你此刻要上传的这个包：换模块 ID、换包或重新发起投稿都会换一串——签名里对不上就照当前这串再填一次。</string>
-    <string name="module_contribution_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载。请勿上传包含个人隐私、密钥等敏感信息的内容。</string>
+    <string name="module_contribution_consent_1">这个压缩包会被公开存储：任何人都能下载、长期保留，提交后无法撤回。</string>
+    <string name="module_contribution_consent_2">提交后需通过机器判据才会进入公开索引；已收录且自带更新源的模块，只接受原作者发版。</string>
+    <string name="module_contribution_consent">我已知晓以上两条，确认继续上传。</string>
     <string name="module_contribution_consent_required">请先勾选确认</string>
     <string name="module_contribution_submitting">正在提交…</string>
     <string name="module_contribution_success">已提交，自动审核通过后进索引</string>
@@ -1180,7 +1182,7 @@
     <string name="module_upload_ownership_mine">你的模块</string>
     <string name="module_upload_ownership_mine_summary">这个模块是你投的，可以发新版本。</string>
     <string name="module_upload_ownership_not_mine">别人的模块</string>
-    <string name="module_upload_ownership_not_mine_summary">该模块已由其他上传者收录，只有原作者能发更新版本。</string>
+    <string name="module_upload_ownership_not_mine_summary">该模块已由其他上传者收录，且自带更新源，更新版本只接受原作者发布。</string>
     <string name="module_upload_mine_entry_title">上传记录</string>
     <string name="module_upload_mine_entry_summary">按模块汇总你投稿过的版本，点开看每一版</string>
     <string name="module_upload_mine_empty">还没有上传记录</string>
@@ -1229,7 +1231,6 @@
     <!-- 原来分成「UID 会随上传公开」和「等级需达到 Lv2」两行，读起来是两条无关的规矩；
          合并成一句把「为什么要 UID」也说了。 -->
     <string name="module_upload_uid_note">为了防止上传恶意模块，需要记录上传者的UID，并要求上传者酷安等级达到Lv2 及以上</string>
-    <string name="module_upload_consent">我已知晓：上传的文件会被公开存储，任何人都可以下载；文件不含个人隐私与密钥；我是这些模块的作者或已获得授权。</string>
     <string name="module_upload_consent_required">请先勾选确认</string>
     <!-- 三段分开：怎么做 / 为什么可信 / 之后怎么办。挤成一段时三件事糊成一团，
          而「之后可以改回来」恰恰是最需要被看见的一句。 -->
@@ -1451,7 +1452,12 @@
     <string name="module_upload_identity_why_title">为什么要填这些</string>
     <string name="module_upload_identity_why_body">上传是公开的，而你上传的每个模块都会在装机者的设备上以 root 权限运行。所以我们才需要知道每个模块是谁提交的：记录酷安 UID，是为了日后随时能把模块回溯到上传者；同时要求酷安等级 2 级以上。这里没有审核环节 —— 签名只读一次，用来证明这个 UID 是你本人的，之后不再碰。</string>
     <string name="module_upload_identity_level">需要酷安等级 2 级以上</string>
-    <string name="module_upload_identity_pledge">我不上传恶意模块，对自己提交的内容负责，并且知道上传是公开的、不含任何个人信息或密钥。</string>
+    <string name="module_upload_identity_pledge_title">承诺</string>
+    <string name="module_upload_identity_pledge_lead">此后以该账号提交的每一份模块，都适用以下三条；本次承诺随账号存档。</string>
+    <string name="module_upload_identity_pledge_1">我提交的模块不含恶意代码：不窃取凭据、不静默回传、不破坏系统与数据。</string>
+    <string name="module_upload_identity_pledge_2">我是所提交模块的作者或已获授权，标注的出处真实可查。</string>
+    <string name="module_upload_identity_pledge_3">我提交的压缩包不含个人隐私、账号信息与密钥。</string>
+    <string name="module_upload_identity_pledge">我确认以上三条，并接受违反时的公开处置与追责。</string>
     <string name="module_upload_identity_verify">验证并继续</string>
     <string name="module_upload_identity_verifying">正在验证…</string>
     <string name="module_upload_identity_expired">身份验证已过期，重新验证后可以继续上传。</string>

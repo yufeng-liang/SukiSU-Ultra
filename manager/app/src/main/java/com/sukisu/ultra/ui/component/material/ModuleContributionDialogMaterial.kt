@@ -151,32 +151,38 @@ fun ModuleContributionDialogMaterial(
                     // 整包哈希还在后台算的时候这一行不出现（判据在 ModuleContributionRules.showProofRow）。
                     meta?.let { ProofRow(form = form, id = it.id, zipSha = form.zipSha256) }
 
-                    // 确认说明：勾选项排在提交按钮正上方，不划过它就点不到提交
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 2.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        Checkbox(
-                            checked = form.consentChecked,
-                            onCheckedChange = if (form.isSubmitting) null else onConsentChange,
-                            enabled = !form.isSubmitting,
-                            modifier = Modifier.size(24.dp),
-                        )
-                        Text(
-                            modifier = Modifier.padding(start = 8.dp),
-                            text = stringResource(R.string.module_contribution_consent),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (form.consentMissing) {
-                        Text(
-                            text = stringResource(R.string.module_contribution_consent_required),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                    // 确认说明：勾选项排在提交按钮正上方，不划过它就点不到提交。
+                    // 两条是「这次上传」的事实告知（身份页那三条是账号级承诺，不在这里重复）；
+                    // 勾选行只认这两条，所以它带后果而不是一句「我已阅读」。
+                    Column(modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                        ConsentLine(stringResource(R.string.module_contribution_consent_1))
+                        ConsentLine(stringResource(R.string.module_contribution_consent_2))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Checkbox(
+                                checked = form.consentChecked,
+                                onCheckedChange = if (form.isSubmitting) null else onConsentChange,
+                                enabled = !form.isSubmitting,
+                                modifier = Modifier.size(24.dp),
+                            )
+                            Text(
+                                modifier = Modifier.padding(start = 8.dp),
+                                text = stringResource(R.string.module_contribution_consent),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        if (form.consentMissing) {
+                            Text(
+                                text = stringResource(R.string.module_contribution_consent_required),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
 
                     SubmitStateBlock(form.submitState)
@@ -480,6 +486,34 @@ private fun MetaLine(label: String, value: String, emphasized: Boolean = false) 
             text = value,
             style = if (emphasized) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
             fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
+}
+
+/**
+ * 提交前的告知条目：圆点 + 一行正文，不参与勾选。
+ *
+ * 勾选只有一个（[R.string.module_contribution_consent]），条目可以是多条 ——
+ * 每多一个勾选框，用户就多一次「几十毫秒扫过去」的机械点击，而承诺的分量不会因此变重。
+ */
+@Composable
+private fun ConsentLine(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = "·",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            modifier = Modifier.padding(start = 8.dp),
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

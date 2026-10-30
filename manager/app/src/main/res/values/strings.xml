@@ -1014,7 +1014,9 @@
     <string name="module_contribution_proof_title">Coolapk signature</string>
     <string name="module_contribution_proof_copy">Copy</string>
     <string name="module_contribution_proof_hint">Open Coolapk (Me > Edit profile > Signature), paste this string there and save, then come back to submit. It proves the account is yours, and it only binds the package you are about to upload: a different module ID, a different zip or a new attempt all give a different string, so if it doesn\'t match your signature, copy the string currently shown.</string>
-    <string name="module_contribution_consent">I understand the file will be stored publicly and anyone can download it. Do not upload content containing personal information or keys.</string>
+    <string name="module_contribution_consent_1">This archive will be stored publicly: anyone can download it, it is kept indefinitely, and the submission cannot be withdrawn.</string>
+    <string name="module_contribution_consent_2">It must pass automated checks before entering the public index; modules that declare their own update source accept new versions only from the original author.</string>
+    <string name="module_contribution_consent">I understand both points and want to continue.</string>
     <string name="module_contribution_consent_required">Please check the confirmation box first</string>
     <string name="module_contribution_submitting">Submitting…</string>
     <string name="module_contribution_success">Submitted — it enters the index automatically once the checks pass</string>
@@ -1196,7 +1198,7 @@
     <string name="module_upload_ownership_mine">Your module</string>
     <string name="module_upload_ownership_mine_summary">You uploaded this module, so you can publish a new version.</string>
     <string name="module_upload_ownership_not_mine">Another uploader</string>
-    <string name="module_upload_ownership_not_mine_summary">This module is already listed by another uploader. Only the original author can publish an update.</string>
+    <string name="module_upload_ownership_not_mine_summary">This module is already listed by another uploader and carries its own update source. Only the original author can publish an update.</string>
     <string name="module_upload_mine_entry_title">Upload history</string>
     <string name="module_upload_mine_entry_summary">Your submitted versions, grouped by module</string>
     <string name="module_upload_mine_empty">No upload recorded yet</string>
@@ -1242,7 +1244,6 @@
     <string name="module_upload_uid_unavailable">Couldn\'t verify right now (Coolapk unreachable)</string>
     <string name="module_upload_uid_self_reported">Verification is disabled on the server</string>
     <string name="module_upload_uid_note">To keep malicious modules out we record the uploader\'s UID, and require a Coolapk account of level 2 or higher</string>
-    <string name="module_upload_consent">I understand the files will be stored publicly and anyone can download them, and that they contain no personal information or keys. I am the author of these modules or have permission to upload them.</string>
     <string name="module_upload_consent_required">Please check the confirmation box first</string>
     <string name="module_upload_proof_confirm">I have saved it in my Coolapk signature</string>
     <string name="module_upload_proof_changed">The batch changed, so the signature string must be copied again</string>
@@ -1463,7 +1464,12 @@
     <string name="module_upload_identity_why_title">Why we ask for these</string>
     <string name="module_upload_identity_why_body">Uploads are public, and every module you upload runs with root privileges on the devices of everyone who installs it. That is why we need to know who submitted each one: your Coolapk UID is recorded so a module can always be traced back to its uploader, and we require a Coolapk account of level 2 or higher. There is no review step — your signature is read once, to prove the UID is yours, and then never again.</string>
     <string name="module_upload_identity_level">A Coolapk account of level 2 or higher is required</string>
-    <string name="module_upload_identity_pledge">I will not upload malicious modules, I take responsibility for what I submit, and I understand that uploads are public and contain no personal information or keys.</string>
+    <string name="module_upload_identity_pledge_title">Commitment</string>
+    <string name="module_upload_identity_pledge_lead">These three apply to every module I submit with this account from now on, and are recorded with the account.</string>
+    <string name="module_upload_identity_pledge_1">The modules I submit contain no malicious code: no credential theft, no silent callbacks, no damage to the system or data.</string>
+    <string name="module_upload_identity_pledge_2">I am the author of what I submit or have authorization to upload it, and the stated source is real and verifiable.</string>
+    <string name="module_upload_identity_pledge_3">The archives I submit contain no personal data, account details, or keys.</string>
+    <string name="module_upload_identity_pledge">I confirm all three, and accept public takedown and legal liability if I violate them.</string>
     <string name="module_upload_identity_verify">Verify and continue</string>
     <string name="module_upload_identity_verifying">Verifying…</string>
     <string name="module_upload_identity_expired">Your verification has expired. Verify again to keep uploading.</string>

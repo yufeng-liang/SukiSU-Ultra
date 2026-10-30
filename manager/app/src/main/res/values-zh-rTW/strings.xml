@@ -832,7 +832,7 @@
     <string name="module_upload_ownership_mine">你的模組</string>
     <string name="module_upload_ownership_mine_summary">這個模組是你投稿的，可以發新版本。</string>
     <string name="module_upload_ownership_not_mine">別人的模組</string>
-    <string name="module_upload_ownership_not_mine_summary">該模組已由其他上傳者收錄，只有原作者能發更新版本。</string>
+    <string name="module_upload_ownership_not_mine_summary">該模組已由其他上傳者收錄，且自帶更新來源，更新版本只接受原作者發布。</string>
     <string name="module_upload_mine_entry_title">我的模組</string>
     <string name="module_upload_mine_entry_summary">你投稿過的模組，發新版本不用再找包</string>
     <string name="module_upload_mine_empty">你還沒有投稿過模組</string>
@@ -873,7 +873,6 @@
     <string name="module_upload_uid_unavailable">暫時無法核實（酷安不可達）</string>
     <string name="module_upload_uid_self_reported">伺服器未開啟核實</string>
     <string name="module_upload_uid_note">為了防止上傳惡意模組，需要記錄上傳者的UID，並要求上傳者酷安等級達到Lv2 及以上</string>
-    <string name="module_upload_consent">我已知曉：上傳的檔案會被公開儲存，任何人都可以下載；檔案不含個人隱私與金鑰；我是這些模組的作者或已獲得授權。</string>
     <string name="module_upload_consent_required">請先勾選確認</string>
     <string name="module_upload_proof_confirm">我已寫進簽名</string>
     <string name="module_upload_proof_changed">集合變了，簽名要重抄</string>
@@ -1157,7 +1156,6 @@
     <string name="config_autostart_required">未開啟自動啟動，重新開機時不會執行此設定</string>
     <string name="config_status_explanation">開關表示已儲存設定，不代表執行狀態。下方結果僅來自本次操作；重新載入設定不會驗證核心狀態。</string>
     <string name="config_exit_code">命令結束代碼：%1$d</string>
-    <string name="ci_update_busy">正在檢查並準備 CI 更新…</string>
     <string name="ci_update_unsupported_arch">不支援此裝置架構</string>
     <string name="ci_update_request_failed">GitHub API 網址無效</string>
     <string name="ci_update_http_error">GitHub 請求失敗（HTTP %1$d），請稍後再試</string>
@@ -1187,7 +1185,9 @@
          繁中用户在这一页会整体回退成英文。 -->
     <string name="module_contribution_action">分享</string>
     <string name="module_contribution_author">作者</string>
-    <string name="module_contribution_consent">我已知曉：上傳的檔案會被公開儲存，任何人都可以下載。請勿上傳包含個人隱私、金鑰等敏感資訊的內容。</string>
+    <string name="module_contribution_consent_1">這個壓縮檔會被公開儲存：任何人都能下載、長期保留，提交後無法撤回。</string>
+    <string name="module_contribution_consent_2">提交後需通過機器判據才會進入公開索引；已收錄且自帶更新源的模組，只接受原作者發版。</string>
+    <string name="module_contribution_consent">我已知曉以上兩條，確認繼續上傳。</string>
     <string name="module_contribution_consent_required">請先勾選確認</string>
     <string name="module_contribution_description">描述</string>
     <string name="module_contribution_dialog_title">投稿模組</string>
@@ -1229,7 +1229,12 @@
     <string name="module_upload_identity_why_title">為什麼要填這些</string>
     <string name="module_upload_identity_why_body">上傳是公開的，而你上傳的每個模組都會在安裝者的裝置上以 root 權限執行。所以我們才需要知道每個模組是誰提交的：記錄酷安 UID，是為了日後隨時能把模組回溯到上傳者；同時要求酷安等級 2 級以上。這裡沒有審核環節 —— 簽名只讀一次，用來證明這個 UID 是你本人的，之後不再碰。</string>
     <string name="module_upload_identity_level">需要酷安等級 2 級以上</string>
-    <string name="module_upload_identity_pledge">我不上傳惡意模組，對自己提交的內容負責，並且知道上傳是公開的、不含任何個人資訊或金鑰。</string>
+    <string name="module_upload_identity_pledge_title">承諾</string>
+    <string name="module_upload_identity_pledge_lead">此後以該帳號提交的每一份模組，都適用以下三條；本次承諾隨帳號存檔。</string>
+    <string name="module_upload_identity_pledge_1">我提交的模組不含惡意程式碼：不竊取憑證、不靜默回傳、不破壞系統與資料。</string>
+    <string name="module_upload_identity_pledge_2">我是所提交模組的作者或已獲授權，標註的來源真實可查。</string>
+    <string name="module_upload_identity_pledge_3">我提交的壓縮檔不含個人隱私、帳號資訊與金鑰。</string>
+    <string name="module_upload_identity_pledge">我確認以上三條，並接受違反時的公開處置與追責。</string>
     <string name="module_upload_identity_verify">驗證並繼續</string>
     <string name="module_upload_identity_verifying">正在驗證…</string>
     <string name="module_upload_identity_expired">身份驗證已過期，重新驗證後可以繼續上傳。</string>
