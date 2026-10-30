@@ -53,7 +53,7 @@ fun managerPackageSingleSourceProperty(key: String): String {
 val defaultManagerPackageName = managerPackageSingleSourceProperty(
     if (isPrBuild) "KSU_MANAGER_PACKAGE_NAME_PR" else "KSU_MANAGER_PACKAGE_NAME"
 )
-val defaultManagerName = if (isPrBuild) "SukiSU PR" else "SukiSU"
+val defaultManagerName = if (isPrBuild) "TsukiSU PR" else "TsukiSU"
 val managerPackageName = project.findProperty("KSU_PACKAGE_NAME")?.toString() ?: defaultManagerPackageName
 val managerName = project.findProperty("KSU_NAME")?.toString() ?: defaultManagerName
 

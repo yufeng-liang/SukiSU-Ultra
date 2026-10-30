@@ -49,6 +49,8 @@ class RepoSourceRepositoryImpl(
 
     companion object {
         private const val KEY_SOURCES = "repo_sources"
+        /** 酷安社区模块源是否已经种过：种过一次就不再生，用户删掉它不会自己长回来。 */
+        private const val KEY_COOLAPK_SEEDED = "repo_coolapk_source_seeded"
         private const val CONNECT_TIMEOUT_SECONDS = 15L
         private const val READ_TIMEOUT_SECONDS = 20L
     }
@@ -65,8 +67,29 @@ class RepoSourceRepositoryImpl(
      * 用户自己的那份配置也永远不会被它盖住。
      */
     override fun loadSources(): List<RepoSource> {
-        val raw = prefs.getString(KEY_SOURCES, null) ?: return listOf(builtInSource)
-        return runCatching { decode(raw) }.getOrNull() ?: emptyList()
+        val raw = prefs.getString(KEY_SOURCES, null)
+        val sources = if (raw == null) {
+            listOf(builtInSource)
+        } else {
+            runCatching { decode(raw) }.getOrNull() ?: emptyList()
+        }
+        return seedCoolapkCommunitySource(sources)
+    }
+
+    /**
+     * 第一次读到源列表时把「酷安社区模块」种进去，默认关闭。
+     *
+     * 只种一次（写一个标记）：用户后来手动把它删掉，列表里就不该再长回来——长回来会让
+     * 「删除」看起来没生效。默认关闭是刻意的：这份索引里的模块由酷安用户自发上传，没有人工
+     * 安全审核，要用户在商店页读过免责说明、自己点开才可见（见 [coolapkCommunitySource]）。
+     */
+    private fun seedCoolapkCommunitySource(sources: List<RepoSource>): List<RepoSource> {
+        if (prefs.getBoolean(KEY_COOLAPK_SEEDED, false)) return sources
+        prefs.edit().putBoolean(KEY_COOLAPK_SEEDED, true).apply()
+        if (sources.any { it.id == coolapkCommunitySource.id }) return sources
+        val seeded = sources + coolapkCommunitySource
+        save(seeded)
+        return seeded
     }
 
     override suspend fun addSource(rawUrl: String, name: String?): Result<RepoSource> = withContext(Dispatchers.IO) {
@@ -385,6 +408,32 @@ internal val builtInSource = RepoSource(
     id = "builtin-kernelsu-modules",
     name = "KernelSU Modules",
     url = KERNELSU_REGISTRY_INDEX_URL,
+)
+
+/** 酷安社区模块源在 prefs 与界面里的固定 id。 */
+internal const val COOLAPK_COMMUNITY_SOURCE_ID = "coolapk-community-modules"
+
+/**
+ * 酷安社区模块索引的地址。
+ *
+ * 走 jsDelivr 而不是 `raw.githubusercontent.com`：后者在国内常见网络下连不上，而这份索引
+ * 恰恰是面向酷安用户的。内容是 `SukiSU-Community/modules-repo` 仓的 `json/modules.json`，
+ * 每次发布由 `publish-from-main.mjs` 重建。
+ */
+internal const val COOLAPK_COMMUNITY_INDEX_URL =
+    "https://cdn.jsdelivr.net/gh/SukiSU-Community/modules-repo@main/json/modules.json"
+
+/**
+ * 「酷安社区模块」源：默认关闭，由用户读完免责说明后自己开启。
+ *
+ * 名字写死成中文而不是走 stringResource——[RepoSource.name] 是要落盘的展示名，用户可以改、
+ * 也会被备份带走；界面在这个 id 上另有本地化标题。
+ */
+internal val coolapkCommunitySource = RepoSource(
+    id = COOLAPK_COMMUNITY_SOURCE_ID,
+    name = "酷安社区模块",
+    url = COOLAPK_COMMUNITY_INDEX_URL,
+    enabled = false,
 )
 
 /**

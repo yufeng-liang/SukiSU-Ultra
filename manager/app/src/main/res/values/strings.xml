@@ -8,7 +8,7 @@
     <string name="home_lkm_update_available">A newer bundled LKM is available. Tap to update.</string>
     <string name="home_lkm_custom">Custom</string>
     <string name="home_unsupported">Unsupported</string>
-    <string name="home_unsupported_reason">No SukiSU driver detected on your kernel, wrong kernel?</string>
+    <string name="home_unsupported_reason">No TsukiSU driver detected on your kernel, wrong kernel?</string>
     <string name="home_device_model">Device model</string>
     <string name="home_kernel">Kernel version</string>
     <string name="home_manager_version">Manager version</string>
@@ -50,7 +50,7 @@
     <string name="module_sort_name_desc">Z→A</string>
     <string name="module_sort_manual">Manual order</string>
     <string name="module_sort_manual_drag">Drag to reorder</string>
-    <string name="module_repos">Repos</string>
+    <string name="module_repos">Store</string>
     <string name="module_repos_sort_updated">Updated time</string>
     <string name="module_repos_sort_created">Created time</string>
     <string name="module_repos_sort_name">Name</string>
@@ -63,36 +63,42 @@
     <string name="module_repo_source_adding">Adding…</string>
     <string name="module_repo_source_added">Source added</string>
     <string name="module_repo_source_duplicate">Source already exists</string>
-    <string name="module_repo_source_unreachable">No valid module repository found at this URL</string>
+    <string name="module_repo_source_unreachable">No valid module store found at this URL</string>
     <string name="module_repo_source_bad_url">Invalid URL</string>
+    <string name="module_repo_coolapk_title">Coolapk community modules</string>
+    <string name="module_repo_coolapk_summary">A module index uploaded by Coolapk users on their own. No security review is performed, so it stays off until you turn it on.</string>
+    <string name="module_repo_coolapk_enable">Turn on</string>
+    <string name="module_repo_coolapk_confirm">I understand — turn on</string>
+    <string name="module_repo_coolapk_disable">Turn off</string>
+    <string name="module_repo_filter_all">All</string>
     <string name="module_repo_disclaimer_title">About module sources</string>
-    <string name="module_repo_disclaimer_body">Modules shown here come from third-party repositories and **have NOT been security-reviewed**.\n\nThe source KernelSU ships with is this official registry (modules.kernelsu.org), and this app uses it by default. The registry reviews each module\'s first submission against its rules — but there is **no code audit and no malware scanning**: the review checks for spam, abuse, ID squatting and the like, not what a module does on your device. Later updates are **published automatically without review**, and neither signatures nor developer identities are verified. The candidate repositories you can add with one tap are **not reviewed by us at all**.\n\nModules run with root privileges and can read and write system partitions, your app data and network traffic. A malicious module — or one from a compromised author account — can **make the device fail to boot (a hard brick), destroy data, steal accounts or money, or leak private information**, often with no easy recovery.\n\nWe offer custom repositories and the built-in candidates only to make finding modules easier. That is not a recommendation, endorsement or guarantee of anything in them. Judge for yourself, and **accept the risk**: only install modules from sources you trust.</string>
+    <string name="module_repo_disclaimer_body">Modules shown here come from third-party stores and **have NOT been security-reviewed**.\n\nThe source KernelSU ships with is this official registry (modules.kernelsu.org), and this app uses it by default. The registry reviews each module\'s first submission against its rules — but there is **no code audit and no malware scanning**: the review checks for spam, abuse, ID squatting and the like, not what a module does on your device. Later updates are **published automatically without review**, and neither signatures nor developer identities are verified. The candidate stores you can add with one tap are **not reviewed by us at all**.\n\nModules run with root privileges and can read and write system partitions, your app data and network traffic. A malicious module — or one from a compromised author account — can **make the device fail to boot (a hard brick), destroy data, steal accounts or money, or leak private information**, often with no easy recovery.\n\nWe offer custom stores and the built-in candidates only to make finding modules easier. That is not a recommendation, endorsement or guarantee of anything in them. Judge for yourself, and **accept the risk**: only install modules from sources you trust.</string>
     <string name="module_repo_disclaimer_scroll_hint">Scroll to the bottom to continue</string>
     <string name="module_repo_disclaimer_commitment">I have read the above and accept the risk</string>
     <string name="module_repo_disclaimer_confirm">I understand</string>
     <string name="module_repo_source_delete_confirm">Remove this source?</string>
     <string name="module_repo_rename_source">Rename source</string>
     <string name="module_repo_sources_empty">No sources configured</string>
-    <string name="module_repo_sources_all_disabled">All repository sources are disabled</string>
-    <string name="module_repo_search_no_results">No repositories match your search</string>
-    <string name="module_repo_add_repo">Add repository</string>
-    <string name="module_repo_source_label">Repository</string>
+    <string name="module_repo_sources_all_disabled">All store sources are disabled</string>
+    <string name="module_repo_search_no_results">No stores match your search</string>
+    <string name="module_repo_add_repo">Add store</string>
+    <string name="module_repo_source_label">Store</string>
     <string name="module_repo_source_also_in">Also published in</string>
-    <string name="module_repo_candidates">Candidate repositories</string>
+    <string name="module_repo_candidates">Candidate stores</string>
     <string name="module_repo_candidate_modules">%1$d modules</string>
     <string name="module_repo_candidate_add">Add</string>
     <string name="module_repo_candidate_added">Added</string>
     <string name="module_repo_fetch_failed">Failed to fetch: %1$s</string>
-    <string name="module_repo_no_installable_archive">This repository provides no installable archive</string>
+    <string name="module_repo_no_installable_archive">This store provides no installable archive</string>
     <string name="module_repo_update_available">Update</string>
     <string name="module_repo_installed">Installed</string>
-    <string name="module_repo_using_cache">Couldn\'t refresh the repository, showing the last downloaded copy</string>
-    <string name="module_repo_unsupported_schema">The module repository uses a newer format. Please update SukiSU Manager.</string>
-    <string name="module_repo_load_failed">Failed to load the module repository</string>
+    <string name="module_repo_using_cache">Couldn\'t refresh the store, showing the last downloaded copy</string>
+    <string name="module_repo_unsupported_schema">The module store uses a newer format. Please update TsukiSU Manager.</string>
+    <string name="module_repo_load_failed">Failed to load the module store</string>
     <string name="module_repo_empty">No modules available</string>
-    <string name="module_repo_not_in_index">This module is not in the repository index right now and can\'t be installed from here.</string>
+    <string name="module_repo_not_in_index">This module is not in the store index right now and can\'t be installed from here.</string>
     <string name="module_repo_no_readme">No README</string>
-    <string name="module_repo_health_stale">The repository couldn\'t sync this module recently; information may be outdated.</string>
+    <string name="module_repo_health_stale">The store couldn\'t sync this module recently; information may be outdated.</string>
     <string name="module_repo_immutable_release">Immutable GitHub release</string>
     <string name="module_repo_source_commit">Commit %s</string>
     <string name="module_repo_license">License</string>
@@ -107,7 +113,7 @@
     <string name="module_repo_stars">GitHub stars</string>
     <string name="module_repo_attestation">Build provenance (attestation)</string>
     <string name="module_repo_release_page">Release page</string>
-    <string name="module_update_unverifiable">The update of %s could not be verified against the module repository and was not downloaded</string>
+    <string name="module_update_unverifiable">The update of %s could not be verified against the module store and was not downloaded</string>
     <string name="confirm">Confirm</string>
     <string name="uninstall">Uninstall</string>
     <string name="module_install">Install</string>
@@ -141,12 +147,12 @@
     <string name="safe_mode_module_disabled">Module installation is disabled in safe mode</string>
     <string name="reboot_to_apply">Reboot to take effect</string>
     <string name="module_magisk_conflict">Modules are unavailable due to a conflict with Magisk!</string>
-    <string name="home_learn_kernelsu">Learn SukiSU</string>
+    <string name="home_learn_kernelsu">Learn TsukiSU</string>
     <string name="home_learn_kernelsu_url">https://sukisu.org/guide/</string>
-    <string name="home_click_to_learn_kernelsu">Learn how to install SukiSU and use modules.</string>
+    <string name="home_click_to_learn_kernelsu">Learn how to install TsukiSU and use modules.</string>
     <string name="home_support_title">Support Us</string>
     <string name="home_gki_warning">Starting from v3.0.0, the GKI work mode will be used only in testing environments. We do not recommend it for daily use, and image files will no longer be provided.</string>
-    <string name="home_support_content">SukiSU is, and always will be, free, and open source. However, you can show us that you care by making a donation.</string>
+    <string name="home_support_content">TsukiSU is, and always will be, free, and open source. However, you can show us that you care by making a donation.</string>
     <string name="about_contributors">Main contributors</string>
     <string name="about_contributors_hint">Drag to explore, pinch to zoom, tap an avatar to open the profile.</string>
     <string name="about_wordmark_hint">Every letter is a contributor\'s name. Pinch to zoom in.</string>
@@ -171,7 +177,7 @@
     <string name="require_kernel_version_gki">Kernel update required</string>
     <string name="settings_umount_modules_default">Umount modules by default</string>
     <string name="settings_umount_modules_default_summary">The global default value for \"Umount modules\" in App Profile. If enabled, it will remove all module modifications to the system for apps that don\'t have a profile set.</string>
-    <string name="profile_umount_modules_summary">Enabling this option will allow SukiSU to restore any modified files by the modules for this app.</string>
+    <string name="profile_umount_modules_summary">Enabling this option will allow TsukiSU to restore any modified files by the modules for this app.</string>
     <string name="profile_selinux_domain">Domain</string>
     <string name="profile_selinux_rules">Rules</string>
     <string name="recently_installed">Recently installed</string>
@@ -218,7 +224,7 @@
     <string name="settings_pager_gesture_ios_like">iOS-like</string>
     <string name="settings_module_check_update">Check for module updates</string>
     <string name="settings_auto_delete_module_zip">Delete module zip after install</string>
-    <string name="settings_auto_delete_module_zip_summary">Automatically delete module zips after a successful installation, including updates, repository installs and files you picked manually.</string>
+    <string name="settings_auto_delete_module_zip_summary">Automatically delete module zips after a successful installation, including updates, store installs and files you picked manually.</string>
     <string name="module_zip_deleted">Module zip deleted: %1$s</string>
     <string name="module_zip_delete_failed">! Failed to delete module zip: %1$s</string>
     <string name="module_zip_archive_failed">! Could not keep a copy of this module zip; you will have to pick it manually to upload</string>
@@ -254,9 +260,9 @@
     <string name="settings_uninstall_temporary">Uninstall temporarily</string>
     <string name="settings_uninstall_permanent">Uninstall permanently</string>
     <string name="settings_restore_stock_image">Restore stock image</string>
-    <string name="settings_uninstall_temporary_message">Temporarily uninstall SukiSU, restore to original state after next reboot.</string>
-    <string name="settings_uninstall_permanent_message">Uninstalling SukiSU (Root and all modules) completely and permanently.</string>
-    <string name="settings_restore_stock_image_message">Restore the stock factory image (if a backup exists), usually used before OTA; if you need to uninstall SukiSU, please use \"Uninstall permanently\".</string>
+    <string name="settings_uninstall_temporary_message">Temporarily uninstall TsukiSU, restore to original state after next reboot.</string>
+    <string name="settings_uninstall_permanent_message">Uninstalling TsukiSU (Root and all modules) completely and permanently.</string>
+    <string name="settings_restore_stock_image_message">Restore the stock factory image (if a backup exists), usually used before OTA; if you need to uninstall TsukiSU, please use \"Uninstall permanently\".</string>
     <string name="flashing">Flashing</string>
     <string name="flash_success">Flash success</string>
     <string name="flash_failed">Flash failed</string>
@@ -272,11 +278,11 @@
     <string name="settings_selinux_hide_reboot_required">Reboot to take effect</string>
     <string name="settings_selinux_hide_failed">Error: %d</string>
     <string name="settings_mount_hide">Hide suspicious mounts</string>
-    <string name="settings_mount_hide_summary">Filter SukiSU and module mount records from the /proc mount views of isolated and app processes</string>
+    <string name="settings_mount_hide_summary">Filter TsukiSU and module mount records from the /proc mount views of isolated and app processes</string>
     <string name="settings_mount_hide_reboot_required">Reboot to take effect</string>
     <string name="settings_mount_hide_failed">Error: %d</string>
     <string name="settings_sulog">SU Log</string>
-    <string name="settings_sulog_summary">Record Root-related events into SukiSU sulog files</string>
+    <string name="settings_sulog_summary">Record Root-related events into TsukiSU sulog files</string>
     <string name="feature_status_unsupported_summary">Kernel does not support this feature</string>
     <string name="feature_status_managed_summary">This feature is managed by a module</string>
     <string name="feature_status_forced_summary">This feature is forced by boot config</string>
@@ -325,7 +331,7 @@
     <string name="color_blue_grey">Blue Grey</string>
     <string name="color_sakura">Sakura</string>
     <string name="network_offline">Not connected to network</string>
-    <string name="module_repo_unavailable">Module repository is currently unavailable. Please try again later.</string>
+    <string name="module_repo_unavailable">Module store is currently unavailable. Please try again later.</string>
     <string name="network_retry">Retry</string>
     <string name="tab_readme">README</string>
     <string name="tab_releases">Releases</string>
@@ -379,14 +385,14 @@
     <string name="settings_adb_root" translatable="false">ADB Root</string>
     <string name="settings_adb_root_summary">Run adbd daemon with Root privileges</string>
     <string name="settings_shell_su_adb_only">Restrict shell root to ADB</string>
-    <string name="settings_shell_su_adb_only_summary">Extra check when Shell is granted root: only processes spawned by adbd or a SukiSU root process (e.g. an ADB module) can use it, preventing apps that obtain shell privileges from escalating to root</string>
+    <string name="settings_shell_su_adb_only_summary">Extra check when Shell is granted root: only processes spawned by adbd or a TsukiSU root process (e.g. an ADB module) can use it, preventing apps that obtain shell privileges from escalating to root</string>
     <string name="menu_sort">Sort</string>
     <string name="sort_by_name">Application name</string>
     <string name="sort_by_package_name">Package name</string>
     <string name="sort_by_install_time">Install time</string>
     <string name="sort_by_update_time">Update time</string>
     <string name="sort_reverse">Reverse</string>
-    <string name="profile_flags_desc_no_new_privs">Prevent further privilege escalation via SukiSU from within the context of this root profile</string>
+    <string name="profile_flags_desc_no_new_privs">Prevent further privilege escalation via TsukiSU from within the context of this root profile</string>
     <string name="module_shortcut_copy_scheme">Copy URL scheme</string>
     <string name="module_shortcut_scheme_copied">URL scheme copied</string>
     <string name="nav_rail_expand">Expand navigation rail</string>
@@ -544,7 +550,7 @@
     <string name="kpm_args">Parameters</string>
     <string name="kpm_control">Execute</string>
     <string name="close_notice">Close</string>
-    <string name="kernel_module_notice">The following kernel module functions were developed by KernelPatch and modified to include the kernel module functions of SukiSU</string>
+    <string name="kernel_module_notice">The following kernel module functions were developed by KernelPatch and modified to include the kernel module functions of TsukiSU</string>
     <string name="kpm_control_success">Success</string>
     <string name="not_supported">Unsupported</string>
     <string name="kpm_install_mode">KPM Install</string>
@@ -786,9 +792,9 @@
     <string name="settings_home_title_default">Using app name</string>
     <string name="settings_home_title_hint">Enter a name; leave blank to restore the app name.</string>
     <string name="app_icon_builtin_section">Built-in icons</string>
-    <string name="app_icon_builtin_default">SukiSU</string>
+    <string name="app_icon_builtin_default">TsukiSU</string>
     <string name="app_icon_builtin_kernelsu">KernelSU</string>
-    <string name="app_icon_builtin_logo">SukiSU Logo</string>
+    <string name="app_icon_builtin_logo">TsukiSU Logo</string>
     <string name="app_icon_import_title">Import icon pack</string>
     <string name="app_icon_import_summary">Import a ZIP archive containing PNG, WebP or JPG icons</string>
     <string name="app_icon_import_button">Import</string>
@@ -806,7 +812,7 @@
     <string name="app_icon_delete_pack_failed">Could not delete the icon pack</string>
     <string name="app_icon_empty_custom">No custom icons yet</string>
     <string name="app_icon_empty_custom_summary">Import a ZIP archive to add your own icons</string>
-    <string name="app_icon_builtin_zako">SukiSU Line Art</string>
+    <string name="app_icon_builtin_zako">TsukiSU Line Art</string>
     <string name="app_icon_dynamic_color_title">Dynamic color</string>
     <string name="app_icon_dynamic_color_summary">Allow supported launchers to tint the icon with wallpaper colors (Android 13+)</string>
     <string name="app_icon_selected">Selected</string>
@@ -1024,7 +1030,7 @@
     <string name="module_contribution_unknown">Unable to confirm whether it was accepted</string>
     <string name="module_contribution_settings_title">Module contributions</string>
     <string name="module_contribution_settings_summary">When installing a local module, offer to share modules that are not yet listed</string>
-    <string name="module_eco_badge">Module Repository</string>
+    <string name="module_eco_badge">Module Store</string>
 
     <!-- Retention quotas. Each has its own range (modules 1–20, boot 1–10),
          so the wording deliberately avoids naming the numbers. -->
@@ -1036,9 +1042,9 @@
     <string name="superuser_filter_system">System</string>
     <string name="superuser_granted_summary">%1$d of %2$d apps granted</string>
     <string name="module_summary">%1$d enabled · %2$d updatable</string>
-    <string name="home_preview_mode">No SukiSU kernel detected. Root access is available, so the pages open in preview mode; kernel features do nothing.</string>
+    <string name="home_preview_mode">No TsukiSU kernel detected. Root access is available, so the pages open in preview mode; kernel features do nothing.</string>
     <string name="dynamic_manager_title">Dynamic managers</string>
-    <string name="dynamic_manager_summary">Manage additional trusted SukiSU managers</string>
+    <string name="dynamic_manager_summary">Manage additional trusted TsukiSU managers</string>
     <string name="dynamic_manager_enabled">Dynamic managers enabled</string>
     <string name="dynamic_manager_add">Add manager</string>
     <string name="dynamic_manager_remove">Remove manager</string>
@@ -1067,11 +1073,11 @@
     <string name="extension_umount_paths_title">Umount path manager</string>
     <string name="extension_umount_paths_summary">Manage the list of mount points the kernel will umount when an app starts.</string>
     <string name="extension_dynamic_manager_title">Dynamic manager</string>
-    <string name="extension_dynamic_manager_summary">Allow more than one app to act as the SukiSU manager, authenticated by signing certificate.</string>
+    <string name="extension_dynamic_manager_summary">Allow more than one app to act as the TsukiSU manager, authenticated by signing certificate.</string>
     <string name="extension_susfs_title">SuSFS</string>
     <string name="extension_susfs_summary">Configure hide-mount, spoof uname, redirect-open, kstat and other low-level kernel tricks. Requires the SuSFS kernel module to be installed.</string>
-    <string name="extension_version_spoof_title">SukiSU version overrides</string>
-    <string name="extension_version_spoof_summary">Customize the reported SukiSU version code, full version and UAPI version.</string>
+    <string name="extension_version_spoof_title">TsukiSU version overrides</string>
+    <string name="extension_version_spoof_summary">Customize the reported TsukiSU version code, full version and UAPI version.</string>
     <string name="extension_open_details">Open details</string>
     <!-- Fallback card for a handler the kernel reports but this manager has
          no dedicated page for. Keeps new extensions visible and, when they
@@ -1323,7 +1329,7 @@
     <string name="background_crop_gallery">Gallery crop</string>
     <string name="background_crop_rotate">Rotate</string>
     <string name="background_crop_reset">Reset</string>
-    <string name="background_crop_hint">Drag to reposition · Pinch to zoom</string>
+    <string name="background_crop_hint">Drag to storesition · Pinch to zoom</string>
     <string name="background_crop_ratio_screen">Screen</string>
     <string name="background_crop_failed">Couldn\'t crop the image. Try again.</string>
     <string name="background_crop_gallery_failed">The gallery didn\'t return an image.</string>
@@ -1344,7 +1350,7 @@
     <string name="theme_export">Export Theme</string>
     <string name="theme_export_summary">Save the current theme and background as a .zip package</string>
     <string name="theme_import">Import Theme</string>
-    <string name="theme_import_summary">Apply a theme package exported from SukiSU</string>
+    <string name="theme_import_summary">Apply a theme package exported from TsukiSU</string>
     <string name="theme_reset">Restore Defaults</string>
     <string name="theme_reset_summary">Reset card opacity, background blur and scrim</string>
     <string name="theme_reset_confirm_title">Restore the default appearance?</string>
@@ -1358,7 +1364,7 @@
     <string name="version_spoof_warning">Warning: these are real kernel API response overrides, not cosmetic labels. Changing UAPI or version values can break Manager compatibility checks, installation and updates. Reset remains available through ksud.</string>
     <string name="version_spoof_hint">Blank fields use build values. Saved overrides are restored at boot except in safe mode. Other apps may cache versions; restart them after changing values. Full version: up to 254 UTF-8 bytes.</string>
     <string name="version_spoof_code">Working version code</string>
-    <string name="version_spoof_full">Full SukiSU version</string>
+    <string name="version_spoof_full">Full TsukiSU version</string>
     <string name="version_spoof_uapi">Reported UAPI version</string>
     <string name="version_spoof_ack">I understand the compatibility risks</string>
     <string name="version_spoof_reset">Restore build values</string>
@@ -1366,7 +1372,7 @@
     <string name="version_spoof_compiled_target">Compiled Manager reference: version %1$s, UAPI %2$s. Custom values may differ; confirm the compatibility warning before saving.</string>
     <string name="version_spoof_original_value">Original: %1$s</string>
     <string name="version_spoof_back">Back</string>
-    <string name="version_spoof_home_warning">SukiSU version or UAPI differs from this Manager build. Tap to review version settings and recovery instructions.</string>
+    <string name="version_spoof_home_warning">TsukiSU version or UAPI differs from this Manager build. Tap to review version settings and recovery instructions.</string>
     <string name="version_spoof_hide_warning">Hide home-page version warnings</string>
     <string name="version_spoof_hide_warning_summary">Off by default. Hides version mismatch notices only; compatibility checks remain active.</string>
     <string name="version_spoof_section_info">Compatibility and build information</string>

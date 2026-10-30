@@ -26,6 +26,13 @@ data class ModuleRepoUiState(
     val searchResults: List<RepoModule> = emptyList(),
     val error: Throwable? = null,
     val sources: List<RepoSource> = emptyList(),
+    /**
+     * 商店页顶部的来源筛选：null 表示「全部」，否则只看这个源的模块。
+     *
+     * 存 id 不存名字：名字可以重复、也可以被用户改掉。**不落盘**——每次进商店都从「全部」
+     * 开始，记住筛选只会让下次进来先看见一片空（那个源这次恰好失败时就更是了）。
+     */
+    val selectedSourceId: String? = null,
     val sourceErrors: Map<String, String> = emptyMap(),
     /**
      * 本次抓取结果里被用户手动关掉的失败通知（按通知里那条消息记）。下一次抓取结果落到状态里时
@@ -67,6 +74,8 @@ data class ModuleRepoActions(
     val onClearSearch: () -> Unit,
     val onSearchStatusChange: (SearchStatus) -> Unit,
     val onSetSortOrder: (RepoSort) -> Unit,
+    /** 切换来源筛选；null 是「全部」。 */
+    val onSelectSource: (String?) -> Unit,
     val onOpenRepoDetail: (RepoModule) -> Unit,
     /** [name] is the display name to store, or null to derive one from the address. */
     val onAddSource: (url: String, name: String?) -> Unit,

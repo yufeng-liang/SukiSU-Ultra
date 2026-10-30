@@ -309,6 +309,7 @@ class ModuleRepoViewModel(
     fun removeSource(id: String) {
         sourceRepo.removeSource(id)
         reloadSources()
+        dropSelectionIfLost(id)
         refresh()
         autoBackupRepoConfig()
     }
@@ -316,8 +317,29 @@ class ModuleRepoViewModel(
     fun setSourceEnabled(id: String, enabled: Boolean) {
         sourceRepo.setSourceEnabled(id, enabled)
         reloadSources()
+        if (!enabled) dropSelectionIfLost(id)
         refresh()
         autoBackupRepoConfig()
+    }
+
+    /**
+     * 商店页顶部的来源筛选。
+     *
+     * 只改界面状态：筛选不是配置，不落盘、不触发重新抓取——模块列表本来就是全部源的并集，
+     * 切筛选只是换一种看法。
+     */
+    fun selectSource(sourceId: String?) {
+        _uiState.update { it.copy(selectedSourceId = sourceId) }
+    }
+
+    /**
+     * 正被筛着的源被停用或删掉了，就回到「全部」。
+     *
+     * 不回收的话列表会突然空掉，而空列表在这页是有专门含义的（「所有源都停用了」/「还没配源」），
+     * 用户会以为配置坏了。
+     */
+    private fun dropSelectionIfLost(sourceId: String) {
+        _uiState.update { if (it.selectedSourceId == sourceId) it.copy(selectedSourceId = null) else it }
     }
 
     fun renameSource(id: String, name: String) {

@@ -21,6 +21,9 @@ import java.net.InetSocketAddress
 
 private const val SOURCES_KEY = "repo_sources"
 
+/** 种子标记：真实代码里是 Boolean，FakeSharedPreferences 也要能存。 */
+private const val COOLAPK_SEEDED_KEY = "repo_coolapk_source_seeded"
+
 /**
  * 添加一个源要跨网络探测候选地址（最长 35 秒）。落盘时必须按**当时**的列表合并：用探测前读到
  * 的快照写回去，会把等待期间用户做的删除、改名、启停一起回滚——看起来只是"加了个源"。
@@ -36,6 +39,9 @@ class RepoSourceRepositoryTest {
 
     @Before
     fun start() {
+        // 这些用例关心的是「用户自己配的源」怎么读写，不该被首次种进来的酷安源干扰：
+        // 直接当作已经种过，酷安源就不会出现在它们的列表里。种子行为另有专门的用例。
+        prefs.putBoolean(COOLAPK_SEEDED_KEY, true)
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         serve("/index.json", "[]", probeHook = true)
         serve("/not-a-repo.json", """{"hello": "world"}""")
@@ -190,6 +196,24 @@ class RepoSourceRepositoryTest {
 
         assertEquals(offered.url, builtInSource.url)
     }
+
+    @Test
+    fun `seeds the coolapk community source once and keeps it disabled`() {
+        val fresh = FakeSharedPreferences()
+        val repository = RepoSourceRepositoryImpl(prefs = fresh, httpClient = OkHttpClient())
+
+        val first = repository.loadSources()
+        assertEquals(
+            listOf("builtin-kernelsu-modules", "coolapk-community-modules"),
+            first.map { it.id },
+        )
+        // 默认关闭：这份索引由酷安用户自发上传，得用户自己读过免责说明再开。
+        assertFalse(first.last().enabled)
+
+        // 用户把它删掉之后不该自己长回来——长回来等于删除没生效。
+        repository.removeSource("coolapk-community-modules")
+        assertFalse(repository.loadSources().any { it.id == "coolapk-community-modules" })
+    }
 }
 
 private fun responseWithBody(body: String) = Response.Builder()
@@ -220,6 +244,10 @@ private class FakeSharedPreferences : SharedPreferences {
     private val values = mutableMapOf<String, Any?>()
 
     fun put(key: String, value: String) {
+        values[key] = value
+    }
+
+    fun putBoolean(key: String, value: Boolean) {
         values[key] = value
     }
 
