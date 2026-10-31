@@ -268,7 +268,6 @@ private fun AboutContent(
     )
     // 更新检查的两个开关只在关于页有入口（上游 72eea67e 把设置页那两栏挪到这里），
     // 而 Miuix 关于页当时已被删掉，所以这些开关从来没在 Miuix 皮肤下露出过。
-    val contributors = rememberContributors()
     val isKsuValid = remember { Natives.isManager }
 
     BgEffectBackground(
@@ -518,91 +517,6 @@ private fun AboutContent(
                             )
                         }
                     }
-                    // 贡献者墙与名字墙用的是 Material 组件（上游把它们从 Miuix 页里抽成了
-                    // 共用组件），所以在 Miuix 皮肤下要包一层 Material 主题，否则取到的是
-                    // Material 默认配色，跟这边的深色底对不上。
-                    if (contributors.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.about_contributors),
-                                color = colorScheme.onBackground,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 14.sp,
-                            )
-                            Text(
-                                text = contributors.size.toString(),
-                                color = colorScheme.onSurfaceVariantSummary,
-                                fontSize = 11.sp,
-                            )
-                        }
-                        Card(
-                            modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                                .then(
-                                    if (enableBlur) {
-                                        Modifier.textureBlur(
-                                            backdrop = backdrop,
-                                            shape = RoundedCornerShape(16.dp),
-                                            blurRadius = 60f,
-                                            colors = BlurColors(blendColors = blendColors),
-                                            enabled = true,
-                                        )
-                                    } else Modifier
-                                ),
-                            colors = CardDefaults.defaultColors(
-                                if (enableBlur) Color.Transparent else colorScheme.surfaceContainer,
-                                Color.Transparent,
-                            ),
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                MiuixSkinMaterialTheme {
-                                    ContributorWall(
-                                        contributors = contributors,
-                                        onSelect = { actions.onOpenLink(it.profileUrl) },
-                                    )
-                                }
-                                Text(
-                                    text = stringResource(R.string.about_contributors_hint),
-                                    color = colorScheme.onSurfaceVariantSummary,
-                                    fontSize = 12.sp,
-                                )
-                            }
-                        }
-                        Card(
-                            modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                                .then(
-                                    if (enableBlur) {
-                                        Modifier.textureBlur(
-                                            backdrop = backdrop,
-                                            shape = RoundedCornerShape(16.dp),
-                                            blurRadius = 60f,
-                                            colors = BlurColors(blendColors = blendColors),
-                                            enabled = true,
-                                        )
-                                    } else Modifier
-                                ),
-                            colors = CardDefaults.defaultColors(
-                                if (enableBlur) Color.Transparent else colorScheme.surfaceContainer,
-                                Color.Transparent,
-                            ),
-                        ) {
-                            MiuixSkinMaterialTheme {
-                                ContributorNameWordmark(
-                                    names = contributors.map { it.login },
-                                    modifier = Modifier.padding(14.dp),
-                                )
-                            }
-                        }
-                    }
-
                     Spacer(
                         Modifier.height(
                             WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +

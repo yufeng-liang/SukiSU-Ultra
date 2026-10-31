@@ -57,7 +57,6 @@ fun AboutScreenMaterial(
     actions: AboutScreenActions,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val contributors = rememberContributors()
     val isKsuValid = remember { Natives.isManager }
 
     ExpressiveScaffold(
@@ -166,58 +165,6 @@ fun AboutScreenMaterial(
                         }
                     }
                 )
-            }
-            if (contributors.isNotEmpty()) {
-                item {
-                    Row(
-                        modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 16.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.about_contributors),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            text = contributors.size.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.secondaryContainer)
-                                .padding(horizontal = 8.dp, vertical = 2.dp),
-                        )
-                    }
-                    TonalCard(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        shape = MaterialTheme.shapes.extraLarge,
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
-                        ) {
-                            ContributorWall(
-                                contributors = contributors,
-                                onSelect = { actions.onOpenLink(it.profileUrl) },
-                            )
-                            Text(
-                                text = stringResource(R.string.about_contributors_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    TonalCard(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        shape = MaterialTheme.shapes.extraLarge,
-                    ) {
-                        ContributorNameWordmark(
-                            names = contributors.map { it.login },
-                            modifier = Modifier.padding(18.dp),
-                        )
-                    }
-                }
             }
             item {
                 Spacer(

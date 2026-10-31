@@ -162,8 +162,6 @@
     <string name="home_support_title">Support Us</string>
     <string name="home_gki_warning">Starting from v3.0.0, the GKI work mode will be used only in testing environments. We do not recommend it for daily use, and image files will no longer be provided.</string>
     <string name="home_support_content">TsukiSU is, and always will be, free, and open source. However, you can show us that you care by making a donation.</string>
-    <string name="about_contributors">Main contributors</string>
-    <string name="about_contributors_hint">Drag to explore, pinch to zoom, tap an avatar to open the profile.</string>
     <string name="about_wordmark_hint">Every letter is a contributor\'s name. Pinch to zoom in.</string>
     <string name="about_source_code"><![CDATA[View source code at %1$s<br/>Join our %2$s channel<br/><br/>The icons are licensed under a special arrangement: drawn by 怡子曰曰, the copyright is held by 明风 OuO, and the vectorized icons are provided by this project.]]></string>
     <string name="profile" translatable="false">App Profile</string>

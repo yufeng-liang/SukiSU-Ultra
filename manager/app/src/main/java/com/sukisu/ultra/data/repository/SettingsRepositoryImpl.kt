@@ -252,8 +252,9 @@ class SettingsRepositoryImpl : SettingsRepository {
         get() = prefs.getBoolean("enable_predictive_back", false)
         set(value) = prefs.edit { putBoolean("enable_predictive_back", value) }
 
+    // 默认关闭：横滑返回会和列表里的横滑操作抢手势，用户没主动开就不该接管。
     override var enableSwipeDismiss: Boolean
-        get() = prefs.getBoolean("enable_swipe_dismiss", true)
+        get() = prefs.getBoolean("enable_swipe_dismiss", false)
         set(value) = prefs.edit { putBoolean("enable_swipe_dismiss", value) }
 
     override var pagerInterceptionMode: Int

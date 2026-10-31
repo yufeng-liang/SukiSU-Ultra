@@ -173,11 +173,25 @@ fun ModuleUploadIdentityMaterial(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        SectionLabelMaterial(
-                            icon = Icons.Filled.VerifiedUser,
-                            text = stringResource(R.string.module_upload_section_identity),
-                            required = true,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            SectionLabelMaterial(
+                                icon = Icons.Filled.VerifiedUser,
+                                text = stringResource(R.string.module_upload_section_identity),
+                                required = true,
+                            )
+                            // 核实状态挂在标题右侧：这一行高度恒定，输入过程中下面几张卡
+                            // 不会因为「正在核实…」冒出来又被收走而上下跳。
+                            UidStatusInlineMaterial(
+                                state = state,
+                                onRetry = onRetryUid,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 8.dp),
+                            )
+                        }
                         // 头像贴在输入框右侧、勾和「已找到」压在头像下面：验证成功
                         // 不再往下多长一行，下面几张卡不会因为这一行冒出来而整体上跳。
                         val verified = state.uidState as? CoolapkUidState.Verified
@@ -202,9 +216,8 @@ fun ModuleUploadIdentityMaterial(
                                 )
                             }
                         }
-                        // 只有「正在查 / 查不到 / 自称已提交」这些插曲才占一行：
-                        // 验证成功的信息已经收进右边那一小块了。
-                        if (verified == null) {
+                        // 输入框下面只留空态的填写说明；核实状态已经在标题右侧那一格了。
+                        if (verified == null && state.uidState is CoolapkUidState.Empty) {
                             UidStatusRowMaterial(
                                 state = state,
                                 onRetry = onRetryUid,
@@ -546,3 +559,70 @@ private fun UidFoundBadgeMaterial(avatarUrl: String) {
         }
     }
 }
+
+
+/**
+ * 「上传者」标题右侧的核实状态（Material 皮肤）。
+ *
+ * 只画插曲态；空态与已验证态不占这一格，理由同 Miuix 侧。
+ */
+@Composable
+private fun UidStatusInlineMaterial(
+    state: ModuleUploadFormState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (state.uidState) {
+        CoolapkUidState.Checking -> Text(
+            modifier = modifier,
+            text = stringResource(
+                if (state.sessionChecking) {
+                    R.string.module_upload_session_checking
+                } else {
+                    R.string.module_upload_uid_checking
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.End,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        CoolapkUidState.NotFound -> Text(
+            modifier = modifier,
+            text = stringResource(R.string.module_upload_uid_not_found),
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.End,
+            color = MaterialTheme.colorScheme.error,
+        )
+
+        CoolapkUidState.SelfReported -> Text(
+            modifier = modifier,
+            text = stringResource(R.string.module_upload_uid_self_reported),
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.End,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        CoolapkUidState.Unavailable -> Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Text(
+                modifier = Modifier.weight(1f, fill = false),
+                text = stringResource(R.string.module_upload_uid_unavailable),
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.End,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(onClick = onRetry, enabled = !state.submitting) {
+                Text(stringResource(R.string.network_retry))
+            }
+        }
+
+        CoolapkUidState.Empty, is CoolapkUidState.Verified -> Unit
+    }
+}
+

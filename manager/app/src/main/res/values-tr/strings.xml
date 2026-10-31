@@ -312,8 +312,6 @@
     <string name="module_preinit_bootloop">ardışık önyükleme hataları nedeniyle preinit devre dışı bırakıldı</string>
     <string name="module_preinit_unsupported">preinit atlandı: mevcut çekirdek tarafından desteklenmiyor</string>
     <string name="jailbreak_reboot_warning">Jailbreak modundasınız. Yeniden başlatmak root erişiminin kaybolmasına neden olur ve cihaz açıldıktan sonra tekrar jailbreak yapmanız gerekir. Yine de yeniden başlatılsınmı?</string>
-    <string name="about_contributors">Ana katkıda bulunanlar</string>
-    <string name="about_contributors_hint">Keşfetmek için sürükleyin, yakınlaştırmak için çimdikleyin, profili açmak için bir avatara dokunun.</string>
     <string name="about_wordmark_hint">Her harf bir katkıda bulunanın adıdır. Yakınlaştırmak için çimdikleyin.</string>
     <string name="profile_flags">Bayraklar</string>
     <string name="recently_installed">Yakın zamanda yüklendi</string>
