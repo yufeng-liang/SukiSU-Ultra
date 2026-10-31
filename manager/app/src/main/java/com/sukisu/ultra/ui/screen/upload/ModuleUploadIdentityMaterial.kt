@@ -63,9 +63,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.component.material.ExpressiveScaffold
 import com.sukisu.ultra.ui.component.material.TonalCard
 import com.sukisu.ultra.ui.component.material.expressiveTopAppBarColors
@@ -176,21 +178,40 @@ fun ModuleUploadIdentityMaterial(
                             text = stringResource(R.string.module_upload_section_identity),
                             required = true,
                         )
-                        OutlinedTextField(
-                            value = state.uid,
-                            onValueChange = onUidChange,
-                            enabled = !state.verifying,
-                            label = { Text(stringResource(R.string.module_upload_uid)) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        // 头像贴在输入框右侧、勾和「已找到」压在头像下面：验证成功
+                        // 不再往下多长一行，下面几张卡不会因为这一行冒出来而整体上跳。
+                        val verified = state.uidState as? CoolapkUidState.Verified
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                        )
-                        UidStatusRowMaterial(
-                            state = state,
-                            onRetry = onRetryUid,
-                            // 身份页没有「退出验证」——这一屏本来就是因为没有令牌才来的。
-                            onSignOut = null,
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = state.uid,
+                                onValueChange = onUidChange,
+                                enabled = !state.verifying,
+                                label = { Text(stringResource(R.string.module_upload_uid)) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (verified != null) {
+                                UidFoundBadgeMaterial(
+                                    avatarUrl = verified.avatar
+                                        .ifBlank { state.session?.avatar.orEmpty() },
+                                )
+                            }
+                        }
+                        // 只有「正在查 / 查不到 / 自称已提交」这些插曲才占一行：
+                        // 验证成功的信息已经收进右边那一小块了。
+                        if (verified == null) {
+                            UidStatusRowMaterial(
+                                state = state,
+                                onRetry = onRetryUid,
+                                // 身份页没有「退出验证」——这一屏本来就是因为没有令牌才来的。
+                                onSignOut = null,
+                            )
+                        }
                         Text(
                             text = stringResource(R.string.module_upload_identity_level),
                             style = MaterialTheme.typography.labelSmall,
@@ -214,6 +235,8 @@ fun ModuleUploadIdentityMaterial(
                             icon = Icons.Filled.VerifiedUser,
                             text = stringResource(R.string.module_upload_identity_commit_title),
                             required = true,
+                            // 这一步不是「往框里填字」，是要用户去酷安改签名，所以说「必做」。
+                            requiredLabel = stringResource(R.string.module_upload_must_do),
                         )
                         if (commit == null) {
                             Text(
@@ -302,9 +325,11 @@ fun ModuleUploadIdentityMaterial(
                 TonalCard(modifier = Modifier.padding(top = 20.dp).fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp, 12.dp)) {
                         Text(
+                            modifier = Modifier.fillMaxWidth(),
                             text = stringResource(R.string.module_upload_identity_pledge_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
                         )
                         Text(
                             modifier = Modifier.padding(top = 6.dp),
@@ -489,5 +514,35 @@ private fun PledgeLine(text: String) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
         )
+    }
+}
+
+/**
+ * 验证通过后落在 UID 输入框右侧的那一小块：头像 + 「✓ 已找到」。
+ *
+ * 不再画成输入框下面的一整行 —— 那一行一出现就把下面几张卡整体往下推。
+ */
+@Composable
+private fun UidFoundBadgeMaterial(avatarUrl: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        VerifiedAvatar(
+            avatarUrl = avatarUrl,
+            tint = MaterialTheme.colorScheme.primary,
+            placeholder = MaterialTheme.colorScheme.surfaceContainerHighest,
+            avatarSize = 36.dp,
+            showMark = false,
+        )
+        Row(
+            modifier = Modifier.padding(top = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VerifiedMark(tint = MaterialTheme.colorScheme.primary, size = 12.dp)
+            Text(
+                modifier = Modifier.padding(start = 3.dp),
+                text = stringResource(R.string.module_upload_identity_uid_found),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }

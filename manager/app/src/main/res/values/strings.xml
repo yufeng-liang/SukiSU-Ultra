@@ -1253,6 +1253,7 @@
     <string name="module_upload_source">Coolapk link for this module</string>
     <string name="module_upload_source_hint">Paste the Coolapk post link for this module. No post yet? Publish one to archive the source, and get the module some exposure.</string>
     <string name="module_upload_source_empty">Required</string>
+    <string name="module_upload_must_do">Required step</string>
     <string name="module_upload_required">Required</string>
     <string name="module_upload_source_invalid">Must be a coolapk.com link</string>
     <string name="module_upload_apply_all">Apply to all</string>
@@ -1488,7 +1489,8 @@
     <string name="module_upload_identity_commit_copied">Copied</string>
     <string name="module_upload_identity_commit_hint">Open Coolapk (Me &gt; Edit profile &gt; Signature), paste this string there and save. This step proves the UID really is yours; once verified you can switch back to your own signature at any time.</string>
     <string name="module_upload_identity_title">Verify your identity</string>
-    <string name="module_upload_identity_why_title">Why we ask for these</string>
+    <string name="module_upload_identity_uid_found">Found</string>
+    <string name="module_upload_identity_why_title">Why we ask for these?</string>
     <string name="module_upload_identity_why_body">Uploads are public, and every module you upload runs with root privileges on the devices of everyone who installs it. That is why we need to know who uploaded each one: your Coolapk UID is recorded so a module can always be traced back to its uploader, and we require a Coolapk account of level Lv2 or above to deter casual abuse (the signature check only proves that the UID you entered is really yours).</string>
     <string name="module_upload_identity_level">Coolapk level Lv2 or above required.</string>
     <string name="module_upload_identity_cooldown">Try again in %1$ds.</string>

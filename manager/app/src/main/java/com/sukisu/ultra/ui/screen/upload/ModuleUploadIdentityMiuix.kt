@@ -53,10 +53,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sukisu.ultra.R
+import com.sukisu.ultra.ui.component.CoolapkUidState
 import com.sukisu.ultra.ui.theme.LocalEnableBlur
 import com.sukisu.ultra.ui.util.BlurredBar
 import com.sukisu.ultra.ui.util.rememberBlurBackdrop
@@ -64,6 +66,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Checkbox
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -205,22 +208,41 @@ fun ModuleUploadIdentityMiuix(
                             text = stringResource(R.string.module_upload_section_identity),
                             required = true,
                         )
-                        TextField(
-                            value = state.uid,
-                            onValueChange = onUidChange,
-                            enabled = !state.verifying,
-                            label = stringResource(R.string.module_upload_uid),
-                            useLabelAsPlaceholder = true,
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        // 头像贴在输入框右侧、勾和「已找到」压在头像下面：验证成功
+                        // 不再往下多长一行，下面几张卡不会因为这一行冒出来而整体上跳。
+                        val verified = state.uidState as? CoolapkUidState.Verified
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                        )
-                        UidStatusRowMiuix(
-                            state = state,
-                            onRetry = onRetryUid,
-                            // 身份页没有「退出验证」——这一屏本来就是因为没有令牌才来的。
-                            onSignOut = null,
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            TextField(
+                                value = state.uid,
+                                onValueChange = onUidChange,
+                                enabled = !state.verifying,
+                                label = stringResource(R.string.module_upload_uid),
+                                useLabelAsPlaceholder = true,
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (verified != null) {
+                                UidFoundBadgeMiuix(
+                                    avatarUrl = verified.avatar
+                                        .ifBlank { state.session?.avatar.orEmpty() },
+                                )
+                            }
+                        }
+                        // 只有「正在查 / 查不到 / 自称已提交」这些插曲才占一行：
+                        // 验证成功的信息已经收进右边那一小块了。
+                        if (verified == null) {
+                            UidStatusRowMiuix(
+                                state = state,
+                                onRetry = onRetryUid,
+                                // 身份页没有「退出验证」——这一屏本来就是因为没有令牌才来的。
+                                onSignOut = null,
+                            )
+                        }
                         Text(
                             text = stringResource(R.string.module_upload_identity_level),
                             fontSize = 12.sp,
@@ -244,6 +266,8 @@ fun ModuleUploadIdentityMiuix(
                             icon = Icons.Filled.VerifiedUser,
                             text = stringResource(R.string.module_upload_identity_commit_title),
                             required = true,
+                            // 这一步不是「往框里填字」，是要用户去酷安改签名，所以说「必做」。
+                            requiredLabel = stringResource(R.string.module_upload_must_do),
                         )
                         if (commit == null) {
                             Text(
@@ -308,6 +332,7 @@ fun ModuleUploadIdentityMiuix(
                                             if (copied) R.string.module_upload_identity_commit_copied
                                             else R.string.module_upload_identity_commit_copy,
                                         ),
+                                        colors = ButtonDefaults.textButtonColorsPrimary(),
                                         onClick = {
                                             scope.launch {
                                                 clipboard.setClipEntry(
@@ -333,9 +358,11 @@ fun ModuleUploadIdentityMiuix(
                 Card(modifier = Modifier.padding(top = 20.dp).fillMaxWidth()) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(
+                            modifier = Modifier.fillMaxWidth(),
                             text = stringResource(R.string.module_upload_identity_pledge_title),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
                             color = colorScheme.onSurface,
                         )
                         Text(
@@ -485,6 +512,7 @@ private fun IdentityBarMiuix(
                     enabled = state.canVerify && !levelBlocked && !coolingDown,
                     modifier = Modifier.height(48.dp),
                     cornerRadius = 12.dp,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
                 ) {
                     if (verifying) {
                         CircularProgressIndicator(
@@ -543,5 +571,36 @@ private fun PledgeLineMiuix(text: String) {
             fontSize = 13.sp,
             color = colorScheme.onSurface,
         )
+    }
+}
+
+/**
+ * 验证通过后落在 UID 输入框右侧的那一小块：头像 + 「✓ 已找到」。
+ *
+ * 不再画成输入框下面的一整行 —— 那一行一出现就把下面几张卡整体往下推，
+ * 用户正在看「签名」那一行时页面会自己跳一下。
+ */
+@Composable
+private fun UidFoundBadgeMiuix(avatarUrl: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        VerifiedAvatar(
+            avatarUrl = avatarUrl,
+            tint = colorScheme.primary,
+            placeholder = colorScheme.surfaceContainer,
+            avatarSize = 36.dp,
+            showMark = false,
+        )
+        Row(
+            modifier = Modifier.padding(top = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VerifiedMark(tint = colorScheme.primary, size = 12.dp)
+            Text(
+                modifier = Modifier.padding(start = 3.dp),
+                text = stringResource(R.string.module_upload_identity_uid_found),
+                fontSize = 10.sp,
+                color = colorScheme.primary,
+            )
+        }
     }
 }

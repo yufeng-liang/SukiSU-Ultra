@@ -813,6 +813,11 @@ internal fun SectionLabelMiuix(
      * 而「这个字段必填」是决定要不要填的前提，应该和标题一起被读到。
      */
     required: Boolean = false,
+    /**
+     * 必填后面那枚小字。默认「必填」；「酷安签名」这类分组要用户去做一件事、
+     * 而不是往框里填字，传「必做」语义更贴。
+     */
+    requiredLabel: String? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -843,7 +848,7 @@ internal fun SectionLabelMiuix(
                 )
                 Text(
                     modifier = Modifier.padding(start = 6.dp),
-                    text = stringResource(R.string.module_upload_required),
+                    text = requiredLabel ?: stringResource(R.string.module_upload_required),
                     fontSize = 11.sp,
                     color = colorScheme.error,
                 )

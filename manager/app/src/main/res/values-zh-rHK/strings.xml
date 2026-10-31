@@ -407,6 +407,7 @@
     <string name="module_upload_source">這個模組的酷安連結</string>
     <string name="module_upload_source_hint">貼這個模組的酷安帖子連結。沒有的話可以順手發一個帖子存檔，也順便宣傳一下。</string>
     <string name="module_upload_source_empty">必填</string>
+    <string name="module_upload_must_do">必做</string>
     <string name="module_upload_required">必填</string>
     <string name="module_upload_source_invalid">必須是 coolapk.com 的連結</string>
     <string name="module_upload_apply_all">套用到全部</string>
@@ -529,7 +530,8 @@
     <string name="module_upload_identity_commit_copied">已複製</string>
     <string name="module_upload_identity_commit_hint">開啟酷安（我 &gt; 編輯資料 &gt; 個性簽名），把這串貼進去儲存。這一步是為了證明 UID 確實是你在使用，通過驗證之後你可以隨時換回你原本的酷安簽名。</string>
     <string name="module_upload_identity_title">驗證身分</string>
-    <string name="module_upload_identity_why_title">為什麼要填這些</string>
+    <string name="module_upload_identity_uid_found">已找到</string>
+    <string name="module_upload_identity_why_title">為什麼要填這些？</string>
     <string name="module_upload_identity_why_body">上傳是公開的，而你上傳的每個模組都會在安裝者的裝置上以 root 權限執行。所以我們需要知道每個模組是誰上傳的：記錄酷安 UID，是為了日後隨時能把模組回溯到上傳者；同時要求酷安等級 Lv2 及以上，防止隨意濫用上傳（酷安簽名驗證是為了證明你填的 UID 確實是你在使用）。</string>
     <string name="module_upload_identity_level">需要酷安等級 Lv2 及以上</string>
     <string name="module_upload_identity_cooldown">請 %1$d 秒後再試</string>

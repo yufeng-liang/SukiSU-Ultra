@@ -1238,6 +1238,7 @@
     <string name="module_upload_source_hint">贴这个模块的酷安帖子链接。没有的话可以顺手发一个帖子存档，也顺便宣传一下。</string>
     <string name="module_upload_source_empty">必填</string>
     <!-- 分组标题右侧的必填徽标。出处与上传者共用，所以不带字段名。 -->
+    <string name="module_upload_must_do">必做</string>
     <string name="module_upload_required">必填</string>
     <string name="module_upload_source_invalid">必须是 coolapk.com 的链接</string>
     <string name="module_upload_apply_all">应用到全部</string>
@@ -1476,7 +1477,8 @@
     <string name="module_upload_identity_commit_copied">已复制</string>
     <string name="module_upload_identity_commit_hint">打开酷安（我 &gt; 编辑资料 &gt; 个性签名），把这串粘进去保存。这一步是为了证明 UID 确实是你在用，通过验证之后你可以随时换回你原来的酷安签名。</string>
     <string name="module_upload_identity_title">验证身份</string>
-    <string name="module_upload_identity_why_title">为什么要填这些</string>
+    <string name="module_upload_identity_uid_found">已找到</string>
+    <string name="module_upload_identity_why_title">为什么要填这些？</string>
     <string name="module_upload_identity_why_body">上传是公开的，而你上传的每个模块都会在装机者的设备上以 root 权限运行。所以我们需要知道每个模块是谁上传的：记录酷安 UID，是为了日后随时能把模块回溯到上传者；同时要求酷安等级 Lv2 及以上，防止随意滥用上传（酷安签名验证是为了证明你填的 UID 确实是你在用）。</string>
     <string name="module_upload_identity_level">需要酷安等级 Lv2 及以上</string>
     <string name="module_upload_identity_cooldown">请 %1$d 秒后再试</string>
