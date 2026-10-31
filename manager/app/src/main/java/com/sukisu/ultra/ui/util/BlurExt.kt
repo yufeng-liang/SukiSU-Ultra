@@ -64,6 +64,11 @@ fun BlurredBar(
         )
     } else if (effectiveBlurActive && hasCustomBackground) {
         Modifier.background(surfaceColor.copy(alpha = cardAlpha))
+    } else if (backdrop == null && !hasCustomBackground) {
+        // 顶栏模糊关掉（或设备不支持）时必须自己画底色。
+        // 早先这里返回空的 Modifier，配合 TopAppBar(color = Color.Transparent)，
+        // 整条 bar 就是透明的：列表滚上去时标题底下会透着内容，看着像没画顶栏。
+        Modifier.background(surfaceColor)
     } else {
         Modifier
     }
