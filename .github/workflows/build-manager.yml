@@ -507,6 +507,10 @@ jobs:
               -exec sed -i \
                 -e "/^[[:space:]]*[*\/]/!s/MainActivity/${MAIN_CLASS}Activity/g" \
                 {} +
+          else
+            # 正式包：组件名必须保持稳定，否则下一次升级后桌面图标会指向不存在的组件。
+            grep -q 'android:name=".ui.MainActivityAliasDefault"' app/src/main/AndroidManifest.xml \
+              || { echo "MainActivityAliasDefault 被改名了：桌面图标会在下次升级后失效" >&2; exit 1; }
           fi
 
           # Rename the files that carry the identifier in their names.
