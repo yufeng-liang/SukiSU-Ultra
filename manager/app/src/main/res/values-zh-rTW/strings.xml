@@ -1250,6 +1250,7 @@
     <string name="module_upload_identity_commit_title">將酷安簽名改成下面這串</string>
     <string name="module_upload_identity_commit_pending">正在準備驗證串…</string>
     <string name="module_upload_identity_commit_copy">複製</string>
+    <string name="module_upload_identity_commit_copied">已複製</string>
     <string name="module_upload_identity_commit_hint">開啟酷安（我 &gt; 編輯資料 &gt; 個性簽名），把這串貼進去儲存，再回來勾選下面的框。它由只存在這台裝置上的一串隨機密鑰算出來，所以別人看見你的簽名也用不了。</string>
     <string name="module_upload_identity_title">驗證身分</string>
     <string name="module_upload_identity_why_title">為什麼要填這些</string>

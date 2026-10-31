@@ -1473,6 +1473,7 @@
     <string name="module_upload_identity_commit_title">酷安签名改成下面这串</string>
     <string name="module_upload_identity_commit_pending">正在准备验证串…</string>
     <string name="module_upload_identity_commit_copy">复制</string>
+    <string name="module_upload_identity_commit_copied">已复制</string>
     <string name="module_upload_identity_commit_hint">打开酷安（我 &gt; 编辑资料 &gt; 个性签名），把这串粘进去保存，再回来勾选下面的框。它由只存在这台设备上的一串随机密钥算出来，所以别人看见你的签名也用不了。</string>
     <string name="module_upload_identity_title">验证身份</string>
     <string name="module_upload_identity_why_title">为什么要填这些</string>

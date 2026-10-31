@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -251,6 +252,15 @@ fun ModuleUploadIdentityMiuix(
                                 color = colorScheme.onSurfaceVariantSummary,
                             )
                         } else {
+                            // 复制后把按钮字样换成「已复制」并自己复原：这片界面没有 Snackbar
+                            // 宿主，按下去什么都不变的话，用户只能靠回酷安粘贴一次来验证。
+                            var copied by remember(commit) { mutableStateOf(false) }
+                            LaunchedEffect(copied) {
+                                if (copied) {
+                                    delay(1_600L)
+                                    copied = false
+                                }
+                            }
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -294,12 +304,16 @@ fun ModuleUploadIdentityMiuix(
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     TextButton(
-                                        text = stringResource(R.string.module_upload_identity_commit_copy),
+                                        text = stringResource(
+                                            if (copied) R.string.module_upload_identity_commit_copied
+                                            else R.string.module_upload_identity_commit_copy,
+                                        ),
                                         onClick = {
                                             scope.launch {
                                                 clipboard.setClipEntry(
                                                     ClipEntry(ClipData.newPlainText("identity", commit)),
                                                 )
+                                                copied = true
                                             }
                                         },
                                     )
