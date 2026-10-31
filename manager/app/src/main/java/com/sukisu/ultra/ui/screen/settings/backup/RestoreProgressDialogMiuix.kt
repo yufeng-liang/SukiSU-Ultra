@@ -12,6 +12,8 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.repository.isSoftRebootPreferred
+import com.sukisu.ultra.ui.component.rebootlistpopup.rememberRebootAction
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
@@ -34,6 +36,12 @@ fun RestoreProgressDialogMiuix(
     onCancel: () -> Unit,
 ) {
     if (run == null) return
+    // 重启方式跟闪刷页同一来源：偏好软重启就软重启（保留 root、照样加载模块）。
+    // late-load 模式下普通重启会掉 root，rememberRebootAction 会先弹确认再动手。
+    val onReboot = rememberRebootAction()
+    // 弹窗打开期间定死一种重启方式：label 和点击用的是同一个值，不跟设置实时漂移。
+    val softReboot = isSoftRebootPreferred()
+    val rebootLabel = stringResource(if (softReboot) R.string.reboot_soft else R.string.reboot)
     WindowDialog(
         show = true,
         // 还在跑的时候返回键不该把它关掉：关掉就看不到进度，也没法取消。
@@ -83,6 +91,15 @@ fun RestoreProgressDialogMiuix(
                             )
                         }
                     }
+                    // "恢复成功"只是文件到位：这句要跟着重启入口一起出现在眼前，
+                    // 只躺在页面 snackbar 里时，弹窗一关就没人看见它。
+                    if (run.needsReboot) {
+                        Text(
+                            text = stringResource(R.string.reboot_to_apply),
+                            color = colorScheme.primary,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
                 } else {
                     Text(
                         text = stringResource(
@@ -105,6 +122,15 @@ fun RestoreProgressDialogMiuix(
                         colors = ButtonDefaults.textButtonColorsPrimary(),
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                         onClick = onCancel,
+                    )
+                }
+                // 重启是恢复完成后的下一步动作，放 Done 上面；不想要重启的用户直接 Done 关掉。
+                if (run.done && run.needsReboot) {
+                    TextButton(
+                        text = rebootLabel,
+                        colors = ButtonDefaults.textButtonColorsPrimary(),
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        onClick = { onReboot(if (softReboot) "soft_reboot" else "") },
                     )
                 }
                 TextButton(

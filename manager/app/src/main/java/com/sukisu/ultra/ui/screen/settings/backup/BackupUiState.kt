@@ -395,6 +395,12 @@ data class RestoreRunState(
     val result: String = "",
     /** 失败明细（哪一项、为什么），与结果分开列，弹窗里逐行显示。 */
     val failures: List<String> = emptyList(),
+    /**
+     * 恢复的内容里有没有要重启才生效的（模块、分区快照要；仓库源只换 prefs 不要）。
+     * 弹窗据此把"重启生效"连着重启入口一起递到眼前——这条话只挂在页面 snackbar 上时，
+     * 用户弹窗一关、眼睛还停在弹窗原来的位置，提示等于没说。
+     */
+    val needsReboot: Boolean = false,
 )
 
 @Immutable

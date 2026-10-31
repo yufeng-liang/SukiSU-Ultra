@@ -14,6 +14,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.sukisu.ultra.R
+import com.sukisu.ultra.data.repository.isSoftRebootPreferred
+import com.sukisu.ultra.ui.component.rebootlistpopup.rememberRebootAction
 
 /**
  * 恢复进度与结果（Material）。
@@ -29,6 +31,12 @@ fun RestoreProgressDialogMaterial(
     onCancel: () -> Unit,
 ) {
     if (run == null) return
+    // 重启方式跟闪刷页同一来源：偏好软重启就软重启（保留 root、照样加载模块）。
+    // late-load 模式下普通重启会掉 root，rememberRebootAction 会先弹确认再动手。
+    val onReboot = rememberRebootAction()
+    // 弹窗打开期间定死一种重启方式：label 和点击用的是同一个值，不跟设置实时漂移。
+    val softReboot = isSoftRebootPreferred()
+    val rebootLabel = stringResource(if (softReboot) R.string.reboot_soft else R.string.reboot)
     AlertDialog(
         onDismissRequest = { if (run.done) onDismiss() },
         properties = DialogProperties(
@@ -76,6 +84,16 @@ fun RestoreProgressDialogMaterial(
                             )
                         }
                     }
+                    // "恢复成功"只是文件到位：这句要跟着重启入口一起出现在眼前，
+                    // 只躺在页面 snackbar 里时，弹窗一关就没人看见它。
+                    if (run.needsReboot) {
+                        Text(
+                            text = stringResource(R.string.reboot_to_apply),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
                 } else {
                     Text(
                         text = stringResource(
@@ -94,6 +112,12 @@ fun RestoreProgressDialogMaterial(
             }
         },
         confirmButton = {
+            // 重启是恢复完成后的下一步动作，放主按钮位；不想要重启的用户用 Done 关掉。
+            if (run.done && run.needsReboot) {
+                TextButton(onClick = { onReboot(if (softReboot) "soft_reboot" else "") }) {
+                    Text(rebootLabel)
+                }
+            }
             TextButton(onClick = onDismiss, enabled = run.done) {
                 Text(stringResource(R.string.backup_done))
             }

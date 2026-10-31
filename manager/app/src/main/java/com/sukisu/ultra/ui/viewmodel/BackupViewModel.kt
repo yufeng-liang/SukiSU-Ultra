@@ -756,6 +756,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                     cancelled = cancelled,
                     result = restoreCountMessage(restored, failures.size),
                     failures = failures.distinct(),
+                    needsReboot = restored > 0 && restoredKinds.any { it != BackupKind.REPO_CONFIG },
                 ),
                 message = buildList {
                     if (cancelled) add(string(R.string.backup_restore_cancelled))
