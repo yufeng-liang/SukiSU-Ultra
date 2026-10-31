@@ -490,23 +490,38 @@ jobs:
               -e "s/loadLibrary(\"kernelsu\")/loadLibrary(\"$CORE_LIB\")/g" \
               -e "/^[[:space:]]*[*\/]/!s/KernelSUApplication/${APP_CLASS}Application/g" \
               -e "/^[[:space:]]*[*\/]/!s/AppZygotePreload/${PRELOAD_CLASS}Preload/g" \
-              -e "/^[[:space:]]*[*\/]/!s/MainActivity/${MAIN_CLASS}Activity/g" \
               -e "/^[[:space:]]*[*\/]/!s/WebUIActivity/${WEBUI_CLASS}Activity/g" \
               -e "/^[[:space:]]*[*\/]/!s/DownloadService/${DOWNLOAD_CLASS}Service/g" \
               -e "/^[[:space:]]*[*\/]/!s/MagicaService/${MAGICA_CLASS}Service/g" \
               {} +
+
+          # MainActivity 与它的 alias 只在 spoofed 变体里改名。
+          # alias 就是桌面图标（MainActivityAliasDefault / Logo / Zako / Static）：
+          # 名字一换，升级后桌面上的旧快捷方式就指向不存在的组件，点下去报
+          # Error type 3: Activity class does not exist —— 进程根本不启动，
+          # 所以看起来像「首次打开闪退」，而且一条崩溃记录都没有。
+          # 正式包的包名本来就固定可见，随机化组件名的边际收益小，不值当。
+          if [ "${{ matrix.spoofed }}" = 'true' ]; then
+            find app/src/main -type f \
+              \( -name '*.kt' -o -name '*.java' -o -name '*.xml' \) \
+              -exec sed -i \
+                -e "/^[[:space:]]*[*\/]/!s/MainActivity/${MAIN_CLASS}Activity/g" \
+                {} +
+          fi
 
           # Rename the files that carry the identifier in their names.
           find app/src/main -depth -type f -name 'KernelSUApplication.kt' \
             -execdir mv {} "${APP_CLASS}Application.kt" \;
           find app/src/main -depth -type f -name 'AppZygotePreload.java' \
             -execdir mv {} "${PRELOAD_CLASS}Preload.java" \;
-          find app/src/main -depth -type f -name 'MainActivity.kt' \
-            -execdir mv {} "${MAIN_CLASS}Activity.kt" \;
-          find app/src/main -depth -type f -name 'MainActivityUiState.kt' \
-            -execdir mv {} "${MAIN_CLASS}ActivityUiState.kt" \;
-          find app/src/main -depth -type f -name 'MainActivityViewModel.kt' \
-            -execdir mv {} "${MAIN_CLASS}ActivityViewModel.kt" \;
+          if [ "${{ matrix.spoofed }}" = 'true' ]; then
+            find app/src/main -depth -type f -name 'MainActivity.kt' \
+              -execdir mv {} "${MAIN_CLASS}Activity.kt" \;
+            find app/src/main -depth -type f -name 'MainActivityUiState.kt' \
+              -execdir mv {} "${MAIN_CLASS}ActivityUiState.kt" \;
+            find app/src/main -depth -type f -name 'MainActivityViewModel.kt' \
+              -execdir mv {} "${MAIN_CLASS}ActivityViewModel.kt" \;
+          fi
           find app/src/main -depth -type f -name 'WebUIActivity.kt' \
             -execdir mv {} "${WEBUI_CLASS}Activity.kt" \;
           find app/src/main -depth -type f -name 'DownloadService.kt' \
