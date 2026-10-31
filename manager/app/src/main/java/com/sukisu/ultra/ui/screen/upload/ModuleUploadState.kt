@@ -346,13 +346,16 @@ data class ModuleUploadFormState(
     /**
      * 身份页能不能点「验证身份」。
      *
-     * 与 [canSubmit] 分开：那一套是「上传」的门，这里是「换令牌」的门，只要集齐三件事
-     * ——UID 形状像样、统一承诺勾了、本机有一串验证串。等级、签名里有没有承诺串这些
-     * 只有服务端说了算，不在本地预判。
+     * 与 [canSubmit] 分开：那一套是「上传」的门，这里是「换令牌」的门，集齐四件事才放行
+     * ——UID 形状像样、**这个 UID 已经反查确认存在**、统一承诺勾了、本机有一串验证串。
+     * 等级、签名里有没有承诺串这些只有服务端说了算，不在本地预判。
+     *
+     * 之所以把「反查确认」也放进这道门：服务端签令牌前要先查酷安空间，查不到就直接回
+     * `owner_unknown`。本地已经知道查不到了还放行，等于拿一次接口额度换一句已知的结论。
      */
     val canVerify: Boolean
         get() = identitySecret.isNotEmpty() && consent && !verifying && !sessionChecking &&
-            uid.trim().length in 4..12
+            uidVerified && uid.trim().length in 4..12
 
     /**
      * 抄进酷安签名的那一行：验证串的哈希承诺（24 位）。

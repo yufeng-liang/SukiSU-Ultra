@@ -946,7 +946,7 @@ class ModuleUploadViewModel(
                     _formState.update {
                         it.copy(
                             uid = remembered,
-                            uidState = CoolapkUidState.Verified(session.nickname),
+                            uidState = CoolapkUidState.Verified(session.nickname, session.avatar),
                         )
                     }
                 }
@@ -1122,12 +1122,22 @@ class ModuleUploadViewModel(
         // 签名这条路必须在这里补上同一个绑定。
         val uidChanged = cleaned != previous
         // 换了号就是换了输入指纹：失败冷却按 UID 记，不清的话新号会陪着旧号的冷却一起等。
+        // 红字与「等级不足」的拦截也一并清掉 —— 它们说的是**上一个号**的事，留着会让新号
+        // 顶着一句跟它无关的失败说明，而且「我已升级，重新验证」按钮会跟着闪一下。
         if (uidChanged) {
             _formState.update {
-                if (it.verifyCooldownUntil == 0L && it.verifyFailures == 0) {
+                if (
+                    it.verifyCooldownUntil == 0L && it.verifyFailures == 0 &&
+                    it.verifyError == null && it.levelBlockedUid.isEmpty()
+                ) {
                     it
                 } else {
-                    it.copy(verifyCooldownUntil = 0L, verifyFailures = 0)
+                    it.copy(
+                        verifyCooldownUntil = 0L,
+                        verifyFailures = 0,
+                        verifyError = null,
+                        levelBlockedUid = "",
+                    )
                 }
             }
         }
@@ -1152,7 +1162,7 @@ class ModuleUploadViewModel(
             _formState.update {
                 it.copy(
                     uid = cleaned,
-                    uidState = CoolapkUidState.Verified(session.nickname),
+                    uidState = CoolapkUidState.Verified(session.nickname, session.avatar),
                     confirmedSetKey = if (uidChanged) null else it.confirmedSetKey,
                 )
             }
@@ -1504,10 +1514,12 @@ class ModuleUploadViewModel(
                     when {
                         // 等级不足是**用户事实**：记住这个号，按钮换成「我已升级，重新验证」，
                         // 不这样做他就会一遍遍点同一颗按钮、我们一遍遍回同一个 403。
+                        // 不写红字：底下那条提示本来就会用红字说同一件事，还带着解除入口，
+                        // 两处都说等于同一句话在屏幕上喊两遍。
                         outcome.code == LEVEL_TOO_LOW_CODE ->
                             fail.copy(
                                 verifying = false,
-                                verifyError = outcome.message,
+                                verifyError = null,
                                 levelBlockedUid = uid,
                             )
                         // 形状不对 / 没生成好这类根本没发请求，冷却它没有意义。

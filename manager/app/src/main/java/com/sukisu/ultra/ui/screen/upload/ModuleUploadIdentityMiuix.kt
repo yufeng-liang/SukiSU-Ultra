@@ -386,6 +386,9 @@ private fun IdentityBarMiuix(
 ) {
     val missing = listOf(
         state.uid.trim().length in 4..12,
+        // 形状对不算数：还得酷安那边确实有这个号。查无此人时服务端必然也查不到，
+        // 放行只是拿一次接口额度换一句已知的结论。
+        state.uidVerified,
         state.identityCommit != null,
         state.consent,
     ).count { !it }
@@ -434,8 +437,8 @@ private fun IdentityBarMiuix(
                     text = error,
                     fontSize = 12.sp,
                     color = colorScheme.error,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    // 不截断：失败原因里带着承诺串与「去哪改签名」，截掉尾巴等于把
+                    // 用户唯一能照做的那半句藏起来。宁可让这条栏长高一点。
                 )
             }
             Row(
@@ -457,7 +460,8 @@ private fun IdentityBarMiuix(
                     modifier = Modifier.weight(1f),
                     text = hint,
                     fontSize = 12.sp,
-                    maxLines = 2,
+                    // 等级不足那句偏长，2 行会被截在后半句；这里给到 3 行。
+                    maxLines = 3,
                     color = hintColor,
                 )
                 Button(
